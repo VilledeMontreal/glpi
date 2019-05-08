@@ -108,7 +108,7 @@ class CommonDBTM extends CommonGLPI {
    protected $fkfield = "";
 
    /**
-    * Search option of item. Initialized on first call to `self::getOptions()` and used as cache.
+    * Search option of item. Initialized on first call to self::getOptions() and used as cache.
     *
     * @var array
     *
@@ -175,20 +175,6 @@ class CommonDBTM extends CommonGLPI {
 
 
    /**
-    * Get known tables
-    *
-    * @return array
-    *
-    * @deprecated 9.4.2
-    */
-   public static function getTablesOf() {
-      Toolbox::deprecated();
-
-      return self::$tables_of;
-   }
-
-
-   /**
     * Return the table used to store this object
     *
     * @param string $classname Force class (to avoid late_binding on inheritance)
@@ -221,20 +207,6 @@ class CommonDBTM extends CommonGLPI {
    **/
    static function forceTable($table) {
       self::$tables_of[get_called_class()] = $table;
-   }
-
-
-   /**
-    * Get known foreign keys
-    *
-    * @return array
-    *
-    * @deprecated 9.4.2
-    */
-   public static function getForeignKeyFieldsOf() {
-      Toolbox::deprecated();
-
-      return self::$foreign_key_fields_of;
    }
 
 
@@ -462,8 +434,6 @@ class CommonDBTM extends CommonGLPI {
    /**
     * Retrieve all items from the database
     *
-    * @since 9.4 string condition is deprecated
-    *
     * @param array        $condition condition used to search if needed (empty get all) (default '')
     * @param array|string $order     order field if needed (default '')
     * @param integer      $limit     limit retrieved data if needed (default '')
@@ -472,60 +442,30 @@ class CommonDBTM extends CommonGLPI {
    **/
    function find($condition = [], $order = [], $limit = null) {
       global $DB;
-      // Make new database object and fill variables
 
-      if (!is_array($condition)) {
-         Toolbox::deprecated('Using string condition in find is deprecated!');
+      $criteria = [
+         'FROM'   => $this->getTable()
+      ];
 
-         $query = "SELECT *
-                  FROM `".$this->getTable()."`";
+      if (count($condition)) {
+         $criteria['WHERE'] = $condition;
+      }
 
-         if (!empty($condition)) {
-            $query .= " WHERE $condition";
-         }
+      if (!is_array($order)) {
+         $order = [$order];
+      }
+      if (count($order)) {
+         $criteria['ORDERBY'] = $order;
+      }
 
-         if (!empty($order)) {
-            $query .= " ORDER BY $order";
-         }
+      if ((int)$limit > 0) {
+         $criteria['LIMIT'] = (int)$limit;
+      }
 
-         if (!empty($limit)) {
-            $query .= " LIMIT ".intval($limit);
-         }
-
-         $data = [];
-         if ($result = $DB->query($query)) {
-            if ($DB->numrows($result)) {
-               while ($line = $DB->fetchAssoc($result)) {
-                  $data[$line['id']] = $line;
-               }
-            }
-         }
-      } else {
-         //@since 9.4: use iterator
-         $criteria = [
-            'FROM'   => $this->getTable()
-         ];
-
-         if (count($condition)) {
-            $criteria['WHERE'] = $condition;
-         }
-
-         if (!is_array($order)) {
-            $order = [$order];
-         }
-         if (count($order)) {
-            $criteria['ORDERBY'] = $order;
-         }
-
-         if ((int)$limit > 0) {
-            $criteria['LIMIT'] = (int)$limit;
-         }
-
-         $data = [];
-         $iterator = $DB->request($criteria);
-         while ($line = $iterator->next()) {
-            $data[$line['id']] = $line;
-         }
+      $data = [];
+      $iterator = $DB->request($criteria);
+      while ($line = $iterator->next()) {
+         $data[$line['id']] = $line;
       }
 
       return $data;
@@ -4241,7 +4181,7 @@ class CommonDBTM extends CommonGLPI {
                            $message[$field] = $this->input[$field];
                         }
 
-                        $doubles      = getAllDatasFromTable($this->getTable(), $where);
+                        $doubles      = getAllDataFromTable($this->getTable(), $where);
                         $message_text = $this->getUnicityErrorMessage($message, $fields, $doubles);
                         if ($p['unicity_error_message']) {
                            if (!$fields['action_refuse']) {

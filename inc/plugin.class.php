@@ -134,20 +134,6 @@ class Plugin extends CommonDBTM {
 
 
    /**
-    * Are plugin initialized (Plugin::Init() called)
-    *
-    * @return boolean
-    *
-    * @deprecated 9.4.1
-    */
-   public static function hasBeenInit() {
-      Toolbox::deprecated();
-
-      return self::$plugins_init;
-   }
-
-
-   /**
     * Init a plugin including setup.php file
     * launching plugin_init_NAME function  after checking compatibility
     *
@@ -531,6 +517,8 @@ class Plugin extends CommonDBTM {
    **/
    function install($ID) {
 
+      global $DB;
+
       $message = '';
       $type = ERROR;
 
@@ -545,6 +533,7 @@ class Plugin extends CommonDBTM {
          $function   = 'plugin_' . $this->fields['directory'] . '_install';
          if (function_exists($function)) {
             $this->setLoaded('temp', $this->fields['directory']);  // For autoloader
+            $DB->disableTableCaching(); //prevents issues on table/fieldExists upgrading from old versions
             if ($function()) {
                $type = INFO;
                $function = 'plugin_' . $this->fields['directory'] . '_check_config';
@@ -882,8 +871,8 @@ class Plugin extends CommonDBTM {
          }
       }
 
-      if (in_array('glpi_infocoms', $glpitables)) {
-         $entities    = getAllDatasFromTable('glpi_entities');
+      if (in_array('glpi_infocoms', $glpitables) && count($types)) {
+         $entities    = getAllDataFromTable('glpi_entities');
          $entities[0] = "Root";
 
          foreach ($types as $num => $name) {

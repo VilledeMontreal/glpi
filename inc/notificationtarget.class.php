@@ -330,7 +330,7 @@ class NotificationTarget extends CommonDBChild {
             list($type,$id) = explode('_', $key);
             $values[$key]   = $this->notification_targets_labels[$type][$id];
          }
-         $targets = getAllDatasFromTable(
+         $targets = getAllDataFromTable(
             self::getTable(), [
                'notifications_id' => $notifications_id
             ]
@@ -376,7 +376,7 @@ class NotificationTarget extends CommonDBChild {
       if (!isset($input['notifications_id'])) {
          return;
       }
-      $targets = getAllDatasFromTable(
+      $targets = getAllDataFromTable(
          self::getTable(), [
             'notifications_id' => $input['notifications_id']
          ]
@@ -734,15 +734,6 @@ class NotificationTarget extends CommonDBChild {
       }
    }
 
-
-   /**
-    * @deprecated 9.4
-    */
-   final public function getDistinctUserSql() {
-      Toolbox::deprecated('Use getDistinctUserCriteria');
-      return  "SELECT DISTINCT `glpi_users`.`id` AS users_id,
-                               `glpi_users`.`language` AS language";
-   }
 
    /**
     * Get request criteria to select uniques users
@@ -1181,22 +1172,6 @@ class NotificationTarget extends CommonDBChild {
       $this->target = [];
    }
 
-
-   /**
-    * Get SQL join to restrict by profile and by config to avoid send notification
-    * to a user without rights.
-    *
-    * @deprecated 9.4
-    *
-    * @return string
-    */
-   public function getProfileJoinSql() {
-      Toolbox::deprecated('Use getProfileJoinCriteria');
-      return " INNER JOIN `glpi_profiles_users`
-                     ON (`glpi_profiles_users`.`users_id` = `glpi_users`.`id` ".
-                         getEntitiesRestrictRequest("AND", "glpi_profiles_users", "entities_id",
-                                                    $this->getEntity(), true).")";
-   }
 
    /**
     * Get SQL join to restrict by profile and by config to avoid send notification
