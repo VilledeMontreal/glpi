@@ -310,15 +310,12 @@ class Computer extends CommonDBTM {
       $this->deleteChildrenAndRelationsFromDb(
          [
             Certificate_Item::class,
-            Change_Item::class,
             Computer_Item::class,
             Computer_SoftwareLicense::class,
             Computer_SoftwareVersion::class,
             ComputerAntivirus::class,
             ComputerVirtualMachine::class,
             Item_Disk::class,
-            Item_OperatingSystem::class,
-            Item_Problem::class,
             Item_Project::class,
          ]
       );
@@ -787,6 +784,8 @@ class Computer extends CommonDBTM {
       $tab = array_merge($tab, ComputerVirtualMachine::rawSearchOptionsToAdd(get_class($this)));
 
       $tab = array_merge($tab, ComputerAntivirus::rawSearchOptionsToAdd());
+
+      $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
 
       return $tab;
    }

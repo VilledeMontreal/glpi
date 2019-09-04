@@ -117,7 +117,7 @@ class ITILFollowup  extends CommonDBChild {
           && Session::haveRight(self::$rightname, self::SEEPUBLIC)) {
          return true;
       }
-      if ($itilobject == "Ticket") {
+      if ($itilobject instanceof Ticket) {
          if ($this->fields["users_id"] === Session::getLoginUserID()) {
             return true;
          }
@@ -208,9 +208,15 @@ class ITILFollowup  extends CommonDBChild {
 
       $donotif = !isset($this->input['_disablenotif']) && $CFG_GLPI["use_notifications"];
 
+      // Check if stats should be computed after this change
+      $no_stat = isset($this->input['_do_not_compute_takeintoaccount']);
+
       $parentitem = $this->input['_job'];
-      $parentitem->updateDateMod($this->input["items_id"], false,
-                                          $this->input["users_id"]);
+      $parentitem->updateDateMod(
+         $this->input["items_id"],
+         $no_stat,
+         $this->input["users_id"]
+      );
 
       if (isset($this->input["_close"])
           && $this->input["_close"]
@@ -706,6 +712,7 @@ class ITILFollowup  extends CommonDBChild {
     *     - item Object : the ITILObject parent
    **/
    function showForm($ID, $options = []) {
+      global $CFG_GLPI;
 
       if ($this->isNewItem()) {
          $this->getEmpty();
@@ -756,8 +763,7 @@ class ITILFollowup  extends CommonDBChild {
       if ($tech) {
          $this->showFormHeader($options);
 
-         $rand = mt_rand();
-         $rand_text = mt_rand();
+         $rand       = mt_rand();
          $content_id = "content$rand";
 
          echo "<tr class='tab_bg_1'>";
@@ -765,7 +771,7 @@ class ITILFollowup  extends CommonDBChild {
 
          Html::textarea(['name'              => 'content',
                          'value'             => $this->fields["content"],
-                         'rand'              => $rand_text,
+                         'rand'              => $rand,
                          'editor_id'         => $content_id,
                          'enable_fileupload' => true,
                          'enable_richtext'   => true,
@@ -792,17 +798,60 @@ class ITILFollowup  extends CommonDBChild {
          echo "<tr class='tab_bg_1' style='vertical-align: top'>";
          echo "<td colspan='4'>";
          echo "<div class='fa-label'>
+            <i class='fas fa-reply fa-fw'
+               title='"._n('Followup template', 'Followup templates', 2)."'></i>";
+         $this->fields['itilfollowuptemplates_id'] = 0;
+         ITILFollowupTemplate::dropdown([
+            'value'     => $this->fields['itilfollowuptemplates_id'],
+            'entity'    => $this->getEntityID(),
+            'on_change' => "itilfollowuptemplate_update$rand(this.value)"
+         ]);
+         echo "</div>";
+
+         $ajax_url = $CFG_GLPI["root_doc"]."/ajax/itilfollowup.php";
+         $JS = <<<JAVASCRIPT
+            function itilfollowuptemplate_update{$rand}(value) {
+               $.ajax({
+                  url: '{$ajax_url}',
+                  type: 'POST',
+                  data: {
+                     itilfollowuptemplates_id: value
+                  }
+               }).done(function(data) {
+                  var requesttypes_id = isNaN(parseInt(data.requesttypes_id))
+                     ? 0
+                     : parseInt(data.requesttypes_id);
+
+                  // set textarea content
+                  $("#{$content_id}").html(data.content);
+                  // set also tinmyce (if enabled)
+                  if (tasktinymce = tinymce.get("{$content_id}")) {
+                     tasktinymce.setContent(data.content);
+                  }
+                  // set category
+                  $("#dropdown_requesttypes_id{$rand}").trigger("setValue", requesttypes_id);
+                  // set is_private
+                  $("#is_privateswitch{$rand}")
+                     .prop("checked", data.is_private == "0"
+                        ? false
+                        : true);
+               });
+            }
+JAVASCRIPT;
+         echo Html::scriptBlock($JS);
+
+         echo "<div class='fa-label'>
             <i class='fas fa-inbox fa-fw'
                title='".__('Source of followup')."'></i>";
          RequestType::dropdown([
             'value'     => $this->fields["requesttypes_id"],
-            'condition' => ['is_active' => 1, 'is_itilfollowup' => 1]
+            'condition' => ['is_active' => 1, 'is_itilfollowup' => 1],
+            'rand'      => $rand,
          ]);
          echo "</div>";
 
          echo "<div class='fa-label'>
             <i class='fas fa-lock fa-fw' title='".__('Private')."'></i>";
-         $rand = mt_rand();
          echo "<span class='switch pager_controls'>
             <label for='is_privateswitch$rand' title='".__('Private')."'>
                <input type='hidden' name='is_private' value='0'>
@@ -1076,5 +1125,152 @@ class ITILFollowup  extends CommonDBChild {
             }
       }
       parent::processMassiveActionsForOneItemtype($ma, $item, $ids);
+   }
+
+   /**
+    * Build parent condition for ITILFollowup, used in addDefaultWhere
+    *
+    * @param string $itemtype
+    * @param string $target
+    * @param string $user_table
+    * @param string $group_table keys
+    *
+    * @return string
+    *
+    * @throws InvalidArgumentException
+    */
+   public static function buildParentCondition(
+      $itemtype,
+      $target,
+      $user_table,
+      $group_table
+   ) {
+      // An ITILFollowup parent can only by a CommonItilObject
+      if (!is_a($itemtype, "CommonITILObject", true)) {
+         throw new InvalidArgumentException(
+            "'$itemtype' is not a CommonITILObject"
+         );
+      }
+
+      // Can see all items, no need to go further
+      if (Session::haveRight($itemtype, $itemtype::READALL)) {
+         return "(`itemtype` = '$itemtype') ";
+      }
+
+      $requester = CommonITILActor::REQUESTER;
+      $assign    = CommonITILActor::ASSIGN;
+      $obs       = CommonITILActor::OBSERVER;
+
+      $user   = Session::getLoginUserID();
+      $groups = "'" . implode("','", $_SESSION['glpigroups']) . "'";
+      $table = getTableNameForForeignKeyField(
+         getForeignKeyFieldForItemType($itemtype)
+      );
+
+      // Avoid empty IN ()
+      if ($groups == "''") {
+         $groups = '-1';
+      }
+
+      // We need to do some specific checks for tickets
+      if ($itemtype == "Ticket") {
+         // Default condition
+         $condition = "(`itemtype` = '$itemtype' AND (0 = 1 ";
+
+         if (Session::haveRight($itemtype, $itemtype::READMY)) {
+            // Add tickets where the users is requester, observer or recipient
+            // Subquery for requester/observer user
+            $user_query = "SELECT `$target`
+               FROM `$user_table`
+               WHERE `users_id` = '$user' AND type IN ($requester, $obs)";
+            $condition .= "OR `items_id` IN ($user_query) ";
+
+            // Subquery for recipient
+            $recipient_query = "SELECT `id`
+               FROM `$table`
+               WHERE `users_id_recipient` = '$user'";
+            $condition .= "OR `items_id` IN ($recipient_query) ";
+         }
+
+         if (Session::haveRight($itemtype, $itemtype::READGROUP)) {
+            // Add tickets where the users is in a requester or observer group
+            // Subquery for requester/observer group
+            $group_query = "SELECT `$target`
+               FROM `$group_table`
+               WHERE `groups_id` IN ($groups) AND type IN ($requester, $obs)";
+            $condition .= "OR `items_id` IN ($group_query) ";
+         }
+
+         if (Session::haveRightsOr($itemtype, [
+            $itemtype::OWN,
+            $itemtype::READASSIGN
+         ])) {
+            // Add tickets where the users is assigned
+            // Subquery for assigned user
+            $user_query = "SELECT `$target`
+               FROM `$user_table`
+               WHERE `users_id` = '$user' AND type = $assign";
+            $condition .= "OR `items_id` IN ($user_query) ";
+         }
+
+         if (Session::haveRight($itemtype, $itemtype::READASSIGN)) {
+            // Add tickets where the users is part of an assigned group
+            // Subquery for assigned group
+            $group_query = "SELECT `$target`
+               FROM `$group_table`
+               WHERE `groups_id` IN ($groups) AND type = $assign";
+            $condition .= "OR `items_id` IN ($group_query) ";
+
+            if (Session::haveRight('ticket', Ticket::ASSIGN)) {
+               // Add new tickets
+               $tickets_query = "SELECT `id`
+                  FROM `$table`
+                  WHERE `status` = '" . CommonITILObject::INCOMING . "'";
+               $condition .= "OR `items_id` IN ($tickets_query) ";
+            }
+         }
+
+         if (Session::haveRightsOr('ticketvalidation', [
+            TicketValidation::VALIDATEINCIDENT,
+            TicketValidation::VALIDATEREQUEST
+         ])) {
+            // Add tickets where the users is the validator
+            // Subquery for validator
+            $validation_query = "SELECT `$target`
+               FROM `glpi_ticketvalidations`
+               WHERE `users_id_validate` = '$user'";
+            $condition .= "OR `items_id` IN ($validation_query) ";
+         }
+
+         return $condition .= ")) ";
+      } else {
+         if (Session::haveRight($itemtype, $itemtype::READMY)) {
+            // Subquery for affected/assigned/observer user
+            $user_query = "SELECT `$target`
+               FROM `$user_table`
+               WHERE `users_id` = '$user'";
+
+            // Subquery for affected/assigned/observer group
+            $group_query = "SELECT `$target`
+               FROM `$group_table`
+               WHERE `groups_id` IN ($groups)";
+
+            // Subquery for recipient
+            $recipient_query = "SELECT `id`
+               FROM `$table`
+               WHERE `users_id_recipient` = '$user'";
+
+            return "(
+               `itemtype` = '$itemtype' AND (
+                  `items_id` IN ($user_query) OR
+                  `items_id` IN ($group_query) OR
+                  `items_id` IN ($recipient_query)
+               )
+            ) ";
+         } else {
+            // Can't see any items
+            return "(`itemtype` = '$itemtype' AND 0 = 1) ";
+         }
+      }
    }
 }

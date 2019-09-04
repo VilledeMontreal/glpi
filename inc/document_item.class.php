@@ -153,7 +153,7 @@ class Document_Item extends CommonDBRelation{
          $ticket = new Ticket();
          $ticket->getFromDB($this->fields['items_id']);
 
-         $tt = $ticket->getTicketTemplateToUse(0, $ticket->fields['type'],
+         $tt = $ticket->getITILTemplateToUse(0, $ticket->fields['type'],
                                                $ticket->fields['itilcategories_id'],
                                                $ticket->fields['entities_id']);
 
@@ -728,9 +728,9 @@ class Document_Item extends CommonDBRelation{
 
       if ((isset($_GET["sort"]) && !empty($_GET["sort"]))
          && isset($columns[$_GET["sort"]])) {
-         $sort = "`".$_GET["sort"]."`";
+         $sort = $_GET["sort"];
       } else {
-         $sort = "`assocdate`";
+         $sort = "assocdate";
       }
 
       if (empty($withtemplate)) {
@@ -745,7 +745,7 @@ class Document_Item extends CommonDBRelation{
       $criteria = [
          'SELECT'    => [
             'glpi_documents_items.id AS assocID',
-            'glpi_documents_items.date_mod AS assocdate',
+            'glpi_documents_items.date_creation AS assocdate',
             'glpi_entities.id AS entityID',
             'glpi_entities.completename AS entity',
             'glpi_documentcategories.completename AS headings',
@@ -839,7 +839,7 @@ class Document_Item extends CommonDBRelation{
       }
 
       foreach ($columns as $key => $val) {
-         $header_end .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+         $header_end .= "<th".($sort == "$key" ? " class='order_$order'" : '').">".
                         "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                           (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
       }

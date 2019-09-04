@@ -175,7 +175,7 @@ class Search {
          array_pop($criteria);
          $criteria[] = [
             'link'         => 'AND',
-            'field'        => ($itemtype == 'Location') ? 1 : ($itemtype == 'Ticket') ? 83 : 3,
+            'field'        => ($itemtype == 'Location') ? 1 : (($itemtype == 'Ticket') ? 83 : 3),
             'searchtype'   => 'equals',
             'value'        => 'CURLOCATION'
          ];
@@ -659,6 +659,36 @@ class Search {
       return $data;
    }
 
+   /**
+    * Search for a "usehaving" field in the searchOption of for each criteria
+    *
+    * @param $criterias List of criterias
+    * @param $searchopt List of searchOptions
+    *
+    * @return bool
+    */
+   private static function hasHaving($criterias, $searchopt) {
+      foreach ($criterias as $criteria) {
+         // Search recursively for groups
+         if (isset($criteria['criteria'])) {
+            $hasHaving = self::hasHaving($criteria['criteria'], $searchopt);
+            if ($hasHaving) {
+               return true;
+            }
+            continue;
+         }
+
+         if (isset($criteria['field'])
+            && isset($searchopt[$criteria['field']]["usehaving"])
+            || (isset($criteria['meta']) && $criteria['meta'] && $criteria['link'] == "AND NOT")
+         ) {
+            return true;
+         }
+      }
+
+      return false;
+   }
+
 
    /**
     * Construct SQL request depending of search parameters
@@ -831,6 +861,25 @@ class Search {
       if (count($data['search']['criteria'])) {
          $WHERE  = $this->constructCriteriaSQL($data['search']['criteria'], $data, $searchopt);
          $HAVING = $this->constructCriteriaSQL($data['search']['criteria'], $data, $searchopt, true);
+
+         // Check if a criteria was meant to be used as a having field
+         $hasHaving = self::hasHaving($data['search']['criteria'], $searchopt);
+         if ($hasHaving) {
+            $HAVING = $WHERE;
+            $WHERE = "";
+
+            // Each field specified in the HAVING must be in the SELECT aswell
+            $regex = "/`glpi_\w*?`\.`.*?`/";
+            $matches = [];
+            preg_match_all($regex, $HAVING, $matches);
+            if (isset($matches[0])) {
+               foreach ($matches[0] as $havingElement) {
+                  if (strpos($SELECT, $havingElement) === false) {
+                     $SELECT .= " $havingElement, ";
+                  }
+               }
+            }
+         }
 
          // if criteria (with meta flag) need additional join/from sql
          $this->constructAdditionalSqlForMetacriteria($data['search']['criteria'], $SELECT, $FROM, $already_link_tables, $data);
@@ -1179,20 +1228,27 @@ class Search {
             if (isset($criterion['criteria']) && count($criterion['criteria'])) {
                $sub_sql = $this->constructCriteriaSQL($criterion['criteria'], $data, $searchopt, $is_having);
                if (strlen($sub_sql)) {
-                  $sql .= "$LINK ($sub_sql)";
+                  if ($NOT) {
+                     $sql .= "$LINK NOT($sub_sql)";
+                  } else {
+                     $sql .= "$LINK ($sub_sql)";
+                  }
                }
             } else if (isset($searchopt[$criterion['field']]["usehaving"])
                        || ($meta && "AND NOT" === $criterion['link'])) {
                if (!$is_having) {
-                  // the having part will be managed in a second pass
+                  // Add the having in the where as the whole WHERE will be
+                  // converted into an HAVING later
+                  $new_where = $this->addHaving(
+                     $LINK,
+                     $NOT,
+                     $itemtype,
+                     $criterion['field'],
+                     $criterion['searchtype'],
+                     $criterion['value']
+                  );
+                  $sql .= $new_where;
                   continue;
-               }
-
-               $new_having = $this->addHaving($LINK, $NOT, $itemtype,
-                                             $criterion['field'], $criterion['searchtype'],
-                                             $criterion['value']);
-               if ($new_having !== false) {
-                  $sql .= $new_having;
                }
             } else {
                if ($is_having) {
@@ -3262,6 +3318,8 @@ JAVASCRIPT;
    **/
    public function addHaving($LINK, $NOT, $itemtype, $ID, $searchtype, $val) {
 
+      global $DB;
+
       $searchopt  = &self::getOptions($itemtype);
       if (!isset($searchopt[$ID]['table'])) {
          return false;
@@ -3298,6 +3356,36 @@ JAVASCRIPT;
       // Preformat items
       if (isset($searchopt[$ID]["datatype"])) {
          switch ($searchopt[$ID]["datatype"]) {
+            case "datetime" :
+               if (in_array($searchtype, ['contains', 'notcontains'])) {
+                  break;
+               }
+
+               $force_day = false;
+               if (strstr($val, 'BEGIN') || strstr($val, 'LAST')) {
+                  $force_day = true;
+               }
+
+               $val = Html::computeGenericDateTimeSearch($val, $force_day);
+
+               $operator = '';
+               switch ($searchtype) {
+                  case 'equals':
+                     $operator = !$NOT ? '=' : '!=';
+                     break;
+                  case 'notequals':
+                     $operator = !$NOT ? '!=' : '=';
+                     break;
+                  case 'lessthan':
+                     $operator = !$NOT ? '<' : '>';
+                     break;
+                  case 'morethan':
+                     $operator = !$NOT ? '>' : '<';
+                     break;
+               }
+
+               return " {$LINK} ({$this->db->quoteName($NAME)} $operator {$this->db->quoteValue($val)}) ";
+               break;
             case "count" :
             case "number" :
             case "decimal" :
@@ -3338,7 +3426,7 @@ JAVASCRIPT;
       }
 
       if ($searchtype == "notcontains") {
-         $nott = !$nott;
+         $NOT = !$NOT;
       }
 
       return $this->makeTextCriteria($NAME, $val, $NOT, $LINK);
@@ -3781,6 +3869,19 @@ JAVASCRIPT;
             }
             break;
 
+         case "glpi_itilfollowups.content":
+         case "glpi_tickettasks.content":
+         case "glpi_changetasks.content":
+               // force ordering by date desc
+               return " GROUP_CONCAT(DISTINCT CONCAT(IFNULL($tocompute, '".self::NULLVALUE."'),
+                                               '".self::SHORTSEP."',$tocomputeid)
+                                     ORDER BY `$table`.`date` DESC
+                                     SEPARATOR '".self::LONGSEP."')
+                                    AS `".$NAME."`,
+
+                       $ADDITONALFIELDS";
+            break;
+
          default:
             break;
       }
@@ -3802,6 +3903,7 @@ JAVASCRIPT;
 
       if (isset($searchopt[$ID]["computation"])) {
          $tocompute = $searchopt[$ID]["computation"];
+         $tocompute = str_replace($this->db->quoteName('TABLE'), 'TABLE', $tocompute);
          $tocompute = str_replace("TABLE", $this->db->quoteName("$table$addtable"), $tocompute);
       }
       // Preformat items
@@ -4112,6 +4214,57 @@ JAVASCRIPT;
             }
             break;
 
+         case 'ITILFollowup':
+            // Filter on is_private
+            $allowed_is_private = [];
+            if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE)) {
+               $allowed_is_private[] = 1;
+            }
+            if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPUBLIC)) {
+               $allowed_is_private[] = 0;
+            }
+
+            // If the user can't see public and private
+            if (!count($allowed_is_private)) {
+               $condition = "0 = 1";
+               break;
+            }
+
+            $in = "IN ('" . implode("','", $allowed_is_private) . "')";
+            $condition = "`glpi_itilfollowups`.`is_private` $in ";
+
+            // Now filter on parent item visiblity
+            $condition .= "AND (";
+
+            // Filter for "ticket" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Ticket",
+               'tickets_id',
+               "glpi_tickets_users",
+               "glpi_groups_tickets"
+            );
+            $condition .= "OR ";
+
+            // Filter for "change" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Change",
+               'changes_id',
+               "glpi_changes_users",
+               "glpi_changes_groups"
+            );
+            $condition .= "OR ";
+
+            // Fitler for "problem" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Problem",
+               'problems_id',
+               "glpi_problems_users",
+               "glpi_groups_problems"
+            );
+            $condition .= ")";
+
+            break;
+
          default :
             // Plugin can override core definition for its type
             if ($plug = isPluginItemType($itemtype)) {
@@ -4188,7 +4341,6 @@ JAVASCRIPT;
 
       return $SEARCH;
    }
-
    /**
     * Generic Function to add where to a request
     *
@@ -4205,6 +4357,8 @@ JAVASCRIPT;
     * @since 10.0.0 Method is no longer static
    **/
    public function addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta = 0) {
+
+      global $DB;
 
       $searchopt = &self::getOptions($itemtype);
       if (!isset($searchopt[$ID]['table'])) {
@@ -4533,6 +4687,15 @@ JAVASCRIPT;
             }
             break;
 
+         case "glpi_notifications.event" :
+            if (in_array($searchtype, ['equals', 'notequals']) && strpos($val, self::SHORTSEP)) {
+               $not = 'notequals' === $searchtype ? 'NOT' : '';
+               list($itemtype_val, $event_val) = explode(self::SHORTSEP, $val);
+               return " $link $not(`$table`.`event` = '$event_val'
+                               AND `$table`.`itemtype` = '$itemtype_val')";
+            }
+            break;
+
       }
 
       //// Default cases
@@ -4556,7 +4719,8 @@ JAVASCRIPT;
       $tocomputetrans = $this->db->quoteName("{$table}_trans.value");
       if (isset($searchopt[$ID]["computation"])) {
          $tocompute = $searchopt[$ID]["computation"];
-         $tocompute = str_replace("TABLE", $this->db->quoteName($table), $tocompute);
+         $tocompute = str_replace($this->db->quoteName('TABLE'), 'TABLE', $tocompute);
+         $tocompute = str_replace("TABLE", $this->db->quoteName("$table"), $tocompute);
       }
 
       // Preformat items
@@ -5479,7 +5643,7 @@ JAVASCRIPT;
          case "glpi_tickets.time_to_own" :
          case "glpi_tickets.internal_time_to_own" :
             if (!in_array($ID, [151, 158, 181, 186])
-                && !empty($data[$ID][0]['name'])
+                && !empty($data[$NAME][0]['name'])
                 && ($data[$NAME][0]['status'] != CommonITILObject::WAITING)
                 && ($data[$NAME][0]['name'] < $_SESSION['glpi_currenttime'])) {
                $out = " style=\"background-color: #cf9b9b\" ";
@@ -5529,6 +5693,13 @@ JAVASCRIPT;
          if (isset($searchopt[$ID]['addobjectparams'])
              && $searchopt[$ID]['addobjectparams']) {
             $oparams = $searchopt[$ID]['addobjectparams'];
+         }
+
+         // Search option may not exists in subtype
+         // This is the case for "Inventory number" for a Software listed from ReservationItem search
+         $subtype_so = &self::getOptions($data["TYPE"]);
+         if (!array_key_exists($ID, $subtype_so)) {
+            return '';
          }
 
          return $this->giveItem($data["TYPE"], $ID, $data, $meta, $oparams, $itemtype);
@@ -5953,13 +6124,10 @@ JAVASCRIPT;
                   }
 
                   $color = $_SESSION['glpiduedateok_color'];
-                  $bar_color = 'green';
                   if ($less_crit < $less_crit_limit) {
                      $color = $_SESSION['glpiduedatecritical_color'];
-                     $bar_color = 'red';
                   } else if ($less_warn < $less_warn_limit) {
                      $color = $_SESSION['glpiduedatewarning_color'];
-                     $bar_color = 'yellow';
                   }
 
                   if (!isset($so['datatype'])) {
@@ -5970,7 +6138,7 @@ JAVASCRIPT;
                      'text'         => Html::convDateTime($data[$ID][0]['name']),
                      'percent'      => $percentage,
                      'percent_text' => $percentage_text,
-                     'color'        => $bar_color
+                     'color'        => $color
                   ];
                }
                break;
@@ -6915,7 +7083,7 @@ JAVASCRIPT;
                self::$search[$itemtype][24]['field']         = 'name';
                self::$search[$itemtype][24]['linkfield']     = 'users_id_tech';
                self::$search[$itemtype][24]['name']          = __('Technician in charge of the hardware');
-               self::$search[$itemtype][24]['condition']      = ['is_assign' => 1];
+               self::$search[$itemtype][24]['condition']     = ['is_assign' => 1];
 
                self::$search[$itemtype][49]['table']          = 'glpi_groups';
                self::$search[$itemtype][49]['field']          = 'completename';

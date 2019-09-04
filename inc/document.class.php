@@ -553,6 +553,8 @@ class Document extends CommonDBTM {
    **/
    function getFromDBbyContent($entity, $path) {
 
+      global $DB;
+
       if (empty($path)) {
          return false;
       }
@@ -562,10 +564,24 @@ class Document extends CommonDBTM {
          return false;
       }
 
-      return $this->getFromDBByCrit([
-         $this->getTable() . '.sha1sum'      => $sum,
-         $this->getTable() . '.entities_id'  => $entity
-      ]);
+      $doc_iterator = $DB->request(
+         [
+            'SELECT' => 'id',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+               $this->getTable() . '.sha1sum'      => $sum,
+               $this->getTable() . '.entities_id'  => $entity
+            ],
+            'LIMIT'  => 1,
+         ]
+      );
+
+      if ($doc_iterator->count() === 0) {
+         return false;
+      }
+
+      $doc_data = $doc_iterator->next();
+      return $this->getFromDB($doc_data['id']);
    }
 
 
@@ -1553,6 +1569,9 @@ class Document extends CommonDBTM {
          return false;
       }
       if (extension_loaded('exif')) {
+         if (filesize($file) < 12) {
+            return false;
+         }
          $etype = exif_imagetype($file);
          return in_array($etype, [IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_PNG, IMAGETYPE_BMP]);
       } else {

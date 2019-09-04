@@ -99,10 +99,7 @@ class NetworkEquipment extends CommonDBTM {
       $this->deleteChildrenAndRelationsFromDb(
          [
             Certificate_Item::class,
-            Change_Item::class,
-            Item_OperatingSystem::class,
             Item_Project::class,
-            Item_Problem::class,
          ]
       );
 
@@ -216,21 +213,36 @@ class NetworkEquipment extends CommonDBTM {
       foreach (["networkports_id_1" => "networkports_id_2",
                 "networkports_id_2" => "networkports_id_1"] as $enda => $endb) {
 
-         $sql = "SELECT `itemtype`,
-                        GROUP_CONCAT(DISTINCT `items_id`) AS ids
-                 FROM `glpi_networkports_networkports`,
-                      `glpi_networkports`
-                 WHERE `glpi_networkports_networkports`.`$endb` = `glpi_networkports`.`id`
-                       AND `glpi_networkports_networkports`.`$enda`
-                                 IN (SELECT `id`
-                                     FROM `glpi_networkports`
-                                     WHERE `itemtype` = '".$this->getType()."'
-                                           AND `items_id` = '$ID')
-                 GROUP BY `itemtype`";
+         $criteria = [
+            'SELECT'       => [
+               'itemtype',
+               new QueryExpression('GROUP_CONCAT(DISTINCT '.$DB->quoteName('items_id').') AS '.$DB->quoteName('ids'))
+            ],
+            'FROM'         => 'glpi_networkports_networkports',
+            'INNER JOIN'   => [
+               'glpi_networkports'  => [
+                  'ON'  => [
+                     'glpi_networkports_networkports' => $endb,
+                     'glpi_networkports'              => 'id'
+                  ]
+               ]
+            ],
+            'WHERE'        => [
+               'glpi_networkports_networkports.'.$enda   => new QuerySubQuery([
+                  'SELECT' => 'id',
+                  'FROM'   => 'glpi_networkports',
+                  'WHERE'  => [
+                     'itemtype'  => $this->getType(),
+                     'items_id'  => $ID
+                  ]
+               ])
+            ],
+            'GROUPBY'      => 'itemtype'
+         ];
 
-         $res = $DB->query($sql);
+         $res = $DB->request($criteria);
          if ($res) {
-            while ($data = $DB->fetchAssoc($res)) {
+            while ($data = $res->next()) {
                $itemtable = getTableForItemType($data["itemtype"]);
                if ($item = getItemForItemtype($data["itemtype"])) {
                   // For each itemtype which are entity dependant
@@ -656,6 +668,8 @@ class NetworkEquipment extends CommonDBTM {
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
       $tab = array_merge($tab, Item_Devices::rawSearchOptionsToAdd(get_class($this)));
+
+      $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
 
       return $tab;
    }

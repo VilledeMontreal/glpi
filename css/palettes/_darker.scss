@@ -35,7 +35,7 @@
 }
 
 #logo_login {
-   background: url(../pics/login_logo_glpi.png) center no-repeat, #161514;
+   background: #161514;
 }
 
 #display-login {
@@ -362,7 +362,7 @@ body #page .mce-btn-group:not(:first-child) {
    background-color: #4e4d4b;
 }
 
-a {
+a, .btn-linkstyled {
    color: #161514;
 
    &:link {

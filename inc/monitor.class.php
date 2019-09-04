@@ -75,6 +75,7 @@ class Monitor extends CommonDBTM {
 
       $ong = [];
       $this->addDefaultFormTab($ong);
+      $this->addStandardTab('Item_OperatingSystem', $ong, $options);
       $this->addStandardTab('Item_Devices', $ong, $options);
       $this->addStandardTab('Computer_Item', $ong, $options);
       $this->addStandardTab('Infocom', $ong, $options);
@@ -115,6 +116,9 @@ class Monitor extends CommonDBTM {
 
       // Manage add from template
       if (isset($this->input["_oldID"])) {
+         // ADD OS
+         Item_OperatingSystem::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
+
          // ADD Devices
          Item_devices::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
 
@@ -141,9 +145,7 @@ class Monitor extends CommonDBTM {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
-            Change_Item::class,
             Computer_Item::class,
-            Item_Problem::class,
             Item_Project::class,
          ]
       );
@@ -633,6 +635,8 @@ class Monitor extends CommonDBTM {
       $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
 
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
+
+      $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
 
       return $tab;
    }

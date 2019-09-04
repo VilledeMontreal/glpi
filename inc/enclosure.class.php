@@ -127,7 +127,6 @@ class Enclosure extends CommonDBTM {
          'rand'   => $rand
       ]);
       echo "</td>";
-      echo "</td>";
       echo "<td><label for='dropdown_enclosuremodels_id$rand'>".__('Model')."</label></td>";
       echo "<td>";
       EnclosureModel::dropdown([
@@ -325,6 +324,8 @@ class Enclosure extends CommonDBTM {
 
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
+      $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
+
       return $tab;
    }
 
@@ -362,7 +363,6 @@ class Enclosure extends CommonDBTM {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
-            Change_Item::class,
             Item_Enclosure::class,
          ]
       );

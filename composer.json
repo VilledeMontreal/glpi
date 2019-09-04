@@ -32,9 +32,10 @@
         "true/punycode": "^2.1",
         "monolog/monolog": "^1.23",
         "sebastian/diff": "^1.4 || ^2.0 || ^3.0",
-        "elvanto/litemoji": "^1.4",
+        "elvanto/litemoji": "^1.4 || ^2.0",
         "symfony/console": "^3.4",
-        "leafo/scssphp": "^0.7.7",
+        "scssphp/scssphp": "^1.0",
+        "zendframework/zend-mail": "^2.10",
         "symfony/dependency-injection": "^3.4",
         "symfony/yaml": "^3.4",
         "symfony/config": "^3.4",
@@ -63,8 +64,7 @@
         "mikey179/vfsstream": "^1.6"
     },
     "suggest": {
-        "ext-ldap": "Used ot provide LDAP authentication and synchronization",
-        "ext-imap": "Used for collection from IMAP"
+        "ext-ldap": "Used ot provide LDAP authentication and synchronization"
     },
     "config": {
         "optimize-autoloader": true,

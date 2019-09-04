@@ -161,7 +161,6 @@ class SoftwareLicense extends CommonTreeDropdown {
       $this->deleteChildrenAndRelationsFromDb(
          [
             Certificate_Item::class,
-            Change_Item::class,
             Computer_SoftwareLicense::class,
          ]
       );
@@ -857,30 +856,51 @@ class SoftwareLicense extends CommonTreeDropdown {
       $items_notice = [];
       $items_end    = [];
 
-      foreach (Entity::getEntitiesToNotify('use_licenses_alert') as $entity => $value) {
+      $tonotify = Entity::getEntitiesToNotify('use_licenses_alert');
+      foreach (array_keys($tonotify) as $entity) {
          $before = Entity::getUsedConfig('send_licenses_alert_before_delay', $entity);
          // Check licenses
-         $query = "SELECT `glpi_softwarelicenses`.*,
-                          `glpi_softwares`.`name` AS softname
-                   FROM `glpi_softwarelicenses`
-                   INNER JOIN `glpi_softwares`
-                        ON (`glpi_softwarelicenses`.`softwares_id` = `glpi_softwares`.`id`)
-                   LEFT JOIN `glpi_alerts`
-                        ON (`glpi_softwarelicenses`.`id` = `glpi_alerts`.`items_id`
-                            AND `glpi_alerts`.`itemtype` = 'SoftwareLicense'
-                            AND `glpi_alerts`.`type` = '".Alert::END."')
-                   WHERE `glpi_alerts`.`date` IS NULL
-                         AND `glpi_softwarelicenses`.`expire` IS NOT NULL
-                         AND DATEDIFF(`glpi_softwarelicenses`.`expire`,
-                                      CURDATE()) < '$before'
-                         AND `glpi_softwares`.`is_template` = 0
-                         AND `glpi_softwares`.`is_deleted` = 0
-                         AND `glpi_softwares`.`entities_id` = '".$entity."'";
+         $criteria = [
+            'SELECT' => [
+               'glpi_softwarelicenses.*',
+               'glpi_softwares.name AS softname'
+            ],
+            'FROM'   => 'glpi_softwarelicenses',
+            'INNER JOIN'   => [
+               'glpi_softwares'  => [
+                  'ON'  => [
+                     'glpi_softwarelicenses' => 'softwares_id',
+                     'glpi_softwares'        => 'id'
+                  ]
+               ]
+            ],
+            'LEFT JOIN'    => [
+               'glpi_alerts'  => [
+                  'ON'  => [
+                     'glpi_softwarelicenses' => 'id',
+                     'glpi_alerts'           => 'items_id', [
+                        'AND' => [
+                           'glpi_alerts.itemtype'  => 'SoftwareLicense'
+                        ]
+                     ]
+                  ]
+               ]
+            ],
+            'WHERE'        => [
+               'glpi_alerts.date'   => null,
+               'NOT'                => ['glpi_softwarelicenses.expire' => null],
+               new QueryExpression('DATEDIFF('.$DB->quoteName('glpi_softwarelicenses.expire').', CURDATE()) < ' . $before),
+               'glpi_softwares.is_template'  => 0,
+               'glpi_softwares.is_deleted'   => 0,
+               'glpi_softwares.entities_id'  => $entity
+            ]
+         ];
+         $iterator = $DB->request($criteria);
 
          $message = "";
          $items   = [];
 
-         foreach ($DB->request($query) as $license) {
+         while ($license = $iterator->next()) {
             $name     = $license['softname'].' - '.$license['name'].' - '.$license['serial'];
             //TRANS: %1$s the license name, %2$s is the expiration date
             $message .= sprintf(__('License %1$s expired on %2$s'),
@@ -1036,9 +1056,9 @@ class SoftwareLicense extends CommonTreeDropdown {
       }
 
       if (isset($_GET["sort"]) && !empty($_GET["sort"]) && isset($columns[$_GET["sort"]])) {
-         $sort = "`".$_GET["sort"]."`";
+         $sort = $_GET["sort"];
       } else {
-         $sort = "`entity` $order, `name`";
+         $sort = ["entity $order", "name $order"];
       }
 
       // Righ type is enough. Can add a License on a software we have Read access
@@ -1104,7 +1124,7 @@ class SoftwareLicense extends CommonTreeDropdown {
          'WHERE'     => [
             'glpi_softwarelicenses.softwares_id'   => $softwares_id
          ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true),
-         'ORDERBY'   => "$sort $order",
+         'ORDERBY'   => $sort,
          'START'     => (int)$start,
          'LIMIT'     => (int)$_SESSION['glpilist_limit']
       ]);
@@ -1124,7 +1144,7 @@ class SoftwareLicense extends CommonTreeDropdown {
                         => ['options'
                                     => ['glpi_softwareversions.name'
                                              => ['condition'
-                                                      => "`glpi_softwareversions`.`softwares_id`
+                                                      => $DB->quoteName("glpi_softwareversions.softwares_id")."
                                                                = $softwares_id"],
                                              'glpi_softwarelicenses.name'
                                              => ['itemlink_as_string' => true]]]];
@@ -1136,7 +1156,6 @@ class SoftwareLicense extends CommonTreeDropdown {
 
          $header_begin  = "<tr><th>";
          $header_top    = Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
-         $header_bottom = Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_end    = '';
 
          foreach ($columns as $key => $val) {
@@ -1144,7 +1163,7 @@ class SoftwareLicense extends CommonTreeDropdown {
             if ($key[0] == '_') {
                $header_end .= "<th>$val</th>";
             } else {
-               $header_end .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+               $header_end .= "<th".(!is_array($sort) && $sort == "$key" ? " class='order_$order'" : '').">".
                      "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                         (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
             }

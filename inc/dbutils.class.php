@@ -53,7 +53,7 @@ final class DbUtils {
       if (!Toolbox::startsWith($table, 'glpi_')) {
          return "";
       }
-      return str_replace("glpi_", "", $table)."_id";
+      return substr($table, 5)."_id";
    }
 
 
@@ -261,19 +261,25 @@ final class DbUtils {
 
          $itemtype = $prefix.$table;
          // Get real existence of itemtype
-         if (($item = $this->getItemForItemtype($itemtype))) {
-            $itemtype                                   = get_class($item);
-            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-            return $itemtype;
+         if (class_exists($itemtype)) {
+            $item_class = new ReflectionClass($itemtype);
+            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
+               $itemtype                                   = get_class($item);
+               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+               return $itemtype;
+            }
          }
          // Namespaced item
          $itemtype = $pref2 . str_replace('_', '\\', $table);
-         if (($item = $this->getItemForItemtype($itemtype))) {
-            $itemtype                                   = get_class($item);
-            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-            return $itemtype;
+         if (class_exists($itemtype)) {
+            $item_class = new ReflectionClass($itemtype);
+            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
+               $itemtype                                   = get_class($item);
+               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+               return $itemtype;
+            }
          }
          return "UNKNOWN";
       }
@@ -422,7 +428,7 @@ final class DbUtils {
       $data = [];
 
       if (!is_array($criteria)) {
-         Toolbox::Deprecated('Criteria must be an array!');
+         Toolbox::Deprecated('Criteria must be an array! Will be ignored.');
          if (empty($criteria)) {
             $criteria = [];
          }
@@ -446,37 +452,6 @@ final class DbUtils {
    }
 
    /**
-    * Determine if an index exists in database
-    *
-    * @param string $table table of the index
-    * @param string $field name of the index
-    *
-    * @return boolean
-    *
-    * @deprecated 10.0.0
-    */
-   public function isIndex($table, $field) {
-      global $DB;
-
-      Toolbox::Deprecated('Use AbstractDatabase::indexExists');
-      if (!$DB->tableExists($table)) {
-         trigger_error("Table $table does not exists", E_USER_WARNING);
-         return false;
-      }
-
-      $result = $DB->rawQuery("SHOW INDEX FROM `$table`");
-
-      if ($result && $DB->numrows($result)) {
-         while ($data = $DB->fetchAssoc($result)) {
-            if ($data["Key_name"] == $field) {
-               return true;
-            }
-         }
-      }
-      return false;
-   }
-
-   /**
     * Get SQL request to restrict to current entities of the user
     *
     * @param string  $separator        separator in the begin of the request (default AND)
@@ -495,6 +470,7 @@ final class DbUtils {
     */
    public function getEntitiesRestrictRequest($separator = "AND", $table = "", $field = "", $value = '',
                                        $is_recursive = false, $complete_request = false) {
+      global $DB;
 
       $query = $separator ." ( ";
 
@@ -520,15 +496,16 @@ final class DbUtils {
          }
       }
       if (empty($table)) {
-         $field = "`$field`";
+         $field = $DB->quoteName($field);
       } else {
-         $field = "`$table`.`$field`";
+         $field = $DB->quoteName("$table.$field");
       }
 
       $query .= "$field";
 
       if (is_array($value)) {
-         $query .= " IN ('" . implode("','", $value) . "') ";
+         array_walk($value, function(&$val) use ($DB) { return $DB->quote($val); });
+         $query .= " IN (" . implode(', ', $value) . ') ';
       } else {
          if (strlen($value) == 0 && !isset($_SESSION['glpiactiveentities_string'])) {
             //set root entity if not set
@@ -560,11 +537,12 @@ final class DbUtils {
          }
 
          if (count($ancestors)) {
+            array_walk($ancestors, function(&$val) use ($DB) { return $DB->quote($val); });
             if ($table == 'glpi_entities') {
-               $query .= " OR $field IN ('" . implode("','", $ancestors) . "')";
+               $query .= " OR $field IN (" . implode(',', $ancestors) . ')';
             } else {
-               $recur = (empty($table) ? '`is_recursive`' : "`$table`.`is_recursive`");
-               $query .= " OR ($recur='1' AND $field IN ('" . implode("','", $ancestors) . "'))";
+               $recur = $DB->quoteName((empty($table) ? 'is_recursive' : "$table.is_recursive"));
+               $query .= " OR ($recur='1' AND $field IN (" . implode(',', $ancestors) . '))';
             }
          }
       }
@@ -635,10 +613,7 @@ final class DbUtils {
       if ($is_recursive) {
          $ancestors = [];
          if (is_array($value)) {
-            foreach ($value as $val) {
-               $ancestors = array_unique(array_merge($this->getAncestorsOf('glpi_entities', $val),
-                     $ancestors));
-            }
+            $ancestors = $this->getAncestorsOf("glpi_entities", $value);
             $ancestors = array_diff($ancestors, $value);
 
          } else if (strlen($value) == 0) {
@@ -680,7 +655,7 @@ final class DbUtils {
       global $DB;
 
       $appCache = Toolbox::getAppCache();
-      $ckey = $table . '_sons_cache_' . $IDf;
+      $ckey = 'sons_cache_' . md5($table . $IDf);
       $sons = false;
 
       if ($appCache->has($ckey)) {
@@ -784,11 +759,11 @@ final class DbUtils {
       global $DB;
 
       $appCache = Toolbox::getAppCache();
-      $ckey = $table . '_ancestors_cache_';
+      $ckey = 'ancestors_cache_';
       if (is_array($items_id)) {
-         $ckey .= md5(implode('|', $items_id));
+         $ckey .= md5($table . implode('|', $items_id));
       } else {
-         $ckey .= $items_id;
+         $ckey .= md5($table . $items_id);
       }
       $ancestors = [];
 
@@ -1290,32 +1265,6 @@ final class DbUtils {
          }
       }
       return $list;
-   }
-
-
-   /**
-    * Get the equivalent search query using ID of soons that the search of the father's ID argument
-    *
-    * @param string  $table    table name
-    * @param integer $IDf      The ID of the father
-    * @param string  $reallink real field to link ($table.id if not set) (default ='')
-    *
-    * @return string the query
-    */
-   public function getRealQueryForTreeItem($table, $IDf, $reallink = "") {
-
-      if (empty($IDf)) {
-         return "";
-      }
-
-      if (empty($reallink)) {
-         $reallink = "`".$table."`.`id`";
-      }
-
-      $id_found = $this->getSonsOf($table, $IDf);
-
-      // Construct the final request
-      return $reallink." IN ('".implode("','", $id_found)."')";
    }
 
 

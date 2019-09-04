@@ -98,9 +98,9 @@ class Item_OperatingSystem extends CommonDBRelation {
 
       if ((isset($_GET["sort"]) && !empty($_GET["sort"]))
          && isset($columns[$_GET["sort"]])) {
-         $sort = "`".$_GET["sort"]."`";
+         $sort = $_GET["sort"];
       } else {
-         $sort = "`glpi_items_operatingsystems`.`id`";
+         $sort = "glpi_items_operatingsystems.id";
       }
 
       if (empty($withtemplate)) {
@@ -211,7 +211,7 @@ class Item_OperatingSystem extends CommonDBRelation {
       }
 
       foreach ($columns as $key => $val) {
-         $header_end .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+         $header_end .= "<th".($sort == $key ? " class='order_$order'" : '').">".
                         "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                           (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
       }
@@ -565,14 +565,7 @@ class Item_OperatingSystem extends CommonDBRelation {
 
       $specificities              = parent::getRelationMassiveActionsSpecificities();
 
-      $specificities['itemtypes'] = [
-         'Computer',
-         'Monitor',
-         'NetworkEquipment',
-         'Peripheral',
-         'Phone',
-         'Printer'
-      ];
+      $specificities['itemtypes'] = $CFG_GLPI['operatingsystem_types'];
       return $specificities;
    }
    static function showMassiveActionsSubForm(MassiveAction $ma) {

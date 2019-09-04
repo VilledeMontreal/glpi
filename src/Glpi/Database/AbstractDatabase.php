@@ -84,6 +84,15 @@ abstract class AbstractDatabase
     protected $dbdefault;
 
     /**
+     * Options used by connection.
+     *
+     * @see PDO::__construct()
+     *
+     * @var array
+     */
+    protected $options;
+
+    /**
      * Database handler.
      *
      * @var PDO
@@ -126,6 +135,30 @@ abstract class AbstractDatabase
     protected $timer_enabled = false;
 
     /**
+     * Cached list fo tables.
+     *
+     * @var array
+     * @see self::tableExists()
+     */
+    private $table_cache = [];
+
+    /**
+     * Cached list of fields.
+     *
+     * @var array
+     * @see self::listFields()
+     */
+    private $field_cache = [];
+
+    /**
+     * Cached list of index.
+     *
+     * @var array
+     * @see self::indexExists()
+     */
+    private $index_cache = [];
+
+    /**
      * Constructor / Connect to the database.
      *
      * @param array   $params Connection parameters
@@ -162,6 +195,8 @@ abstract class AbstractDatabase
         $this->dbuser = $params['user'];
         $this->dbpassword = $params['pass'];
         $this->dbdefault = $params['dbname'];
+
+        $this->options = array_key_exists('options', $params) ? $params['options'] : [];
 
         $this->connect($server);
     }
@@ -469,9 +504,8 @@ abstract class AbstractDatabase
      */
     public function listFields(string $table, bool $usecache = true)
     {
-        static $cache = [];
-        if (!$this->cache_disabled && $usecache && isset($cache[$table])) {
-            return $cache[$table];
+        if (!$this->cache_disabled && $usecache && isset($this->field_cache[$table])) {
+            return $this->field_cache[$table];
         }
 
         $iterator = $this->request([
@@ -483,11 +517,11 @@ abstract class AbstractDatabase
            ]
         ]);
         if (count($iterator)) {
-            $cache[$table] = [];
+            $this->field_cache[$table] = [];
             while ($data = $iterator->next()) {
-                $cache[$table][$data["COLUMN_NAME"]] = $data;
+                $this->field_cache[$table][$data["COLUMN_NAME"]] = $data;
             }
-            return $cache[$table];
+            return $this->field_cache[$table];
         }
 
         return [];
@@ -505,9 +539,8 @@ abstract class AbstractDatabase
      */
     public function listIndexes(string $table, bool $usecache = true)
     {
-        static $icache = [];
-        if (!$this->cache_disabled && $usecache && isset($icache[$table])) {
-            return $icache[$table];
+        if (!$this->cache_disabled && $usecache && isset($this->index_cache[$table])) {
+            return $this->index_cache[$table];
         }
 
         $iterator = $this->request([
@@ -519,11 +552,11 @@ abstract class AbstractDatabase
            ]
         ]);
         if (count($iterator)) {
-            $icache[$table] = [];
+            $this->index_cache[$table] = [];
             while ($data = $iterator->next()) {
-                $icache[$table][$data["INDEX_NAME"]][] = $data['COLUMN_NAME'];
+                $this->index_cache[$table][$data["INDEX_NAME"]][] = $data['COLUMN_NAME'];
             }
-            return $icache[$table];
+            return $this->index_cache[$table];
         }
 
         return [];
@@ -735,14 +768,13 @@ abstract class AbstractDatabase
      */
     public function tableExists(string $tablename, $usecache = true): bool
     {
-        static $table_cache = [];
-        if (!$this->cache_disabled && $usecache && in_array($tablename, $table_cache)) {
+        if (!$this->cache_disabled && $usecache && in_array($tablename, $this->table_cache)) {
             return true;
         }
 
         // Retrieve all tables if cache is empty but enabled, in order to fill cache
         // with all known tables
-        $retrieve_all = !$this->cache_disabled && empty($table_cache);
+        $retrieve_all = !$this->cache_disabled && empty($this->table_cache);
 
         $result = $this->listTables($retrieve_all ? 'glpi_%' : $tablename);
         $found_tables = [];
@@ -751,7 +783,7 @@ abstract class AbstractDatabase
         }
 
         if (!$this->cache_disabled) {
-            $table_cache = array_unique(array_merge($table_cache, $found_tables));
+            $this->table_cache = array_unique(array_merge($this->table_cache, $found_tables));
         }
 
         if (in_array($tablename, $found_tables)) {
@@ -800,7 +832,7 @@ abstract class AbstractDatabase
     public function indexExists(string $table, $field, $name = null, bool $usecache = true): bool
     {
 
-        if (!$this->tableExists($table)) {
+        if (!$this->tableExists($table, $usecache)) {
             trigger_error("Table $table does not exists", E_USER_WARNING);
             return false;
         }
@@ -1563,5 +1595,17 @@ abstract class AbstractDatabase
     public function notTzMigrated() :int
     {
         return 0;
+    }
+
+    /**
+     * Clear cached schema informations.
+     *
+     * @return void
+     */
+    public function clearSchemaCache()
+    {
+        $this->table_cache = [];
+        $this->index_cache = [];
+        $this->field_cache = [];
     }
 }

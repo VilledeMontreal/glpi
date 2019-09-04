@@ -259,7 +259,7 @@ class Config extends DbTestCase {
       sort($actual);
       $this->array($actual)->isNotEmpty();
       $composer = json_decode(file_get_contents(__DIR__ . '/../../composer.json'), true);
-      foreach ($composer['require'] as $dep => $ver) {
+      foreach (array_keys($composer['require']) as $dep) {
          // composer names only (skip php, ext-*, ...)
          if (strpos($dep, '/')) {
             $expected[] = $dep;
@@ -369,7 +369,7 @@ class Config extends DbTestCase {
          ->size->isGreaterThan(170);
 
       $conf = \Config::getConfigurationValues('core', ['version', 'dbversion']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'dbversion' => GLPI_SCHEMA_VERSION,
          'version'   => GLPI_VERSION
       ]);
@@ -377,7 +377,7 @@ class Config extends DbTestCase {
 
    public function testSetConfigurationValues() {
       $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'notification_to_myself'   => '1',
          'version'                  => GLPI_VERSION
       ]);
@@ -385,7 +385,7 @@ class Config extends DbTestCase {
       //update configuration value
       \Config::setConfigurationValues('core', ['notification_to_myself' => 0]);
       $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'notification_to_myself'   => '0',
          'version'                  => GLPI_VERSION
       ]);
@@ -400,7 +400,7 @@ class Config extends DbTestCase {
       //add new configuration key
       \Config::setConfigurationValues('core', ['new_configuration_key' => 'test']);
       $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'new_configuration_key' => 'test',
          'version'               => GLPI_VERSION
       ]);

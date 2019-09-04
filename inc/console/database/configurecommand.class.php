@@ -30,74 +30,34 @@
  * ---------------------------------------------------------------------
  */
 
+namespace Glpi\Console\Database;
+
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * Extends class Migration to redefine display mode
- **/
-class CliMigration extends Migration {
+class ConfigureCommand extends AbstractConfigureCommand {
 
-   /**
-    * @var OutputInterface
-    */
-   private $output;
+   protected function configure() {
 
-   function __construct($ver) {
+      parent::configure();
 
-      $this->deb = time();
-      $this->setVersion($ver);
+      $this->setName('glpi:database:configure');
+      $this->setAliases(['db:configure']);
+      $this->setDescription('Define database configuration');
    }
 
-   function setVersion($ver) {
+   protected function execute(InputInterface $input, OutputInterface $output) {
 
-      $this->version = $ver;
-   }
+      $result = $this->configureDatabase($input, $output);
 
-   function setOutput(OutputInterface $output) {
-
-      $this->output = $output;
-   }
-
-   function displayMessage ($msg) {
-
-      $msg .= " (".Html::clean(Html::timestampToString(time()-$this->deb)).")";
-
-      $this->writeToOutput(
-         str_pad($msg, 100),
-         OutputInterface::VERBOSITY_VERY_VERBOSE
-      );
-   }
-
-   function displayTitle($title) {
-
-      $this->writeToOutput(
-         '<info>' . str_pad(" $title ", 100, '=', STR_PAD_BOTH) . '</info>',
-         OutputInterface::VERBOSITY_NORMAL
-      );
-   }
-
-   function addNewMessageArea($id) {
-
-   }
-
-   function displayWarning($msg, $red = false) {
-
-      if ($red) {
-         $msg = "** $msg";
+      if (self::ABORTED_BY_USER === $result) {
+         return 0; // Considered as success
       }
-      $this->writeToOutput(
-         '<comment>' . str_pad($msg, 100) . '</comment>',
-         OutputInterface::VERBOSITY_VERBOSE
-      );
-   }
 
-   private function writeToOutput($line, $verbosity) {
-      if ($this->output instanceof OutputInterface) {
-         $this->output->writeln($line, $verbosity);
-      }
+      return $result;
    }
 }

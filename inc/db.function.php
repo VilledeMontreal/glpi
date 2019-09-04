@@ -226,24 +226,6 @@ function countElementsInTableForEntity($table, $entity, $condition = [], $recurs
  * Get data from a table in an array :
  * CAUTION TO USE ONLY FOR SMALL TABLES OR USING A STRICT CONDITION
  *
- * @param string  $table     table name
- * @param array   $condition condition to use (default [])
- * @param boolean $usecache  Use cache (false by default)
- * @param string  $order     result order (default '')
- *
- * @return array containing all the datas
- *
- * @deprecated 9.5.0
-**/
-function getAllDatasFromTable($table, $condition = [], $usecache = false, $order = '') {
-   Toolbox::deprecated('Use getAllDataFromTable()');
-   return getAllDataFromTable($table, $condition, $usecache, $order);
-}
-
-/**
- * Get data from a table in an array :
- * CAUTION TO USE ONLY FOR SMALL TABLES OR USING A STRICT CONDITION
- *
  * @param string  $table    table name
  * @param array   $criteria condition to use (default [])
  * @param boolean $usecache Use cache (false by default)
@@ -398,21 +380,6 @@ function contructListFromTree($tree, $parent = 0) {
 
 
 /**
- * Get the equivalent search query using ID of soons that the search of the father's ID argument
- *
- * @param $table     string   table name
- * @param $IDf       integer  The ID of the father
- * @param $reallink  string   real field to link ($table.id if not set) (default ='')
- *
- * @return string the query
-**/
-function getRealQueryForTreeItem($table, $IDf, $reallink = "") {
-   $dbu = new DbUtils();
-   return $dbu->getRealQueryForTreeItem($table, $IDf, $reallink);
-}
-
-
-/**
  * Compute all completenames of Dropdown Tree table
  *
  * @param $table : dropdown tree table to compute
@@ -456,22 +423,6 @@ function formatUserName($ID, $login, $realname, $firstname, $link = 0, $cut = 0,
 function getUserName($ID, $link = 0) {
    $dbu = new DbUtils();
    return $dbu->getUserName($ID, $link);
-}
-
-
-/**
- * Determine if an index exists in database
- *
- * @param $table  string  table of the index
- * @param $field  string  name of the index
- *
- * @return boolean : index exists ?
- *
- * @deprecated 10.0.0
-**/
-function isIndex($table, $field) {
-   $dbu = new DbUtils();
-   return $dbu->isIndex($table, $field);
 }
 
 
@@ -620,11 +571,18 @@ function getEntitiesRestrictRequest($separator = "AND", $table = "", $field = ""
 function getEntitiesRestrictCriteria($table = '', $field = '', $value = '',
                                      $is_recursive = false, $complete_request = false) {
    $dbu = new DbUtils();
-   return $dbu->getEntitiesRestrictCriteria(
+   $res = $dbu->getEntitiesRestrictCriteria(
       $table,
       $field,
       $value,
       $is_recursive,
       $complete_request
    );
+
+   // Add another layer to the array to prevent losing duplicates keys if the
+   // result of the function is merged with another array
+   if (count($res)) {
+      $res = [crc32(serialize($res)) => $res];
+   }
+   return $res;
 }

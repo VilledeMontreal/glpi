@@ -36,6 +36,7 @@ use Symfony\Component\Yaml\Yaml;
 use Zend\Cache\Storage\AvailableSpaceCapableInterface;
 use Zend\Cache\Storage\FlushableInterface;
 use Zend\Cache\Storage\TotalSpaceCapableInterface;
+use Zend\Cache\Storage\StorageInterface;
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
@@ -60,6 +61,7 @@ class Config extends CommonDBTM {
    static $rightname              = 'config';
 
    static $undisclosedFields      = ['proxy_passwd', 'smtp_passwd'];
+   static $saferUndisclosedFields = ['admin_email', 'admin_reply'];
 
    /**
     * Flag to prevent reloading legacy configuration if already loaded.
@@ -1542,7 +1544,7 @@ class Config extends CommonDBTM {
     * @since 9.1
    **/
    function showPerformanceInformations() {
-      global $CONTAINER;
+      global $CONTAINER, $CFG_GLPI;
 
       $cache_storage = $CONTAINER->get('application_cache')->getStorage();
 
@@ -1614,7 +1616,7 @@ class Config extends CommonDBTM {
 
          if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) {
             echo "<tr><td></td><td colspan='3'>";
-            echo "<a class='vsubmit' href='config.form.php?reset_opcache=1'>";
+            echo "<a class='vsubmit' href='{$CFG_GLPI["root_doc"]}/front/config.form.php?reset_opcache=1'>";
             echo __('Reset');
             echo "</a></td></tr>\n";
          }
@@ -1659,12 +1661,25 @@ class Config extends CommonDBTM {
       }
 
       if ($cache_storage instanceof FlushableInterface) {
-         if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) {
-            echo "<tr><td></td><td colspan='3'>";
-            echo "<a class='vsubmit' href='config.form.php?reset_cache=1'>";
-            echo __('Reset');
-            echo "</a></td></tr>\n";
-         }
+         echo "<tr><td></td><td colspan='3'>";
+         echo "<a class='vsubmit' href='{$CFG_GLPI["root_doc"]}/front/config.form.php?reset_cache=1&optname=application_cache'>";
+         echo __('Reset');
+         echo "</a></td></tr>\n";
+      }
+
+      echo "<tr><th colspan='4'>" . __('Translation cache') . "</th></tr>";
+      $translation_cache = $CONTAINER->get('translation_cache')->getStorage();
+      $adapter_class = strtolower(get_class($translation_cache));
+      $adapter = substr($adapter_class, strrpos($adapter_class, '\\')+1);
+      $msg = sprintf(__s('"%s" cache system is used'), $adapter);
+      echo "<tr><td colspan='3'>" . $msg . "</td>
+            <td class='icons_block'><i class='fa fa-check-circle ok' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
+
+      if ($translation_cache instanceof FlushableInterface) {
+         echo "<tr><td></td><td colspan='3'>";
+         echo "<a class='vsubmit' href='{$CFG_GLPI["root_doc"]}/front/config.form.php?reset_cache=1&optname=translation_cache'>";
+         echo __('Reset');
+         echo "</a></td></tr>\n";
       }
 
       echo "</table></div>\n";
@@ -1896,6 +1911,16 @@ class Config extends CommonDBTM {
 
       Session::loadLanguage($oldlang);
 
+      $files = glob(GLPI_LOCAL_I18N_DIR."/**/*.{php,mo}", GLOB_BRACE);
+      if (count($files)) {
+         echo "<tr><th>Locales overrides</th></tr>\n";
+         echo "<tr class='tab_bg_1'><td>\n";
+         foreach ($files as $file) {
+            echo "$file<br/>\n";
+         }
+         echo "</td></tr>";
+      }
+
       echo "<tr class='tab_bg_1'><td>[/code]\n</td></tr>";
 
       echo "<tr class='tab_bg_2'><th>". __('To copy/paste in your support request')."</th></tr>\n";
@@ -1975,8 +2000,10 @@ class Config extends CommonDBTM {
                  'check'   => 'LitEmoji\\LitEmoji' ],
                [ 'name'    => 'symfony/console',
                  'check'   => 'Symfony\\Component\\Console\\Application' ],
-               [ 'name'    => 'leafo/scssphp',
-                 'check'   => 'Leafo\ScssPhp\Compiler' ],
+               [ 'name'    => 'scssphp/scssphp',
+                 'check'   => 'ScssPhp\ScssPhp\Compiler' ],
+               [ 'name'    => 'zendframework/zend-mail',
+                 'check'   => 'Zend\\Mail\\Protocol\\Imap' ],
                [ 'name'    => 'symfony/config',
                  'check'   => 'Symfony\\Component\\Config\\FileLocator' ],
                [ 'name'    => 'symfony/dependency-injection',
@@ -2470,10 +2497,6 @@ class Config extends CommonDBTM {
             ],
             //to sync/connect from LDAP
             'ldap'       => [
-               'required'  => false,
-            ],
-            //for mail collector
-            'imap'       => [
                'required'  => false,
             ],
             //to enhance perfs
@@ -3229,5 +3252,27 @@ class Config extends CommonDBTM {
          }
          Log::constructHistory($this, $this->oldvalues, $this->fields);
       }
+   }
+
+   /**
+    * Get the GLPI Config without unsafe keys like passwords and emails (true on $safer)
+    *
+    * @param boolean $safer do we need to clean more (avoid emails disclosure)
+    * @return array of $CFG_GLPI without unsafe keys
+    *
+    * @since 9.5
+    */
+   public static function getSafeConfig($safer = false) {
+      global $CFG_GLPI;
+
+      $excludedKeys = array_flip(self::$undisclosedFields);
+      $safe_config  = array_diff_key($CFG_GLPI, $excludedKeys);
+
+      if ($safer) {
+         $excludedKeys = array_flip(self::$saferUndisclosedFields);
+         $safe_config = array_diff_key($safe_config, $excludedKeys);
+      }
+
+      return $safe_config;
    }
 }

@@ -542,8 +542,8 @@ class IPNetwork extends CommonImplicitTreeDropdown {
          if ($relation == "equals") {
             for ($i = $startIndex; $i < 4; ++$i) {
                $WHERE = [
-                  new \QueryExpression("(`".$addressDB[$i] . "` & '" . $netmaskPa[$i] . "') = ('".$addressPa[$i]."' & '".$netmaskPa[$i]."')"),
-                  $netmaskD[$i]  => $netmaskPa[$i]
+                  new \QueryExpression("(".$DB->quoteName($addressDB[$i]) . " & '" . $netmaskPa[$i] . "') = ('".$addressPa[$i]."' & '".$netmaskPa[$i]."')"),
+                  $netmaskDB[$i]  => $netmaskPa[$i]
                ];
             }
          } else {
@@ -551,12 +551,12 @@ class IPNetwork extends CommonImplicitTreeDropdown {
                if ($relation == "is contained by") {
                   $globalNetmask = "'".$netmaskPa[$i]."'";
                } else {
-                  $globalNetmask = "`".$netmaskDB[$i]."`";
+                  $globalNetmask = $DB->quoteName($netmaskDB[$i]);
                }
 
                $WHERE = [
-                  new \QueryExpression("(`".$addressDB[$i]."` & $globalNetmask) = ('".$addressPa[$i]."' & $globalNetmask)"),
-                  new \QueryExpression("('".$netmaskPa[$i]."' & `".$netmaskDB[$i]."`)=$globalNetmask")
+                  new \QueryExpression("(".$DB->quoteName($addressDB[$i])." & $globalNetmask) = ('".$addressPa[$i]."' & $globalNetmask)"),
+                  new \QueryExpression("('".$netmaskPa[$i]."' & ".$DB->quoteName($netmaskDB[$i]).")=$globalNetmask")
                ];
             }
          }
@@ -610,7 +610,7 @@ class IPNetwork extends CommonImplicitTreeDropdown {
       // the last should be 0.0.0.0/0.0.0.0 of x.y.z.a/255.255.255.255 regarding the interested
       // element)
       for ($i = $startIndex; $i < 4; ++$i) {
-         $ORDER[] = new \QueryExpression("BIT_COUNT(`".$netmaskDB[$i]."`) $ORDER_ORIENTATION");
+         $ORDER[] = new \QueryExpression("BIT_COUNT(".$DB->quoteName($netmaskDB[$i]).") $ORDER_ORIENTATION");
       }
 
       if (!empty($condition["where"])) {
@@ -651,38 +651,6 @@ class IPNetwork extends CommonImplicitTreeDropdown {
       return $ong;
    }
 
-
-   /**
-    * Get SQL WHERE statement for requesting elements that are contained inside the current network
-    *
-    * @deprecated 10.0.0
-    *
-    * @param $tableName          name of the table containing the element
-    *                            (for instance : glpi_ipaddresses)
-    * @param $binaryFieldPrefix  prefix of the binary version of IP address
-    *                            (binary for glpi ipaddresses)
-    * @param $versionField       the name of the field containing the version inside the database
-    *
-    * @return SQL request "WHERE" element
-   **/
-   function getWHEREForMatchingElement($tableName, $binaryFieldPrefix, $versionField) {
-      Toolbox::deprecated('Use getCriteriaForMatchingElement');
-
-      $version = $this->fields["version"];
-      $start   = null;
-      $this->computeNetworkRange($start);
-
-      $result = [];
-      for ($i = ($version == 4 ? 3 : 0); $i < 4; ++$i) {
-         $result[] = "(`$tableName`.`".$binaryFieldPrefix."_$i` & '".$this->fields["netmask_$i"]."')
-                       = ('".$start[$i]."')";
-      }
-
-      $result = "`$tableName`.`version` = '$version'
-                AND (".implode(" AND ", $result).")";
-
-      return $result;
-   }
 
    /**
     * Get SQL WHERE criteria for requesting elements that are contained inside the current network

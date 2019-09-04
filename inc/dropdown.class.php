@@ -215,9 +215,9 @@ class Dropdown {
              && $params['addicon']) {
 
                $output .= "<span class='fa fa-plus-circle pointer' title=\"".__s('Add')."\"
-                            onClick=\"".Html::jsGetElementbyID('add_dropdown'.$params['name'].$params['rand']).".dialog('open');\"
+                            onClick=\"".Html::jsGetElementbyID('add_'.$field_id).".dialog('open');\"
                            ><span class='sr-only'>" . __s('Add') . "</span></span>";
-               $output .= Ajax::createIframeModalWindow('add_dropdown'.$params['name'].$params['rand'],
+               $output .= Ajax::createIframeModalWindow('add_'.$field_id,
                                                         $item->getFormURL(),
                                                         ['display' => false]);
          }
@@ -275,7 +275,7 @@ class Dropdown {
     *
     * @return string
     */
-   static function addNewCondition($condition) {
+   static function addNewCondition(array $condition) {
       $sha1 = sha1(serialize($condition));
       $_SESSION['glpicondition'][$sha1] = $condition;
       return $sha1;
@@ -834,6 +834,8 @@ class Dropdown {
                                              Session::getPluralNumber()),
                  'RequestType'         => _n('Request source', 'Request sources',
                                              Session::getPluralNumber()),
+                 'ITILFollowupTemplate' => _n('Followup template', 'Followup templates',
+                                             Session::getPluralNumber()),
                  'SolutionTemplate'    => _n('Solution template',
                                              'Solution templates',
                                              Session::getPluralNumber()),
@@ -902,7 +904,9 @@ class Dropdown {
                                               Session::getPluralNumber()),
                  'LineType'             => _n('Line type', 'Line types',
                                              Session::getPluralNumber()),
-                 'RackType'             => RackType::getTypeName(Session::getPluralNumber())
+                 'RackType'             => RackType::getTypeName(Session::getPluralNumber()),
+                 'PDUType'              => PDUType::getTypeName(Session::getPluralNumber()),
+                 'ClusterType'          => ClusterType::getTypeName(Session::getPluralNumber()),
              ],
 
              __('Model') => [
@@ -2346,9 +2350,11 @@ class Dropdown {
                   $swhere["namet.value"] = ['LIKE', $search];
                }
 
-               // Also search by id
-               if ($displaywith && in_array('id', $post['displaywith'])) {
-                  $swhere["$table.id"] = ['LIKE', $search];
+               // search also in displaywith columns
+               if ($displaywith && count($post['displaywith'])) {
+                  foreach ($post['displaywith'] as $with) {
+                     $swhere["$table.$with"] = ['LIKE', $search];
+                  }
                }
 
                $where[] = ['OR' => $swhere];
@@ -2702,10 +2708,14 @@ class Dropdown {
             if ($post['itemtype'] == "SoftwareLicense") {
                $orwhere['glpi_softwares.name'] = ['LIKE', $search];
             }
-            // Also search by id
-            if ($displaywith && in_array('id', $post['displaywith'])) {
-               $orwhere["$table.id"] = ['LIKE', $search];
+
+            // search also in displaywith columns
+            if ($displaywith && count($post['displaywith'])) {
+               foreach ($post['displaywith'] as $with) {
+                  $orwhere["$table.$with"] = ['LIKE', $search];
+               }
             }
+
             $where[] = ['OR' => $orwhere];
          }
          $addselect = [];
@@ -2899,7 +2909,6 @@ class Dropdown {
                } else {
                   $outputval = $data[$field];
                }
-               $outputval = Toolbox::unclean_cross_side_scripting_deep($outputval);
 
                $ID         = $data['id'];
                $addcomment = "";
@@ -2951,7 +2960,7 @@ class Dropdown {
          }
       }
 
-      $ret['results'] = $datas;
+      $ret['results'] = Toolbox::unclean_cross_side_scripting_deep($datas);
       $ret['count']   = $count;
 
       return ($json === true) ? json_encode($ret) : $ret;

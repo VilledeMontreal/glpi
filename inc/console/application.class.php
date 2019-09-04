@@ -69,6 +69,11 @@ class Application extends BaseApplication {
     */
    private $db;
 
+   /**
+    * @var OutputInterface
+    */
+   private $output;
+
    public function __construct() {
 
       parent::__construct('GLPI CLI', GLPI_VERSION);
@@ -183,13 +188,24 @@ class Application extends BaseApplication {
          // TODO Find a way to route errors to console output in a clean format.
          Toolbox::setDebugMode(Session::DEBUG_MODE, 1, 1, 1);
       }
+
+      $this->output = $output;
+   }
+
+   /**
+    * Returns output handler.
+    *
+    * @return OutputInterface
+    */
+   public function getOutput() {
+      return $this->output;
    }
 
    protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output) {
 
       $begin_time = microtime(true);
 
-      parent::doRunCommand($command, $input, $output);
+      $result = parent::doRunCommand($command, $input, $output);
 
       if ($output->getVerbosity() >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
          $output->writeln(
@@ -205,6 +221,8 @@ class Application extends BaseApplication {
             )
          );
       }
+
+      return $result;
    }
 
    /**
@@ -337,7 +355,7 @@ class Application extends BaseApplication {
       $input = new ArgvInput();
 
       try {
-         $command = $this->get($this->getCommandName($input));
+         $command = $this->find($this->getCommandName($input));
          if ($command instanceof ForceNoPluginsOptionCommandInterface) {
             return !$command->getNoPluginsOptionValue();
          }

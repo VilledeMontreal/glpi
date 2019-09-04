@@ -16,17 +16,21 @@ The present file will list all changes made to the project; according to the
 
 - Drop support of PHP 5.6.
 - Deprecated `scripts/ldap_mass_sync.php` has been removed in favor of `glpi:ldap:synchronize_users` command available using `bin/console`
+- Remove unsafe `getCommonSelect()` and `getCommonLeftJoin()` in `Change`, `Problem` and `Ticket` classes
+- Remove `isIndex` (`DBUtils::isIndex()`) replaced with `AbstractDatabase::indexExists()`
+- Remove unsafe `IPNetwork::getWHEREForMatchingElement()`
+- Remove unsafe `getRealQueryForTreeItem()` (`DBUtils::getRealQueryForTreeItem()`)
 
 ### API changes
 
 #### Changes
+
 - Added `DB::truncate()` to replace raw SQL queries
 - `DB::fieldExists()` does not check table existence anymore.
 
 #### Deprecated
 
 - Deprecate raw SQL queries in `DBmysql::request()`
-- Deprecate `getCommonSelect()` and `getCommonLeftJoin()` in `Change`, `Problem` and `Ticket` classes
 - Deprecate `DB::query()` and `DB::queryOrDie()` to disallow executing raw queries (iterator querying must be used)
 - Deprecate raw SQL condition in `Migration::addField()`
 - Deprecate 'SELECT DISTINCT' and 'DISTINCT FIELDS' criteria in `DBmysqlIterator::buildQuery()`
@@ -41,7 +45,13 @@ The present file will list all changes made to the project; according to the
 
 ### Added
 
-- encrypted file systems support
+- Encrypted file systems support.
+- Mails collected from suppliers can be marked as private on an entity basis.
+- Ability to add custom CSS in entity configuration.
+- CLI commands to enable and disable maintenance mode.
+- Operating system links on Monitors, Peripherals, Phones and Printers.
+- Add datacenter items to global search
+- Project task search options for Projects
 
 ### Changed
 
@@ -65,6 +75,8 @@ The present file will list all changes made to the project; according to the
 - `DBMysql::isMySQLStrictMode()`
 - `getAllDatasFromTable` renamed to `getAllDataFromTable()`
 - Usage of `$order` parameter in `getAllDataFromTable()` (`DbUtils::getAllDataFromTable()`)
+- All `TicketTemplate` classes has been renamed to `ITILTemplate`
+- `Ticket::getTicketTemplateToUse()` renamed to `Ticket::getITILTemplateToUse()`
 
 #### Removed
 
@@ -90,6 +102,14 @@ The present file will list all changes made to the project; according to the
 - `CommonDBTM::getForeignKeyFieldsOf()`
 
 ## [9.4.3] unreleased
+
+### API changes
+
+#### Deprecated
+
+The following methods have been deprecated:
+
+- `Html::convertTagFromRichTextToImageTag()`
 
 ## [9.4.2] 2019-04-11
 

@@ -86,14 +86,19 @@ if (!file_exists(GLPI_CONFIG_DIR . "/db.yaml")) {
    echo "<meta name='viewport' content='width=device-width, initial-scale=1'/>";
 
    // Appel CSS
-   echo Html::scss('glpi-legacy');
-   // font awesome icons
-   echo Html::css('public/lib/fontawesome-free/css/all.css');
+   echo Html::scss('css/legacy');
+   if (isset($_SESSION['glpihighcontrast_css']) && $_SESSION['glpihighcontrast_css']) {
+      echo Html::scss('css/highcontrast');
+   }
+   $theme = isset($_SESSION['glpipalette']) ? $_SESSION['glpipalette'] : 'auror';
+   echo Html::scss('css/palettes/' . $theme);
+   // external libs CSS
+   echo Html::css('public/lib/base.css');
+   // Custom CSS for root entity
+   $entity = new Entity();
+   $entity->getFromDB('0');
+   echo $entity->getCustomCssTag();
 
-   echo Html::script('public/lib/jquery/jquery.js');
-   echo Html::script('public/lib/jquery-migrate/jquery-migrate.js');
-   echo Html::script('public/lib/select2/js/select2.full.js');
-   echo Html::css('public/lib/select2/css/select2.css');
    // CFG
    echo Html::scriptBlock("
       var CFG_GLPI  = {
@@ -102,14 +107,15 @@ if (!file_exists(GLPI_CONFIG_DIR . "/db.yaml")) {
       };
    ");
 
-   echo Html::script("public/lib/fuzzy/fuzzy.js");
+   echo Html::script("public/lib/base.js");
+   echo Html::script("public/lib/fuzzy.js");
    echo Html::script('js/common.js');
 
    echo "</head>";
 
    echo "<body>";
    echo "<div id='firstboxlogin'>";
-   echo "<div id='logo_login'></div>";
+   echo "<h1 id='logo_login'><img src='".$CFG_GLPI['root_doc']."/pics/login_logo_glpi.png' alt='GLPI' title='GLPI' /></h1>";
    echo "<div id='text-login'>";
    echo nl2br(Toolbox::unclean_html_cross_side_scripting_deep($CFG_GLPI['text_login']));
    echo "</div>";
@@ -131,10 +137,12 @@ if (!file_exists(GLPI_CONFIG_DIR . "/db.yaml")) {
       echo '<input type="hidden" name="redirect" value="'.Html::entities_deep($_GET['redirect']).'"/>';
    }
    echo '<p class="login_input" id="login_input_name">
+         <label for="login_name" class="sr-only">'.__('Login').'</label>
          <input type="text" name="'.$namfield.'" id="login_name" required="required"
                 placeholder="'.__('Login').'" autofocus="autofocus" />
          </p>';
    echo '<p class="login_input" id="login_input_password">
+         <label for="login_password" class="sr-only">'.__('Password').'</label>
          <input type="password" name="'.$pwdfield.'" id="login_password" required="required"
                 placeholder="'.__('Password').'"  />
          </p>';

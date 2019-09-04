@@ -261,8 +261,11 @@ function glpi_autoload($classname) {
 
    // empty classname or non concerted plugin or classname containing dot (leaving GLPI main treee)
    if (empty($classname) || is_numeric($classname) || (strpos($classname, '.') !== false)) {
-      echo "Security die. trying to load a forbidden class name";
-      die(1);
+      trigger_error(
+         sprintf('Trying to load a forbidden class name "%1$s"', $classname),
+         E_USER_ERROR
+      );
+      return false;
    }
 
    if ($classname === 'phpCAS'
@@ -278,19 +281,9 @@ function glpi_autoload($classname) {
       $dir      = GLPI_ROOT . "/plugins/$plugname/inc/";
       $item     = str_replace('\\', '/', strtolower($plug['class']));
       // Is the plugin active?
-      // Command line usage of GLPI : need to do a real check plugin activation
-      if (isCommandLine()) {
-         $plugin = new Plugin();
-         if (count($plugin->find(['directory' => $plugname, 'state' => Plugin::ACTIVATED])) == 0) {
-            // Plugin does not exists or not activated
-            return false;
-         }
-      } else {
-         // Standard use of GLPI
-         if (!Plugin::isPluginLoaded($plugname)) {
-            // Plugin not activated
-            return false;
-         }
+      if (!Plugin::isPluginLoaded($plugname)) {
+         // Plugin not activated
+         return false;
       }
    } else {
       $item = strtolower($classname);
@@ -346,7 +339,7 @@ if (!file_exists(GLPI_ROOT . '/public/lib')) {
 
 if ($needrun) {
    $deps_install_msg = 'Application dependencies are not up to date.' . PHP_EOL
-      . 'Run "bin/console dependencies install" in the glpi tree to fix this.' . PHP_EOL;
+      . 'Run "php bin/console dependencies install" in the glpi tree to fix this.' . PHP_EOL;
    if (isCommandLine()) {
       echo $deps_install_msg;
    } else {

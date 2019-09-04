@@ -42,11 +42,6 @@ class Stat extends CommonGLPI {
    static $rightname = 'statistic';
 
 
-   static function canView() {
-      return Session::haveRight(self::$rightname, READ);
-   }
-
-
    static function getTypeName($nb = 0) {
       return __('Statistics');
    }
@@ -607,6 +602,8 @@ class Stat extends CommonGLPI {
                   || ($output_type == Search::PDF_OUTPUT_LANDSCAPE)
                   || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
                   $timedisplay = Html::timestampToString($timedisplay, 0, false);
+               } else if ($output_type == Search::CSV_OUTPUT) {
+                  $timedisplay = Html::timestampToCsvString($timedisplay);
                }
                echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
             }
@@ -627,6 +624,8 @@ class Stat extends CommonGLPI {
                 || ($output_type == Search::PDF_OUTPUT_LANDSCAPE)
                 || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
                $timedisplay = Html::timestampToString($timedisplay, 0, false);
+            } else if ($output_type == Search::CSV_OUTPUT) {
+               $timedisplay = Html::timestampToCsvString($timedisplay);
             }
             echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
 
@@ -646,6 +645,8 @@ class Stat extends CommonGLPI {
                 || ($output_type == Search::PDF_OUTPUT_LANDSCAPE)
                 || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
                $timedisplay = Html::timestampToString($timedisplay, 0, false);
+            } else if ($output_type == Search::CSV_OUTPUT) {
+               $timedisplay = Html::timestampToCsvString($timedisplay);
             }
             echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
 
@@ -671,6 +672,8 @@ class Stat extends CommonGLPI {
                 || ($output_type == Search::PDF_OUTPUT_LANDSCAPE)
                 || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
                $timedisplay = Html::timestampToString($timedisplay, 0, false);
+            } else if ($output_type == Search::CSV_OUTPUT) {
+               $timedisplay = Html::timestampToCsvString($timedisplay);
             }
             echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
             //Le temps total de l'intervention reelle - The total actiontime to resolv
@@ -680,6 +683,8 @@ class Stat extends CommonGLPI {
                 || ($output_type == Search::PDF_OUTPUT_LANDSCAPE)
                 || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
                $timedisplay = Html::timestampToString($timedisplay, 0, false);
+            } else if ($output_type == Search::CSV_OUTPUT) {
+               $timedisplay = Html::timestampToCsvString($timedisplay);
             }
             echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
 
@@ -991,7 +996,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.date", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`date`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.date")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1012,7 +1017,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1039,7 +1044,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = new QueryExpression("$table.solvedate > $table.time_to_resolve");
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1060,7 +1065,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1081,7 +1086,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1102,7 +1107,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1127,7 +1132,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1148,7 +1153,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1169,7 +1174,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1202,7 +1207,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1235,7 +1240,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [

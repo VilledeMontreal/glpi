@@ -54,6 +54,43 @@ class Computer_SoftwareVersion extends CommonDBRelation {
       return _n('Installation', 'Installations', $nb);
    }
 
+   function rawSearchOptions() {
+      $tab = [];
+
+      $tab[] = [
+         'id'                 => 'common',
+         'name'               => __('Characteristics')
+      ];
+
+      $tab[] = [
+         'id'                 => '2',
+         'table'              => $this->getTable(),
+         'field'              => 'id',
+         'name'               => __('ID'),
+         'massiveaction'      => false,
+         'datatype'           => 'number'
+      ];
+
+      $tab[] = [
+         'id'                 => '3',
+         'table'              => 'glpi_computers',
+         'field'              => 'name',
+         'name'               => _n('Computer', 'Computers', 1),
+         'massiveaction'      => false,
+         'datatype'           => 'dropdown'
+      ];
+
+      $tab[] = [
+         'id'                 => '4',
+         'table'              => 'glpi_softwareversions',
+         'field'              => 'name',
+         'name'               => _n('Version', 'Versions', 1),
+         'datatype'           => 'dropdown',
+         'massiveaction'      => false
+      ];
+
+      return $tab;
+   }
 
    function prepareInputForAdd($input) {
 
@@ -343,14 +380,18 @@ class Computer_SoftwareVersion extends CommonDBRelation {
 
       if (isset($_GET["sort"]) && !empty($_GET["sort"]) && isset($refcolumns[$_GET["sort"]])) {
          // manage several param like location,compname :  order first
-         $tmp  = explode(",", $_GET["sort"]);
-         $sort = "`".implode("` $order,`", $tmp)."`";
+         $tsort  = explode(",", $_GET["sort"]);
+         foreach ($tsort as $tmpsort) {
+            $sort[] = "$tmpsort $order";
+         }
 
       } else {
          if ($crit == "softwares_id") {
-            $sort = "`entity` $order, `version`, `compname`";
+            $tsort = ["entity", 'version', 'compname'];
+            $sort = ["entity $order", 'version', 'compname'];
          } else {
-            $sort = "`entity` $order, `compname`";
+            $tsort = ["entity", 'compname'];
+            $sort = ["entity $order", 'compname'];
          }
       }
 
@@ -447,7 +488,7 @@ class Computer_SoftwareVersion extends CommonDBRelation {
             'glpi_computers_softwareversions.is_deleted' => 0
 
          ] + getEntitiesRestrictCriteria('glpi_computers', '', '', true),
-         'ORDER'        => "$sort $order",
+         'ORDER'        => $sort,
          'LIMIT'        => $_SESSION['glpilist_limit'],
          'START'        => $start
       ]);
@@ -516,7 +557,7 @@ class Computer_SoftwareVersion extends CommonDBRelation {
             if ($key[0] == '_') {
                $header_end .= "<th>$val</th>";
             } else {
-               $header_end .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+               $header_end .= "<th".(implode(',', $tsort) == $key ? " class='order_$order'" : '').">".
                      "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                         (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
             }
@@ -870,7 +911,7 @@ class Computer_SoftwareVersion extends CommonDBRelation {
          [
             'SELECT'       => [
                'glpi_softwarelicenses.*',
-               'glpi_computers_softwarelicenses.id AS linkID',
+               'glpi_computers_softwarelicenses.id AS linkid',
                'glpi_softwares.name AS softname',
                'glpi_softwareversions.name AS version',
                'glpi_states.name AS state'
@@ -1106,7 +1147,7 @@ class Computer_SoftwareVersion extends CommonDBRelation {
    */
    private static function displaySoftsByLicense($data, $computers_id, $withtemplate, $canedit) {
 
-      $ID = $data['linkID'];
+      $ID = $data['linkid'];
 
       $link_item = Toolbox::getItemTypeFormURL('SoftwareLicense');
       $link      = $link_item."?id=".$data['id'];

@@ -67,11 +67,6 @@ class RuleTicket extends Rule {
    }
 
 
-   function maxActionsCount() {
-      return count($this->getActions());
-   }
-
-
    /**
     * @since 0.85
    **/
@@ -195,6 +190,12 @@ class RuleTicket extends Rule {
                case "assign" :
                   $output[$action->fields["field"]] = $action->fields["value"];
 
+                  // Special case of status
+                  if ($action->fields["field"] === 'status') {
+                     // Add a flag to remember that status was forced by rule
+                     $output['_do_not_compute_status'] = true;
+                  }
+
                   // Special case of users_id_requester
                   if ($action->fields["field"] === '_users_id_requester') {
                      // Add groups of requester
@@ -263,6 +264,13 @@ class RuleTicket extends Rule {
                   $impact  = (isset($output['impact'])?$output['impact']:3);
                   // Apply priority_matrix from config
                   $output['priority'] = Ticket::computePriority($urgency, $impact);
+                  break;
+
+               case 'do_not_compute' :
+                  if ($action->fields['field'] == 'takeintoaccount_delay_stat'
+                      && $action->fields['value'] == 1) {
+                     $output['_do_not_compute_takeintoaccount'] = true;
+                  }
                   break;
 
                case "affectbyip" :
@@ -386,6 +394,12 @@ class RuleTicket extends Rule {
       $criterias['items_groups']['linkfield']               = 'items_groups';
       $criterias['items_groups']['type']                    = 'dropdown';
 
+      $criterias['items_states']['table']                   = 'glpi_states';
+      $criterias['items_states']['field']                   = 'completename';
+      $criterias['items_states']['name']                    = __('Item state');
+      $criterias['items_states']['linkfield']               = 'items_states';
+      $criterias['items_states']['type']                    = 'dropdown';
+
       $criterias['locations_id']['table']                   = 'glpi_locations';
       $criterias['locations_id']['field']                   = 'completename';
       $criterias['locations_id']['name']                    = __('Ticket location');
@@ -461,6 +475,9 @@ class RuleTicket extends Rule {
 
       $criterias['priority']['name']                        = __('Priority');
       $criterias['priority']['type']                        = 'dropdown_priority';
+
+      $criterias['status']['name']                          = __('Status');
+      $criterias['status']['type']                          = 'dropdown_status';
 
       $criterias['_mailgate']['table']                      = 'glpi_mailcollectors';
       $criterias['_mailgate']['field']                      = 'name';
@@ -580,7 +597,7 @@ class RuleTicket extends Rule {
       $actions['_groups_id_observer']['table']              = 'glpi_groups';
       $actions['_groups_id_observer']['name']               = __('Watcher group');
       $actions['_groups_id_observer']['type']               = 'dropdown';
-      $actions['_groups_id_observer']['condition']          = ['is_requester' => 1];
+      $actions['_groups_id_observer']['condition']          = ['is_watcher' => 1];
       $actions['_groups_id_observer']['force_actions']      = ['assign', 'append'];
       $actions['_groups_id_observer']['permitseveral']      = ['append'];
       $actions['_groups_id_observer']['appendto']           = '_additional_groups_observers';
@@ -680,6 +697,10 @@ class RuleTicket extends Rule {
       $actions['requesttypes_id']['name']                   = __('Request source');
       $actions['requesttypes_id']['type']                   = 'dropdown';
       $actions['requesttypes_id']['table']                  = 'glpi_requesttypes';
+
+      $actions['takeintoaccount_delay_stat']['name']          = __('Take into account delay');
+      $actions['takeintoaccount_delay_stat']['type']          = 'yesno';
+      $actions['takeintoaccount_delay_stat']['force_actions'] = ['do_not_compute'];
 
       return $actions;
    }

@@ -208,6 +208,8 @@ class Supplier extends CommonDBTM {
    }
 
    function rawSearchOptions() {
+      global $DB;
+
       $tab = [];
 
       $tab[] = [
@@ -347,7 +349,7 @@ class Supplier extends CommonDBTM {
          'forcegroupby'       => true,
          'datatype'           => 'itemlink',
          'massiveaction'      => false,
-         'computation'        => "CONCAT(TABLE.`$name1`, ' ', TABLE.`$name2`)",
+         'computation'        => "CONCAT(".$DB->quoteName("TABLE.$name1").", ' ', ".$DB->quoteName("TABLE.$name2").")",
          'computationgroupby' => true,
          'joinparams'         => [
             'beforejoin'         => [
@@ -626,5 +628,24 @@ class Supplier extends CommonDBTM {
                                              : "&nbsp;")."</td>";
       echo "<td colspan='4'>&nbsp;</td></tr> ";
       echo "</table></div>";
+   }
+
+   /**
+    * Get suppliers matching a given email
+    *
+    * @since 9.5
+    *
+    * @param $email boolean : also display name ? (false by default)
+   **/
+   public static function getSuppliersByEmail($email) {
+      global $DB;
+
+      $suppliers = $DB->request([
+         'SELECT' => ["id"],
+         'FROM' => 'glpi_suppliers',
+         'WHERE' => ['email' => $email]
+      ]);
+
+      return $suppliers;
    }
 }

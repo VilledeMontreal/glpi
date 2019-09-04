@@ -138,7 +138,7 @@ class Itil_Project extends CommonDBRelation {
 
          $iterator = $DB->request([
             'SELECT'          => [
-               "$selfTable.id AS linkID",
+               "$selfTable.id AS linkid",
                "$itemTable.*"
             ],
             'DISTINCT'        => true,
@@ -243,7 +243,7 @@ class Itil_Project extends CommonDBRelation {
                   [
                      'row_num'                => $i,
                      'type_for_massiveaction' => __CLASS__,
-                     'id_for_massiveaction'   => $data['linkID']
+                     'id_for_massiveaction'   => $data['linkid']
                   ]
                );
                $i++;
@@ -283,7 +283,7 @@ class Itil_Project extends CommonDBRelation {
 
       $iterator = $DB->request([
          'SELECT'          => [
-            "$selfTable.id AS linkID",
+            "$selfTable.id AS linkid",
             "$projectTable.*"
          ],
          'DISTINCT'        => true,
@@ -374,7 +374,7 @@ class Itil_Project extends CommonDBRelation {
                [
                   'row_num'               => $i,
                   'type_for_massiveaction' => __CLASS__,
-                  'id_for_massiveaction'   => $data['linkID']
+                  'id_for_massiveaction'   => $data['linkid']
                ]
             );
             $i++;
@@ -400,10 +400,9 @@ class Itil_Project extends CommonDBRelation {
     * @return void
     **/
    static function cloneItilProject($oldid, $newid) {
-
       global $DB;
 
-      $itil_items = $DB->request(self::getTable(), ['WHERE'  => "`projects_id` = '$oldid'"]);
+      $itil_items = $DB->request(self::getTable(), ['WHERE'  => ['projects_id' => $oldid]]);
       foreach ($itil_items as $data) {
          unset($data['id']);
          $data['projects_id'] = $newid;

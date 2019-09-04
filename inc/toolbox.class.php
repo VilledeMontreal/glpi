@@ -286,16 +286,17 @@ class Toolbox {
    **/
    static function clean_cross_side_scripting_deep($value) {
 
+      if ((array) $value === $value) {
+         return array_map([__CLASS__, 'clean_cross_side_scripting_deep'], $value);
+      }
+
+      if (!is_string($value)) {
+         return $value;
+      }
+
       $in  = ['<', '>'];
       $out = ['&lt;', '&gt;'];
-
-      $value = ((array) $value === $value)
-                  ? array_map([__CLASS__, 'clean_cross_side_scripting_deep'], $value)
-                  : (is_null($value)
-                        ? null : (is_resource($value)
-                                     ? $value : str_replace($in, $out, $value)));
-
-      return $value;
+      return str_replace($in, $out, $value);
    }
 
 
@@ -310,16 +311,17 @@ class Toolbox {
    **/
    static function unclean_cross_side_scripting_deep($value) {
 
+      if ((array) $value === $value) {
+         return array_map([__CLASS__, 'unclean_cross_side_scripting_deep'], $value);
+      }
+
+      if (!is_string($value)) {
+         return $value;
+      }
+
       $in  = ['<', '>'];
       $out = ['&lt;', '&gt;'];
-
-      $value = ((array) $value === $value)
-                  ? array_map([__CLASS__, 'unclean_cross_side_scripting_deep'], $value)
-                  : (is_null($value)
-                        ? null : (is_resource($value)
-                                     ? $value : str_replace($out, $in, $value)));
-
-      return $value;
+      return str_replace($out, $in, $value);
    }
 
 
@@ -336,17 +338,14 @@ class Toolbox {
    **/
    static function unclean_html_cross_side_scripting_deep($value) {
 
-      $in  = ['<', '>'];
-      $out = ['&lt;', '&gt;'];
-
-      $value = ((array) $value === $value)
-                  ? array_map([__CLASS__, 'unclean_html_cross_side_scripting_deep'], $value)
-                  : (is_null($value)
-                      ? null : (is_resource($value)
-                                  ? $value : str_replace($out, $in, $value)));
+      if ((array) $value === $value) {
+         $value = array_map([__CLASS__, 'unclean_html_cross_side_scripting_deep'], $value);
+      } else {
+         $value = self::unclean_cross_side_scripting_deep($value);
+      }
 
       // revert unclean inside <pre>
-      if (!is_array($value)) {
+      if (is_string($value)) {
          $matches = [];
          $count = preg_match_all('/(<pre[^>]*>)(.*?)(<\/pre>)/is', $value, $matches);
          for ($i = 0; $i < $count; ++$i) {
@@ -430,7 +429,13 @@ class Toolbox {
          global $PHPLOGGER;
          $logger = $PHPLOGGER;
       }
-      $logger->addRecord($level, $msg, $extra);
+
+      try {
+         $logger->addRecord($level, $msg, $extra);
+      } catch (\Exception $e) {
+         //something went wrong, make sure logging does not cause fatal
+         error_log($e);
+      }
 
       if (defined('TU_USER') && $level >= Logger::NOTICE) {
          throw new \RuntimeException($msg);
@@ -747,13 +752,14 @@ class Toolbox {
     * Send a file (not a document) to the navigator
     * See Document->send();
     *
-    * @param string      $file      storage filename
-    * @param string      $filename  file title
-    * @param string|null $mime      file mime type
+    * @param string      $file        storage filename
+    * @param string      $filename    file title
+    * @param string|null $mime        file mime type
+    * @param boolean     $add_expires add expires headers maximize cacheability ?
     *
     * @return void
    **/
-   static function sendFile($file, $filename, $mime = null) {
+   static function sendFile($file, $filename, $mime = null, $expires_headers = false) {
 
       // Test securite : document in DOC_DIR
       $tmpfile = str_replace(GLPI_DOC_DIR, "", $file);
@@ -794,8 +800,12 @@ class Toolbox {
       // Now send the file with header() magic
       header("Last-Modified: ".gmdate("D, d M Y H:i:s", $lastModified)." GMT");
       header("Etag: $etag");
-      header('Pragma: private'); /// IE BUG + SSL
-      header('Cache-control: private, must-revalidate'); /// IE BUG + SSL
+      header_remove('Pragma');
+      header('Cache-Control: private');
+      if ($expires_headers) {
+         $max_age = WEEK_TIMESTAMP;
+         header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + $max_age));
+      }
       header(
          "Content-disposition:$attachment filename=\"" .
          addslashes(utf8_decode($filename)) .
@@ -1483,9 +1493,12 @@ class Toolbox {
     * Determine if Imap/Pop is usable checking extension existence
     *
     * @return boolean
+    *
+    * @deprecated 9.5.0
    **/
    static function canUseImapPop() {
-      return extension_loaded('imap');
+      Toolbox::deprecated('No longer usefull');
+      return true;
    }
 
 
@@ -2232,11 +2245,13 @@ class Toolbox {
       echo "<input type=hidden name=imap_string value='".$value."'>";
       echo "</td></tr>\n";
 
-      echo "<tr class='tab_bg_1'><td>". __('Incoming mail folder (optional, often INBOX)')."</td>";
-      echo "<td>";
-      echo "<input size='30' type='text' id='server_mailbox' name='server_mailbox' value=\"" . $tab['mailbox'] . "\" >";
-      echo "<i class='fa fa-list pointer get-imap-folder'></i>";
-      echo "</td></tr>\n";
+      if ($tab['type'] != 'pop') {
+         echo "<tr class='tab_bg_1'><td>". __('Incoming mail folder (optional, often INBOX)')."</td>";
+         echo "<td>";
+         echo "<input size='30' type='text' id='server_mailbox' name='server_mailbox' value=\"" . $tab['mailbox'] . "\" >";
+         echo "<i class='fa fa-list pointer get-imap-folder'></i>";
+         echo "</td></tr>\n";
+      }
 
       //TRANS: for mail connection system
       echo "<tr class='tab_bg_1'><td>" . __('Port (optional)') . "</td>";
@@ -2274,8 +2289,7 @@ class Toolbox {
       if (isset($input['server_ssl']) && !empty($input['server_ssl'])) {
          $out .= $input['server_ssl'];
       }
-      if (isset($input['server_cert']) && !empty($input['server_cert'])
-          && (!empty($input['server_ssl']) || !empty($input['server_tls']))) {
+      if (isset($input['server_cert']) && !empty($input['server_cert'])) {
          $out .= $input['server_cert'];
       }
       if (isset($input['server_tls']) && !empty($input['server_tls'])) {
@@ -2428,6 +2442,25 @@ class Toolbox {
       if (!$DB->runFile(GLPI_ROOT ."/install/mysql/glpi-empty.sql")) {
          echo "Errors occurred inserting default database";
       } else {
+         //dataset
+         Session::loadLanguage($lang, false); // Load default language locales to translate empty data
+         $tables = require_once(__DIR__ . '/../install/empty_data.php');
+         Session::loadLanguage('', false); // Load back session language
+
+         foreach ($tables as $table => $data) {
+             $stmt = $DB->prepare($DB->buildInsert($table, $data[0]));
+            foreach ($data as $row) {
+               try {
+                  $stmt->execute($row);
+               } catch (\Exception $e) {
+                   $msg = "In table $table";
+                   $msg .= print_r($row, true);
+                   $msg .= "\n".$e->getMessage();
+                   throw new \RuntimeException($msg);
+               }
+            }
+         }
+
          // update default language
          Config::setConfigurationValues(
             'core',
@@ -2437,11 +2470,6 @@ class Toolbox {
                'dbversion'     => GLPI_SCHEMA_VERSION,
                'use_timezones' => $DB->areTimezonesAvailable()
             ]
-         );
-         $DB->updateOrDie(
-            'glpi_users', [
-               'language' => 'NULL'
-            ], [0], "4203"
          );
 
          if (defined('GLPI_SYSTEM_CRON')) {
@@ -2764,11 +2792,18 @@ class Toolbox {
                      }
 
                      // replace image
-                     $new_image =  Html::convertTagFromRichTextToImageTag($image['tag'],
-                                                                          $width, $height,
-                                                                          true, $itil_url_param);
-                     $content_text = preg_replace(
-                        $regex,
+                     $new_image =  Html::getImageHtmlTagForDocument(
+                        $id,
+                        $width,
+                        $height,
+                        true,
+                        $itil_url_param
+                     );
+                     if (empty($new_image)) {
+                        $new_image = '#'.$image['tag'].'#';
+                     }
+                     $content_text = str_replace(
+                        $match_img,
                         $new_image,
                         Html::entity_decode_deep($content_text)
                      );
@@ -3140,5 +3175,84 @@ class Toolbox {
 
       global $CONTAINER;
       return $CONTAINER->get('application_cache');
+   }
+
+   /**
+    * Save a picture and return destination filepath.
+    * /!\ This method is made to handle uploaded files and removes the source file filesystem.
+    *
+    * @param string|null $src          Source path of the picture
+    * @param string      $uniq_prefix  Unique prefix that can be used to improve uniqueness of destination filename
+    *
+    * @return boolean|string      Destination filepath, relative to GLPI_PICTURE_DIR, or false on failure
+    *
+    * @since 9.5.0
+    */
+   static public function savePicture($src, $uniq_prefix = null) {
+      if (!Document::isImage($src)) {
+         return false;
+      }
+      $filename     = uniqid($uniq_prefix);
+      $ext          = pathinfo($src, PATHINFO_EXTENSION);
+      $subdirectory = substr($filename, -2); // subdirectory based on last 2 hex digit
+      $i = 0;
+      do {
+         // Iterate on possible suffix while dest exists.
+         // This case will almost never exists as dest is based on an unique id.
+         $dest = GLPI_PICTURE_DIR
+            . '/' . $subdirectory
+            . '/' . $filename . ($i > 0 ? '_' . $i : '') . '.' . $ext;
+         $i++;
+      } while (file_exists($dest));
+      if (!is_dir(GLPI_PICTURE_DIR . '/' . $subdirectory) && !mkdir(GLPI_PICTURE_DIR . '/' . $subdirectory)) {
+         return false;
+      }
+      if (!rename($src, $dest)) {
+         return false;
+      }
+      return substr($dest, strlen(GLPI_PICTURE_DIR . '/')); // Return dest relative to GLPI_PICTURE_DIR
+   }
+
+   /**
+    * Delete a picture.
+    *
+    * @param string $path
+    *
+    * @return boolean
+    *
+    * @since 9.5.0
+    */
+   static function deletePicture($path) {
+      $fullpath = GLPI_PICTURE_DIR . '/' . $path;
+      if (!file_exists($fullpath)) {
+         return false;
+      }
+      $fullpath = realpath($fullpath);
+      if (!Toolbox::startsWith($fullpath, realpath(GLPI_PICTURE_DIR))) {
+         // Prevent deletion of a file ouside pictures directory
+         return false;
+      }
+      return @unlink($fullpath);
+   }
+
+   /**
+    * Get picture URL.
+    *
+    * @param string $path
+    *
+    * @return null|string
+    *
+    * @since 9.5.0
+    */
+   static function getPictureUrl($path) {
+      global $CFG_GLPI;
+
+      $path = Html::cleanInputText($path); // prevent xss
+
+      if (empty($path)) {
+         return null;
+      }
+
+      return $CFG_GLPI["root_doc"] . '/front/document.send.php?file=_pictures/' . $path;
    }
 }

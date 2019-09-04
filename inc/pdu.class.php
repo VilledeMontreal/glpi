@@ -320,6 +320,8 @@ class PDU extends CommonDBTM {
          'datatype'           => 'dropdown'
       ];
 
+      $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
+
       return $tab;
    }
 
@@ -327,7 +329,6 @@ class PDU extends CommonDBTM {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
-            Change_Item::class,
             Pdu_Plug::class,
             PDU_Rack::class,
          ]

@@ -398,9 +398,9 @@ class Budget extends CommonDropdown{
                   $costtable = getTableForItemType($item->getType().'Cost');
 
                   $sum = new QueryExpression(
-                     "SUM(`$costtable`.`actiontime`*`$costtable`.`cost_time`/".HOUR_TIMESTAMP."
-                                          + `$costtable`.`cost_fixed`
-                                          + `$costtable`.`cost_material`) AS value"
+                     "SUM(" . $DB->quoteName("$costtable.actiontime") . " * " . $DB->quoteName("$costtable.cost_time") . "/".HOUR_TIMESTAMP."
+                                          + " . $DB->quoteName("$costtable.cost_fixed") . "
+                                          + " . $DB->quoteName("$costtable.cost_material") . ") AS " . $DB->quoteName('value')
                   );
                   $criteria = [
                      'SELECT'       => [
@@ -720,7 +720,7 @@ class Budget extends CommonDropdown{
                      ]
                   ],
                   'WHERE'        => [
-                     'glpi_contractcosts.budgets_id'  => $budgets_id
+                     'glpi_projectcosts.budgets_id'  => $budgets_id
                   ] + getEntitiesRestrictCriteria($table, 'entities_id'),
                   'GROUPBY'      => [
                      $item->getTable() . '.entities_id'
@@ -733,9 +733,9 @@ class Budget extends CommonDropdown{
             case 'Change' :
                $costtable   = getTableForItemType($item->getType().'Cost');
                $sum = new QueryExpression(
-                  "SUM(`$costtable`.`actiontime`*`$costtable`.`cost_time`/".HOUR_TIMESTAMP."
-                                       + `$costtable`.`cost_fixed`
-                                       + `$costtable`.`cost_material`) AS sumvalue"
+                  "SUM(" . $DB->quoteName("$costtable.actiontime") . " * " . $DB->quoteName("$costtable.cost_time") . "/".HOUR_TIMESTAMP."
+                                       + " . $DB->quoteName("$costtable.cost_fixed") . "
+                                       + " . $DB->quoteName("$costtable.cost_material") . ") AS " . $DB->quoteName('sumvalue')
                );
                $criteria = [
                   'SELECT'       => [
