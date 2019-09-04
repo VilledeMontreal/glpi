@@ -32,22 +32,51 @@
 
 use Glpi\Event;
 
-include ('../inc/includes.php');
-
+include '../inc/includes.php';
 Session ::checkRight('itiltemplate', UPDATE);
 
-$item = new ITILTemplateMandatoryField();
+if (!isset($itiltype)) {
+   Html::displayErrorAndDie("Missing ITIL type");
+}
 
-if (isset($_POST["add"])) {
+if (!isset($fieldtype)) {
+   Html::displayErrorAndDie("Missing field type");
+}
+
+$item_class = $itiltype . 'Template' . $fieldtype . 'Field';
+$item = new $item_class;
+
+if (isset($_POST["add"]) || isset($_POST['massiveaction'])) {
    $item->check(-1, UPDATE, $_POST);
 
    if ($item->add($_POST)) {
-      Event::log($_POST["itiltemplates_id"], "itiltemplate", 4, "maintain",
-                  //TRANS: %s is the user login
-                  sprintf(__('%s adds mandatory field'), $_SESSION["glpiname"]));
+      switch ($fieldtype) {
+         case 'Hidden':
+            $fieldtype_name = __('hidden');
+            break;
+         case 'Mandatory':
+            $fieldtype_name = __('mandatory');
+            break;
+         case 'Predefined':
+            $fieldtype_name = __('predefined');
+            break;
+
+      }
+
+      Event::log(
+         $_POST[$item::$items_id],
+         strtolower($item::$itemtype),
+         4,
+         "maintain",
+         sprintf(
+            //TRANS: %1$s is the user login, %2$s the field type
+            __('%1$s adds %2$s field'),
+            $_SESSION["glpiname"],
+            $fieldtype_name
+         )
+      );
    }
    Html::back();
-
 }
 
 Html::displayErrorAndDie("lost");

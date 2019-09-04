@@ -29,9 +29,8 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
-class DB extends DBmysql {
-   public $dbhost     = '127.0.0.1';
-   public $dbuser     = 'root';
-   public $dbpassword = '';
-   public $dbdefault  = 'glpitest0723';
-}
+
+include ('../inc/includes.php');
+
+$dropdown = new ProblemTemplate();
+include (GLPI_ROOT . "/front/dropdown.common.php");

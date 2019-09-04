@@ -394,7 +394,8 @@ $CFG_GLPI["globalsearch_types"]           = ['Computer', 'Contact', 'Contract',
                                              'Printer', 'Software', 'SoftwareLicense',
                                              'Ticket', 'Problem', 'Change',
                                              'User', 'Group', 'Project', 'Supplier',
-                                             'Budget', 'Certificate', 'Line'];
+                                             'Budget', 'Certificate', 'Line', 'Datacenter',
+                                             'DCRoom', 'Enclosure', 'PDU', 'Rack', 'Cluster'];
 
 // New config options which can be missing during migration
 $CFG_GLPI["number_format"]  = 0;
@@ -463,6 +464,8 @@ $CFG_GLPI["certificate_types"]     = ['Computer',
 $CFG_GLPI["rackable_types"]        = ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Enclosure', 'PDU'];
 
 $CFG_GLPI["cluster_types"]        = ['Computer', 'NetworkEquipment'];
+
+$CFG_GLPI['operatingsystem_types'] = ['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer'];
 
 $CFG_GLPI['javascript'] = [
    'central'   => [

@@ -68,13 +68,15 @@ abstract class API extends CommonGLPI {
    /**
     * Generic messages
     *
+    * @since 9.1
+    *
     * @param mixed   $response          string message or array of data to send
-    * @param integer $code              http code
+    * @param integer $httpcode          http code (see : https://en.wikipedia.org/wiki/List_of_HTTP_status_codes)
     * @param array   $additionalheaders headers to send with http response (must be an array(key => value))
     *
     * @return void
     */
-   abstract protected function returnResponse($response, $code, $additionalheaders);
+   abstract protected function returnResponse($response, $httpcode = 200, $additionalheaders = []);
 
    /**
     * Upload and validate files from request and append to $this->parameters['input']
@@ -919,7 +921,7 @@ abstract class API extends CommonGLPI {
             $doc_iterator = $DB->request([
                'SELECT'    => [
                   'glpi_documents_items.id AS assocID',
-                  'glpi_documents_items.date_mod AS assocdate',
+                  'glpi_documents_items.date_creation AS assocdate',
                   'glpi_entities.id AS entityID',
                   'glpi_entities.completename AS entity',
                   'glpi_documentcategories.completename AS headings',
@@ -1247,7 +1249,7 @@ abstract class API extends CommonGLPI {
                                              $itemtype::getTable(),
                                              '',
                                              $_SESSION['glpiactiveentities'],
-                                             false,
+                                             $item->maybeRecursive(),
                                              true);
 
          if ($item instanceof SavedSearch) {

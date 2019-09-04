@@ -176,14 +176,18 @@ class APIXmlrpc extends API {
             $range = [0, $_SESSION['glpilist_limit']];
             if (isset($this->parameters['range'])) {
                $range = explode("-", $this->parameters['range']);
-               // fix end range
-               if ($range[1] > $totalcount - 1) {
-                  $range[1] = $totalcount - 1;
-               }
-               if ($range[1] - $range[0] + 1 < $totalcount) {
-                  $code = 206; // partial content
-               }
             }
+
+            // fix end range
+            if ($range[1] > $totalcount - 1) {
+               $range[1] = $totalcount - 1;
+            }
+
+            // trigger partial content return code
+            if ($range[1] - $range[0] + 1 < $totalcount) {
+               $code = 206; // partial content
+            }
+
             $additionalheaders                  = [];
             $additionalheaders["Accept-Range"]  = $this->parameters['itemtype']." ".
                                                   Toolbox::get_max_input_vars();
@@ -281,17 +285,7 @@ class APIXmlrpc extends API {
       return $resource;
    }
 
-   /**
-    * Generic function to send a message and an http code to client
-    *
-    * @since 9.1
-    *
-    * @param mixed   $response          string message or array of data to send
-    * @param integer $httpcode          http code (see : https://en.wikipedia.org/wiki/List_of_HTTP_status_codes)
-    * @param array   $additionalheaders headers to send with http response (must be an array(key => value))
-    *
-    * @return void
-    */
+
    protected function returnResponse($response, $httpcode = 200, $additionalheaders = []) {
       if (empty($httpcode)) {
          $httpcode = 200;

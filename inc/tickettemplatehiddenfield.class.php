@@ -36,6 +36,11 @@ if (!defined('GLPI_ROOT')) {
 
 /// Hidden fields for ticket template class
 /// since version 0.83
-/// @deprecated 9.5.0
 class TicketTemplateHiddenField extends ITILTemplateHiddenField {
+
+   // From CommonDBChild
+   static public $itemtype  = 'TicketTemplate';
+   static public $items_id  = 'tickettemplates_id';
+   static public $itiltype = 'Ticket';
+
 }

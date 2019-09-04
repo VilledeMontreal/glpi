@@ -30,27 +30,17 @@
  * ---------------------------------------------------------------------
  */
 
-use Glpi\Event;
-
-include ('../inc/includes.php');
-
-Session ::checkRight('itiltemplate', UPDATE);
-
-$item = new ITILTemplatePredefinedField();
-
-// Use masiveaction system to manage add value
-if (isset($_POST["massiveaction"])) {
-   $item->check(-1, UPDATE, $_POST);
-   if (isset($_POST['items_tickets_id']) && isset($_POST['add_items_id'])) {
-      $_POST['items_tickets_id'] = $_POST['items_tickets_id']."_".$_POST['add_items_id'];
-   }
-   if ($item->add($_POST)) {
-      Event::log($_POST["itiltemplates_id"], "itiltemplate", 4, "maintain",
-                 //TRANS: %s is the user login
-                 sprintf(__('%s adds predefined field'), $_SESSION["glpiname"]));
-   }
-   Html::back();
-
+if (!defined('GLPI_ROOT')) {
+   die("Sorry. You can't access this file directly");
 }
 
-Html::displayErrorAndDie("lost");
+/// Hidden fields for change template class
+/// since version 0.83
+class ChangeTemplateHiddenField extends ITILTemplateHiddenField {
+
+   // From CommonDBChild
+   static public $itemtype  = 'ChangeTemplate';
+   static public $items_id  = 'changetemplates_id';
+   static public $itiltype = 'Change';
+
+}

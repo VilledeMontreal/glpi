@@ -53,7 +53,7 @@ final class DbUtils {
       if (!Toolbox::startsWith($table, 'glpi_')) {
          return "";
       }
-      return str_replace("glpi_", "", $table)."_id";
+      return substr($table, 5)."_id";
    }
 
 
@@ -261,19 +261,25 @@ final class DbUtils {
 
          $itemtype = $prefix.$table;
          // Get real existence of itemtype
-         if (($item = $this->getItemForItemtype($itemtype))) {
-            $itemtype                                   = get_class($item);
-            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-            return $itemtype;
+         if (class_exists($itemtype)) {
+            $item_class = new ReflectionClass($itemtype);
+            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
+               $itemtype                                   = get_class($item);
+               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+               return $itemtype;
+            }
          }
          // Namespaced item
          $itemtype = $pref2 . str_replace('_', '\\', $table);
-         if (($item = $this->getItemForItemtype($itemtype))) {
-            $itemtype                                   = get_class($item);
-            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-            return $itemtype;
+         if (class_exists($itemtype)) {
+            $item_class = new ReflectionClass($itemtype);
+            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
+               $itemtype                                   = get_class($item);
+               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+               return $itemtype;
+            }
          }
          return "UNKNOWN";
       }
@@ -672,7 +678,7 @@ final class DbUtils {
    public function getSonsOf($table, $IDf) {
       global $DB, $GLPI_CACHE;
 
-      $ckey = $table . '_sons_cache_' . $IDf;
+      $ckey = 'sons_cache_' . md5($table . $IDf);
       $sons = false;
 
       if (Toolbox::useCache()) {
@@ -779,11 +785,11 @@ final class DbUtils {
    public function getAncestorsOf($table, $items_id) {
       global $DB, $GLPI_CACHE;
 
-      $ckey = $table . '_ancestors_cache_';
+      $ckey = 'ancestors_cache_';
       if (is_array($items_id)) {
-         $ckey .= md5(implode('|', $items_id));
+         $ckey .= md5($table . implode('|', $items_id));
       } else {
-         $ckey .= $items_id;
+         $ckey .= md5($table . $items_id);
       }
       $ancestors = [];
 

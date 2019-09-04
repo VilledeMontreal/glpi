@@ -29,9 +29,7 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
-class DB extends DBmysql {
-   public $dbhost     = 'localhost';
-   public $dbuser     = 'root';
-   public $dbpassword = '';
-   public $dbdefault  = 'glpitest0723';
-}
+
+$itiltype = 'Problem';
+$fieldtype = 'Predefined';
+include __DIR__ . '/itiltemplatefield.form.php';

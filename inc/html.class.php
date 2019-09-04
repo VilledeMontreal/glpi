@@ -1352,9 +1352,14 @@ class Html {
 
       // Custom CSS for active entity
       $entity = new Entity();
-      if ($entity->getFromDB($_SESSION['glpiactive_entity'])) {
-         echo $entity->getCustomCssTag();
+      if (isset($_SESSION['glpiactive_entity'])) {
+         // Apply active entity styles
+         $entity->getFromDB($_SESSION['glpiactive_entity']);
+      } else {
+         // Apply root entity styles
+         $entity->getFromDB('0');
       }
+      echo $entity->getCustomCssTag();
 
       // AJAX library
       echo Html::script('public/lib/base.js');
@@ -1558,17 +1563,19 @@ class Html {
       // Body
       echo "<body class='$body_class'>";
 
+      Html::displayImpersonateBanner();
+
       echo "<div id='header'>";
-      echo "<div id='header_top'>";
+      echo "<header role='banner' id='header_top'>";
       echo "<div id='c_logo'>";
-      echo Html::link('', $CFG_GLPI["root_doc"]."/front/central.php",
-                      ['accesskey' => '1',
-                            'title'     => __('Home')]);
+      echo "<a href='" . $CFG_GLPI["root_doc"] . "/front/central.php'
+               accesskey='1'
+               title='" . __s('Home') . "'><span class='sr-only'>" . __s('Home') . "</span></a>";
       echo "</div>";
 
       // Preferences and logout link
       self::displayTopMenu(true);
-      echo "</div>"; // header_top
+      echo "</header>"; // header_top
 
       //Main menu
       self::displayMainMenu(
@@ -1589,7 +1596,7 @@ class Html {
            "<span class='sr-only'>Top of the page</span>".
            "</a></span>";
 
-      echo "<div id='page' >";
+      echo "<main role='main' id='page'>";
 
       if ($DB->isSlave()
           && !$DB->first_connection) {
@@ -1622,10 +1629,10 @@ class Html {
          return;
       }
       $FOOTER_LOADED = true;
-      echo "</div>"; // fin de la div id ='page' initi??e dans la fonction header
+      echo "</main>"; // end of "main role='main'"
 
-      echo "<div id='footer' >";
-      echo "<table><tr>";
+      echo "<footer role='contentinfo' id='footer'>";
+      echo "<table role='presentation'><tr>";
 
       if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) { // mode debug
          echo "<td class='left'><span class='copyright'>";
@@ -1654,13 +1661,7 @@ class Html {
          echo "</td>";
       }
       echo "<td class='right'>" . self::getCopyrightMessage() . "</td>";
-      echo "</tr></table></div>";
-
-      if ($_SESSION['glpi_use_mode'] == Session::TRANSLATION_MODE) { // debug mode traduction
-         echo "<div id='debug-float'>";
-         echo "<a href='#see_debug'>GLPI TRANSLATION MODE</a>";
-         echo "</div>";
-      }
+      echo "</tr></table></footer>";
 
       if ($CFG_GLPI['maintenance_mode']) { // mode maintenance
          echo "<div id='maintenance-float'>";
@@ -1722,7 +1723,7 @@ class Html {
 
       // Main Headline
       echo "<div id='header'>";
-      echo "<div id='header_top'>";
+      echo "<header role='banner' id='header_top'>";
 
       echo "<div id='c_logo'>";
       echo "<a href='".$CFG_GLPI["root_doc"]."/' accesskey='1' title=\"".__s('Home')."\">".
@@ -1733,7 +1734,7 @@ class Html {
       echo "<div class='sep'></div>";
       echo "</div>";
 
-      echo "</div>"; // end #header_top
+      echo "</header>"; // end #header_top
 
       //-- Le menu principal --
       echo "<div id='c_menu'>";
@@ -1793,9 +1794,11 @@ class Html {
       }
       echo "<body class='$body_class'>";
 
+      Html::displayImpersonateBanner();
+
       // Main Headline
       echo "<div id='header'>";
-      echo "<div id='header_top'>";
+      echo "<header role='banner' id='header_top'>";
 
       echo "<div id='c_logo'>";
       echo "<a href='".$CFG_GLPI["root_doc"]."/front/helpdesk.public.php' accesskey='1' title=\"".
@@ -1804,13 +1807,13 @@ class Html {
 
       //Preferences and logout link
       self::displayTopMenu(false);
-      echo "</div>"; // header_top
+      echo "</header>"; // header_top
 
       //Main menu
       self::displayMainMenu(false);
 
       echo "</div>"; // fin header
-      echo "<div id='page' >";
+      echo "<main role='main' id='page'>";
 
       // call static function callcron() every 5min
       CronTask::callCron();
@@ -1822,7 +1825,7 @@ class Html {
     * Print footer for help page
    **/
    static function helpFooter() {
-      global $CFG_GLPI, $FOOTER_LOADED;
+      global $FOOTER_LOADED;
 
       // Print foot for help page
       if ($FOOTER_LOADED) {
@@ -1830,23 +1833,12 @@ class Html {
       }
       $FOOTER_LOADED = true;
 
-      echo "</div>"; // fin de la div id ='page' initi??e dans la fonction header
+      echo "</main>"; // end of "main role='main'"
 
-      echo "<div id='footer'>";
-      echo "<table width='100%'><tr><td class='right'>" . self::getCopyrightMessage();
-      echo "</td></tr></table></div>";
+      echo "<footer role='contentinfo' id='footer'>";
+      echo "<table role='presentation' width='100%'><tr><td class='right'>" . self::getCopyrightMessage();
+      echo "</td></tr></table></footer>";
 
-      if ($_SESSION['glpi_use_mode'] == Session::TRANSLATION_MODE) { // debug mode traduction
-         echo "<div id='debug-float'>";
-         echo "<a href='#see_debug'>GLPI TRANSLATION MODE</a>";
-         echo "</div>";
-      }
-
-      if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) { // mode debug
-         echo "<div id='debug-float'>";
-         echo "<a href='#see_debug'>GLPI DEBUG MODE</a>";
-         echo "</div>";
-      }
       self::displayDebugInfos();
       echo "</body></html>";
       self::loadJavascript();
@@ -1886,7 +1878,7 @@ class Html {
 
       // Body with configured stuff
       echo "<body>";
-      echo "<div id='page'>";
+      echo "<main role='main' id='page'>";
       echo "<br><br>";
       echo "<div id='bloc'>";
       echo "<div id='logo_bloc'></div>";
@@ -1906,7 +1898,7 @@ class Html {
       $FOOTER_LOADED = true;
 
       if (!isCommandLine()) {
-         echo "</div></div>";
+         echo "</div></main>";
 
          echo "<div id='footer-login'>" . self::getCopyrightMessage() . "</div>";
          self::loadJavascript();
@@ -2862,7 +2854,7 @@ class Html {
       $js .= "$( '#showdate".$p['rand']."' ).datetimepicker({
                   altField: '#hiddendate".$p['rand']."',
                   altFormat: 'yy-mm-dd',
-                  altTimeFormat: 'HH:mm',
+                  altTimeFormat: 'HH:mm:ss',
                   pickerTimeFormat : 'HH:mm',
                   altFieldTimeOnly: false,
                   firstDay: 1,
@@ -6219,29 +6211,39 @@ class Html {
       echo "</a>";
       echo "</li>\n";
 
+      $username = '';
+      $title = __s('My settings');
+      if (Session::getLoginUserID()) {
+         $username = formatUserName(0, $_SESSION["glpiname"], $_SESSION["glpirealname"],
+                                    $_SESSION["glpifirstname"], 0, 20);
+         $title = sprintf(
+            __s('%1$s - %2$s'),
+            __s('My settings'),
+            $username
+         );
+      }
       echo "<li id='preferences_link'><a href='".$CFG_GLPI["root_doc"]."/front/preference.php' title=\"".
-                 __s('My settings')."\" class='fa fa-cog'>";
+                 $title."\" class='fa fa-cog'>";
       echo "<span class='sr-only'>" . __s('My settings') . "</span>";
 
       // check user id : header used for display messages when session logout
       if (Session::getLoginUserID()) {
-         echo "<span id='myname'>";
-         echo formatUserName (0, $_SESSION["glpiname"], $_SESSION["glpirealname"],
-                              $_SESSION["glpifirstname"], 0, 20);
-         echo "</span>";
+         echo "<span id='myname'>{$username}</span>";
       }
       echo "</a></li>";
 
       if (Config::canUpdate()) {
-         $current_mode = $_SESSION['glpi_use_mode'];
-         $class = 'debug' . ($current_mode == Session::DEBUG_MODE ? 'on' : 'off');
-         $title = $current_mode == Session::DEBUG_MODE ?
-            __('Debug mode enabled') :
-            __('Debug mode disabled');
+         $is_debug_active = $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE;
+         $class = 'debug' . ($is_debug_active ? 'on' : 'off');
+         $title = sprintf(
+            __s('%1$s - %2$s'),
+            __s('Change mode'),
+            $is_debug_active ? __s('Debug mode enabled') : __s('Debug mode disabled')
+         );
          echo "<li id='debug_mode'>";
          echo "<a href='{$CFG_GLPI['root_doc']}/ajax/switchdebug.php' class='fa fa-bug $class'
                 title='$title'>";
-         echo "<span class='sr-only'>" . __('Change mode')  . "</span>";
+         echo "<span class='sr-only'>" . __s('Change mode') . "</span>";
          echo "</a>";
          echo "</li>";
       }
@@ -6293,10 +6295,12 @@ class Html {
       if ($full === true) {
          /// Search engine
          if ($CFG_GLPI['allow_search_global']) {
-            echo "<form method='get' action='".$CFG_GLPI["root_doc"]."/front/search.php'>\n";
-            echo "<span id='champRecherche'><input size='15' type='text' name='globalsearch'
-                                          placeholder='". __s('Search')."'>";
-            echo "<button type='submit' name='globalsearchglass'><i class='fa fa-search'></i></button>";
+            echo "<form role='search' method='get' action='".$CFG_GLPI["root_doc"]."/front/search.php'>\n";
+            echo "<span id='champRecherche'>";
+            echo "<input size='15' type='search' name='globalsearch' placeholder='". __s('Search')."' aria-labelledby='globalsearchglass'>";
+            echo "<button type='submit' name='globalsearchglass' id='globalsearchglass'>";
+            echo "<i class='fa fa-search'></i><span class='sr-only'>". __s('Search')."</span>";
+            echo "</button>";
             echo "</span>";
             Html::closeForm();
          }
@@ -6847,6 +6851,28 @@ class Html {
     * @return string
     */
    public static function getScssCompileDir() {
-      return GLPI_ROOT . '/css/compiled';
+      return GLPI_ROOT . '/css_compiled';
+   }
+
+   /**
+    * Display impersonate banner if feature is currently used.
+    *
+    * @return void
+    */
+   public static function displayImpersonateBanner() {
+
+      if (!Session::isImpersonateActive()) {
+         return;
+      }
+
+      echo '<div class="banner-impersonate">';
+      echo '<form name="form" method="post" action="' . User::getFormURL() . '">';
+      echo sprintf(__('You are impersonating %s.'), $_SESSION['glpiname']);
+      echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+      echo '<button type="submit" name="impersonate" class="btn-linkstyled" value="0">';
+      echo __s('Stop impersonating');
+      echo '</button>';
+      echo '</form>';
+      echo '</div>';
    }
 }

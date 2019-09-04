@@ -11,12 +11,19 @@ The present file will list all changes made to the project; according to the
 - Mails collected from suppliers can be marked as private on an entity basis.
 - Ability to add custom CSS in entity configuration.
 - CLI commands to enable and disable maintenance mode.
+- Operating system links on Monitors, Peripherals, Phones and Printers.
+- Add datacenter items to global search
+- Project task search options for Projects
 
 ### Changed
 
 - `scripts/migrations/racks_plugin.php` has been replaced by `glpi:migration:racks_plugin_to_core` command available using `bin/console`
 
 ### API changes
+
+#### Changes
+
+- `DBmysqlIterator::handleOrderClause()` supports QueryExpressions
 
 #### Deprecated
 
@@ -36,6 +43,7 @@ The present file will list all changes made to the project; according to the
 - Usage of `$order` parameter in `getAllDataFromTable()` (`DbUtils::getAllDataFromTable()`)
 - All `TicketTemplate` classes has been renamed to `ITILTemplate`
 - `Ticket::getTicketTemplateToUse()` renamed to `Ticket::getITILTemplateToUse()`
+- `TicketTemplate::getFromDBWithDatas()` renamed to `Ticket::getFromDBWithData()` (inherited from `ITILTemplate`)
 
 #### Removed
 

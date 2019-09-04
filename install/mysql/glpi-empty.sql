@@ -2752,10 +2752,12 @@ CREATE TABLE `glpi_documents_items` (
   `date_mod` timestamp NULL DEFAULT NULL,
   `users_id` int(11) DEFAULT '0',
   `timeline_position` tinyint(1) NOT NULL DEFAULT '0',
+  `date_creation` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unicity` (`documents_id`,`itemtype`,`items_id`),
   KEY `item` (`itemtype`,`items_id`,`entities_id`,`is_recursive`),
-  KEY `users_id` (`users_id`)
+  KEY `users_id` (`users_id`),
+  KEY `date_creation` (`date_creation`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 
@@ -2947,7 +2949,7 @@ CREATE TABLE `glpi_entities` (
   `autofill_buy_date` varchar(255) COLLATE utf8_unicode_ci NOT NULL DEFAULT '-2',
   `autofill_delivery_date` varchar(255) COLLATE utf8_unicode_ci NOT NULL DEFAULT '-2',
   `autofill_order_date` varchar(255) COLLATE utf8_unicode_ci NOT NULL DEFAULT '-2',
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '-2',
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '-2',
   `entities_id_software` int(11) NOT NULL DEFAULT '-2',
   `default_contract_alert` int(11) NOT NULL DEFAULT '-2',
   `default_infocom_alert` int(11) NOT NULL DEFAULT '-2',
@@ -3995,8 +3997,10 @@ CREATE TABLE `glpi_itilcategories` (
   `ancestors_cache` longtext COLLATE utf8_unicode_ci,
   `sons_cache` longtext COLLATE utf8_unicode_ci,
   `is_helpdeskvisible` tinyint(1) NOT NULL DEFAULT '1',
-  `itiltemplates_id_incident` int(11) NOT NULL DEFAULT '0',
-  `itiltemplates_id_demand` int(11) NOT NULL DEFAULT '0',
+  `tickettemplates_id_incident` int(11) NOT NULL DEFAULT '0',
+  `tickettemplates_id_demand` int(11) NOT NULL DEFAULT '0',
+  `changetemplates_id` int(11) NOT NULL DEFAULT '0',
+  `problemtemplates_id` int(11) NOT NULL DEFAULT '0',
   `is_incident` int(11) NOT NULL DEFAULT '1',
   `is_request` int(11) NOT NULL DEFAULT '1',
   `is_problem` int(11) NOT NULL DEFAULT '1',
@@ -4012,8 +4016,10 @@ CREATE TABLE `glpi_itilcategories` (
   KEY `groups_id` (`groups_id`),
   KEY `is_helpdeskvisible` (`is_helpdeskvisible`),
   KEY `itilcategories_id` (`itilcategories_id`),
-  KEY `itiltemplates_id_incident` (`itiltemplates_id_incident`),
-  KEY `itiltemplates_id_demand` (`itiltemplates_id_demand`),
+  KEY `tickettemplates_id_incident` (`tickettemplates_id_incident`),
+  KEY `tickettemplates_id_demand` (`tickettemplates_id_demand`),
+  KEY `changetemplates_id` (`changetemplates_id`),
+  KEY `problemtemplates_id` (`problemtemplates_id`),
   KEY `is_incident` (`is_incident`),
   KEY `is_request` (`is_request`),
   KEY `is_problem` (`is_problem`),
@@ -7145,7 +7151,7 @@ CREATE TABLE `glpi_profiles` (
   `comment` text COLLATE utf8_unicode_ci,
   `problem_status` text COLLATE utf8_unicode_ci COMMENT 'json encoded array of from/dest allowed status change',
   `create_ticket_on_login` tinyint(1) NOT NULL DEFAULT '0',
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '0',
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '0',
   `change_status` text COLLATE utf8_unicode_ci COMMENT 'json encoded array of from/dest allowed status change',
   `date_creation` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -8538,7 +8544,7 @@ CREATE TABLE `glpi_ticketrecurrents` (
   `entities_id` int(11) NOT NULL DEFAULT '0',
   `is_recursive` tinyint(1) NOT NULL DEFAULT '0',
   `is_active` tinyint(1) NOT NULL DEFAULT '0',
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '0',
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '0',
   `begin_date` timestamp NULL DEFAULT NULL,
   `periodicity` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
   `create_before` int(11) NOT NULL DEFAULT '0',
@@ -8549,7 +8555,7 @@ CREATE TABLE `glpi_ticketrecurrents` (
   KEY `entities_id` (`entities_id`),
   KEY `is_recursive` (`is_recursive`),
   KEY `is_active` (`is_active`),
-  KEY `itiltemplates_id` (`itiltemplates_id`),
+  KEY `tickettemplates_id` (`tickettemplates_id`),
   KEY `next_creation_date` (`next_creation_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -8717,48 +8723,125 @@ CREATE TABLE `glpi_tickettasks` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 
-### Dump table glpi_tiltemplatehiddenfields
+### Dump table glpi_tickettemplatehiddenfields
 
-DROP TABLE IF EXISTS `glpi_itiltemplatehiddenfields`;
-CREATE TABLE `glpi_itiltemplatehiddenfields` (
+DROP TABLE IF EXISTS `glpi_tickettemplatehiddenfields`;
+CREATE TABLE `glpi_tickettemplatehiddenfields` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '0',
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '0',
   `num` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unicity` (`itiltemplates_id`,`num`)
+  UNIQUE KEY `unicity` (`tickettemplates_id`,`num`),
+  KEY `tickettemplates_id` (`tickettemplates_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
+### Dump table glpi_changeemplatehiddenfields
 
-### Dump table glpi_itiltemplatemandatoryfields
-
-DROP TABLE IF EXISTS `glpi_itiltemplatemandatoryfields`;
-CREATE TABLE `glpi_itiltemplatemandatoryfields` (
+DROP TABLE IF EXISTS `glpi_changetemplatehiddenfields`;
+CREATE TABLE `glpi_changetemplatehiddenfields` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '0',
+  `changetemplates_id` int(11) NOT NULL DEFAULT '0',
   `num` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `unicity` (`itiltemplates_id`,`num`)
+  UNIQUE KEY `unicity` (`changetemplates_id`,`num`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+### Dump table glpi_problemtemplatehiddenfields
+
+DROP TABLE IF EXISTS `glpi_problemtemplatehiddenfields`;
+CREATE TABLE `glpi_problemtemplatehiddenfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `problemtemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unicity` (`problemtemplates_id`,`num`),
+  KEY `problemtemplates_id` (`problemtemplates_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+### Dump table glpi_tickettemplatemandatoryfields
+
+DROP TABLE IF EXISTS `glpi_tickettemplatemandatoryfields`;
+CREATE TABLE `glpi_tickettemplatemandatoryfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unicity` (`tickettemplates_id`,`num`),
+  KEY `tickettemplates_id` (`tickettemplates_id`)
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
-INSERT INTO `glpi_itiltemplatemandatoryfields` VALUES ('1','1','21');
+INSERT INTO `glpi_tickettemplatemandatoryfields` VALUES ('1','1','21');
 
-### Dump table glpi_itiltemplatepredefinedfields
+### Dump table glpi_changetemplatemandatoryfields
 
-DROP TABLE IF EXISTS `glpi_itiltemplatepredefinedfields`;
-CREATE TABLE `glpi_itiltemplatepredefinedfields` (
+DROP TABLE IF EXISTS `glpi_changetemplatemandatoryfields`;
+CREATE TABLE `glpi_changetemplatemandatoryfields` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `itiltemplates_id` int(11) NOT NULL DEFAULT '0',
+  `changetemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unicity` (`changetemplates_id`,`num`),
+  KEY `changetemplates_id` (`changetemplates_id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `glpi_changetemplatemandatoryfields` VALUES ('1','1','21');
+
+### Dump table glpi_problemtemplatemandatoryfields
+
+DROP TABLE IF EXISTS `glpi_problemtemplatemandatoryfields`;
+CREATE TABLE `glpi_problemtemplatemandatoryfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `problemtemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unicity` (`problemtemplates_id`,`num`),
+  KEY `problemtemplates_id` (`problemtemplates_id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `glpi_problemtemplatemandatoryfields` VALUES ('1','1','21');
+
+### Dump table glpi_tickettemplatepredefinedfields
+
+DROP TABLE IF EXISTS `glpi_tickettemplatepredefinedfields`;
+CREATE TABLE `glpi_tickettemplatepredefinedfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tickettemplates_id` int(11) NOT NULL DEFAULT '0',
   `num` int(11) NOT NULL DEFAULT '0',
   `value` text COLLATE utf8_unicode_ci,
   PRIMARY KEY (`id`),
-  KEY `itiltemplates_id_id_num` (`itiltemplates_id`,`num`)
+  KEY `tickettemplates_id` (`tickettemplates_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+### Dump table glpi_changetemplatepredefinedfields
+
+DROP TABLE IF EXISTS `glpi_changetemplatepredefinedfields`;
+CREATE TABLE `glpi_changetemplatepredefinedfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `changetemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  `value` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`id`),
+  KEY `changetemplates_id` (`changetemplates_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+### Dump table glpi_problemtemplatepredefinedfields
+
+DROP TABLE IF EXISTS `glpi_problemtemplatepredefinedfields`;
+CREATE TABLE `glpi_problemtemplatepredefinedfields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `problemtemplates_id` int(11) NOT NULL DEFAULT '0',
+  `num` int(11) NOT NULL DEFAULT '0',
+  `value` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`id`),
+  KEY `problemtemplates_id` (`problemtemplates_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 
-### Dump table glpi_itiltemplates
 
-DROP TABLE IF EXISTS `glpi_itiltemplates`;
-CREATE TABLE `glpi_itiltemplates` (
+### Dump table glpi_tickettemplates
+
+DROP TABLE IF EXISTS `glpi_tickettemplates`;
+CREATE TABLE `glpi_tickettemplates` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
   `entities_id` int(11) NOT NULL DEFAULT '0',
@@ -8770,7 +8853,41 @@ CREATE TABLE `glpi_itiltemplates` (
   KEY `is_recursive` (`is_recursive`)
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
-INSERT INTO `glpi_itiltemplates` VALUES ('1','Default','0','1',NULL);
+INSERT INTO `glpi_tickettemplates` VALUES ('1','Default','0','1',NULL);
+
+### Dump table glpi_changetemplates
+
+DROP TABLE IF EXISTS `glpi_changetemplates`;
+CREATE TABLE `glpi_changetemplates` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `entities_id` int(11) NOT NULL DEFAULT '0',
+  `is_recursive` tinyint(1) NOT NULL DEFAULT '0',
+  `comment` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`id`),
+  KEY `name` (`name`),
+  KEY `entities_id` (`entities_id`),
+  KEY `is_recursive` (`is_recursive`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `glpi_changetemplates` VALUES ('1','Default','0','1',NULL);
+
+### Dump table glpi_problemtemplates
+
+DROP TABLE IF EXISTS `glpi_problemtemplates`;
+CREATE TABLE `glpi_problemtemplates` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `entities_id` int(11) NOT NULL DEFAULT '0',
+  `is_recursive` tinyint(1) NOT NULL DEFAULT '0',
+  `comment` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`id`),
+  KEY `name` (`name`),
+  KEY `entities_id` (`entities_id`),
+  KEY `is_recursive` (`is_recursive`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `glpi_problemtemplates` VALUES ('1','Default','0','1',NULL);
 
 ### Dump table glpi_ticketvalidations
 
@@ -8986,12 +9103,12 @@ CREATE TABLE `glpi_users` (
 
 INSERT INTO `glpi_users` (`id`, `name`, `password`, `list_limit`, `authtype`, `last_login`, `date_mod`)
    VALUES ('2','glpi','$2y$10$rXXzbc2ShaiCldwkw4AZL.n.9QSH7c0c9XJAyyjrbL9BwmWditAYm','20','1','2014-06-18 08:02:24','2014-06-18 08:02:24');
-INSERT INTO `glpi_users` (`id`, `name`, `password`, `language`, `list_limit`, `authtype`)
-   VALUES ('3','post-only','$2y$10$dTMar1F3ef5X/H1IjX9gYOjQWBR1K4bERGf4/oTPxFtJE/c3vXILm','en_GB','20','1');
-INSERT INTO `glpi_users` (`id`, `name`, `password`, `language`, `list_limit`, `authtype`)
-   VALUES ('4','tech','$2y$10$.xEgErizkp6Az0z.DHyoeOoenuh0RcsX4JapBk2JMD6VI17KtB1lO','en_GB','20','1');
-INSERT INTO `glpi_users` (`id`, `name`, `password`, `language`, `list_limit`, `authtype`)
-   VALUES ('5','normal','$2y$10$Z6doq4zVHkSPZFbPeXTCluN1Q/r0ryZ3ZsSJncJqkN3.8cRiN0NV.','en_GB','20','1');
+INSERT INTO `glpi_users` (`id`, `name`, `password`, `list_limit`, `authtype`)
+   VALUES ('3','post-only','$2y$10$dTMar1F3ef5X/H1IjX9gYOjQWBR1K4bERGf4/oTPxFtJE/c3vXILm','20','1');
+INSERT INTO `glpi_users` (`id`, `name`, `password`, `list_limit`, `authtype`)
+   VALUES ('4','tech','$2y$10$.xEgErizkp6Az0z.DHyoeOoenuh0RcsX4JapBk2JMD6VI17KtB1lO','20','1');
+INSERT INTO `glpi_users` (`id`, `name`, `password`, `list_limit`, `authtype`)
+   VALUES ('5','normal','$2y$10$Z6doq4zVHkSPZFbPeXTCluN1Q/r0ryZ3ZsSJncJqkN3.8cRiN0NV.','20','1');
 
 ### Dump table glpi_usertitles
 

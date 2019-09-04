@@ -511,6 +511,36 @@ class Search {
       return $data;
    }
 
+   /**
+    * Search for a "usehaving" field in the searchOption of for each criteria
+    *
+    * @param $criterias List of criterias
+    * @param $searchopt List of searchOptions
+    *
+    * @return bool
+    */
+   private static function hasHaving($criterias, $searchopt) {
+      foreach ($criterias as $criteria) {
+         // Search recursively for groups
+         if (isset($criteria['criteria'])) {
+            $hasHaving = self::hasHaving($criteria['criteria'], $searchopt);
+            if ($hasHaving) {
+               return true;
+            }
+            continue;
+         }
+
+         if (isset($criteria['field'])
+            && isset($searchopt[$criteria['field']]["usehaving"])
+            || (isset($criteria['meta']) && $criteria['meta'] && $criteria['link'] == "AND NOT")
+         ) {
+            return true;
+         }
+      }
+
+      return false;
+   }
+
 
    /**
     * Construct SQL request depending of search parameters
@@ -663,6 +693,25 @@ class Search {
       if (count($data['search']['criteria'])) {
          $WHERE  = self::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt);
          $HAVING = self::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt, true);
+
+         // Check if a criteria was meant to be used as a having field
+         $hasHaving = self::hasHaving($data['search']['criteria'], $searchopt);
+         if ($hasHaving) {
+            $HAVING = $WHERE;
+            $WHERE = "";
+
+            // Each field specified in the HAVING must be in the SELECT aswell
+            $regex = "/`glpi_\w*?`\.`.*?`/";
+            $matches = [];
+            preg_match_all($regex, $HAVING, $matches);
+            if (isset($matches[0])) {
+               foreach ($matches[0] as $havingElement) {
+                  if (strpos($SELECT, $havingElement) === false) {
+                     $SELECT .= " $havingElement, ";
+                  }
+               }
+            }
+         }
 
          // if criteria (with meta flag) need additional join/from sql
          self::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $SELECT, $FROM, $already_link_tables, $data);
@@ -987,15 +1036,18 @@ class Search {
             } else if (isset($searchopt[$criterion['field']]["usehaving"])
                        || ($meta && "AND NOT" === $criterion['link'])) {
                if (!$is_having) {
-                  // the having part will be managed in a second pass
+                  // Add the having in the where as the whole WHERE will be
+                  // converted into an HAVING later
+                  $new_where = self::addHaving(
+                     $LINK,
+                     $NOT,
+                     $itemtype,
+                     $criterion['field'],
+                     $criterion['searchtype'],
+                     $criterion['value']
+                  );
+                  $sql .= $new_where;
                   continue;
-               }
-
-               $new_having = self::addHaving($LINK, $NOT, $itemtype,
-                                             $criterion['field'], $criterion['searchtype'],
-                                             $criterion['value']);
-               if ($new_having !== false) {
-                  $sql .= $new_having;
                }
             } else {
                if ($is_having) {
@@ -3590,6 +3642,19 @@ JAVASCRIPT;
             }
             break;
 
+         case "glpi_itilfollowups.content":
+         case "glpi_tickettasks.content":
+         case "glpi_changetasks.content":
+               // force ordering by date desc
+               return " GROUP_CONCAT(DISTINCT CONCAT(IFNULL($tocompute, '".self::NULLVALUE."'),
+                                               '".self::SHORTSEP."',$tocomputeid)
+                                     ORDER BY `$table`.`date` DESC
+                                     SEPARATOR '".self::LONGSEP."')
+                                    AS `".$NAME."`,
+
+                       $ADDITONALFIELDS";
+            break;
+
          default:
             break;
       }
@@ -3910,6 +3975,57 @@ JAVASCRIPT;
             $condition = SavedSearch::addVisibilityRestrict();
             break;
 
+         case 'ITILFollowup':
+            // Filter on is_private
+            $allowed_is_private = [];
+            if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE)) {
+               $allowed_is_private[] = 1;
+            }
+            if (Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPUBLIC)) {
+               $allowed_is_private[] = 0;
+            }
+
+            // If the user can't see public and private
+            if (!count($allowed_is_private)) {
+               $condition = "0 = 1";
+               break;
+            }
+
+            $in = "IN ('" . implode("','", $allowed_is_private) . "')";
+            $condition = "`glpi_itilfollowups`.`is_private` $in ";
+
+            // Now filter on parent item visiblity
+            $condition .= "AND (";
+
+            // Filter for "ticket" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Ticket",
+               'tickets_id',
+               "glpi_tickets_users",
+               "glpi_groups_tickets"
+            );
+            $condition .= "OR ";
+
+            // Filter for "change" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Change",
+               'changes_id',
+               "glpi_changes_users",
+               "glpi_changes_groups"
+            );
+            $condition .= "OR ";
+
+            // Fitler for "problem" parents
+            $condition .= ITILFollowup::buildParentCondition(
+               "Problem",
+               'problems_id',
+               "glpi_problems_users",
+               "glpi_groups_problems"
+            );
+            $condition .= ")";
+
+            break;
+
          default :
             // Plugin can override core definition for its type
             if ($plug = isPluginItemType($itemtype)) {
@@ -3924,7 +4040,6 @@ JAVASCRIPT;
       list($itemtype, $condition) = Plugin::doHookFunction('add_default_where', [$itemtype, $condition]);
       return $condition;
    }
-
 
    /**
     * Generic Function to add where to a request
@@ -5715,13 +5830,10 @@ JAVASCRIPT;
                   }
 
                   $color = $_SESSION['glpiduedateok_color'];
-                  $bar_color = 'green';
                   if ($less_crit < $less_crit_limit) {
                      $color = $_SESSION['glpiduedatecritical_color'];
-                     $bar_color = 'red';
                   } else if ($less_warn < $less_warn_limit) {
                      $color = $_SESSION['glpiduedatewarning_color'];
-                     $bar_color = 'yellow';
                   }
 
                   if (!isset($so['datatype'])) {
@@ -5732,7 +5844,7 @@ JAVASCRIPT;
                      'text'         => Html::convDateTime($data[$ID][0]['name']),
                      'percent'      => $percentage,
                      'percent_text' => $percentage_text,
-                     'color'        => $bar_color
+                     'color'        => $color
                   ];
                }
                break;

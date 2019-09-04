@@ -120,26 +120,6 @@ class Ticket extends CommonITILObject {
 
 
    /**
-    * @see CommonGLPI::getAdditionalMenuOptions()
-    *
-    * @since 0.85
-   **/
-   static function getAdditionalMenuOptions() {
-
-      if (ITILTemplate::canView()) {
-         $menu['ITILTemplate']['title']           = ITILTemplate::getTypeName(Session::getPluralNumber());
-         $menu['ITILTemplate']['page']            = ITILTemplate::getSearchURL(false);
-         $menu['ITILTemplate']['links']['search'] = ITILTemplate::getSearchURL(false);
-         if (ITILTemplate::canCreate()) {
-            $menu['ITILTemplate']['links']['add'] = ITILTemplate::getFormURL(false);
-         }
-         return $menu;
-      }
-      return false;
-   }
-
-
-   /**
     * @see CommonGLPI::getAdditionalMenuContent()
     *
     * @since 0.85
@@ -164,10 +144,7 @@ class Ticket extends CommonITILObject {
    static function getAdditionalMenuLinks() {
       global $CFG_GLPI;
 
-      $links = [];
-      if (ITILTemplate::canView()) {
-         $links['template'] = ITILTemplate::getSearchURL(false);
-      }
+      $links = parent::getAdditionalMenuLinks();
       if (Session::haveRightsOr('ticketvalidation', TicketValidation::getValidateRights())) {
          $opt = [];
          $opt['reset']         = 'reset';
@@ -202,30 +179,18 @@ class Ticket extends CommonITILObject {
 
          $links[$pic_validate] = Ticket::getSearchURL(false) . '?'.Toolbox::append_params($opt, '&amp;');
       }
-      if (count($links)) {
-         return $links;
-      }
-      return false;
-   }
 
-
-   function canAdminActors() {
-
-      if (isset($this->fields['is_deleted']) && $this->fields['is_deleted'] == 1) {
-         return false;
-      }
-      return Session::haveRight(self::$rightname, UPDATE);
+      return $links;
    }
 
 
    function canAssign() {
-
       if (isset($this->fields['is_deleted']) && ($this->fields['is_deleted'] == 1)
           || isset($this->fields['status']) && in_array($this->fields['status'], $this->getClosedStatusArray())
       ) {
          return false;
       }
-      return Session::haveRight(self::$rightname, self::ASSIGN);
+      return Session::haveRight(static::$rightname, self::ASSIGN);
    }
 
 
@@ -946,7 +911,7 @@ class Ticket extends CommonITILObject {
 
 
    function prepareInputForUpdate($input) {
-      global $CFG_GLPI, $DB;
+      global $DB;
 
       // Get ticket : need for comparison
       $this->getFromDB($input['id']);
@@ -1011,113 +976,17 @@ class Ticket extends CommonITILObject {
             unset($input["_itil_assign"]);
          }
       }
-      $check_allowed_fields_for_template = false;
-      $allowed_fields                    = [];
-      if (!Session::isCron()
-          && (!Session::haveRight(self::$rightname, UPDATE)
-            // Closed tickets
-            || in_array($this->fields['status'], $this->getClosedStatusArray()))
-         ) {
 
-         $allowed_fields                    = ['id'];
-         $check_allowed_fields_for_template = true;
-
-         if (in_array($this->fields['status'], $this->getClosedStatusArray())) {
-            $allowed_fields[] = 'status';
-
-            // probably transfer
-            $allowed_fields[] = 'entities_id';
-            $allowed_fields[] = 'itilcategories_id';
-         } else {
-            if ($this->canApprove()
-                || $this->canAssign()
-                || $this->canAssignToMe()
-                || isset($input['_from_assignment'])) {
-                $allowed_fields[] = 'status';
-                $allowed_fields[] = '_accepted';
-            }
-            // for post-only with validate right or validation created by rules
-            if (TicketValidation::canValidate($this->fields['id'])
-                || TicketValidation::canCreate()
-                || isset($input["_rule_process"])) {
-                $allowed_fields[] = 'global_validation';
-            }
-            // Manage assign and steal right
-            if (Session::haveRightsOr(self::$rightname, [self::ASSIGN, self::STEAL])) {
-                $allowed_fields[] = '_itil_assign';
-            }
-
-            // Can only update initial fields if no followup or task already added
-            if ($this->canUpdateItem()) {
-                $allowed_fields[] = 'content';
-                $allowed_fields[] = 'urgency';
-                $allowed_fields[] = 'priority'; // automatic recalculate if user changes urgence
-                $allowed_fields[] = 'itilcategories_id';
-                $allowed_fields[] = 'name';
-                $allowed_fields[] = 'items_id';
-                $allowed_fields[] = '_filename';
-                $allowed_fields[] = '_tag_filename';
-                $allowed_fields[] = '_prefix_filename';
-                $allowed_fields[] = 'takeintoaccount_delay_stat';
-            }
-         }
-
-         foreach ($allowed_fields as $field) {
-            if (isset($input[$field])) {
-               $ret[$field] = $input[$field];
-            }
-         }
-
-         $input = $ret;
-
-         // Only ID return false
-         if (count($input) == 1) {
-            return false;
-         }
+      //must be handled here for tickets. @see CommonITILObject::prepareInputForUpdate()
+      $input = $this->handleTemplateFields($input);
+      if ($input === false) {
+         return false;
       }
 
-      //// check mandatory fields
-      // First get ticket template associated : entity and type/category
       if (isset($input['entities_id'])) {
          $entid = $input['entities_id'];
       } else {
          $entid = $this->fields['entities_id'];
-      }
-
-      if (isset($input['type'])) {
-         $type = $input['type'];
-      } else {
-         $type = $this->fields['type'];
-      }
-
-      if (isset($input['itilcategories_id'])) {
-         $categid = $input['itilcategories_id'];
-      } else {
-         $categid = $this->fields['itilcategories_id'];
-      }
-
-      $tt = $this->getITILTemplateToUse(0, $type, $categid, $entid);
-
-      if (count($tt->mandatory)) {
-         $mandatory_missing = [];
-         $fieldsname        = $tt->getAllowedFieldsNames(true);
-         foreach ($tt->mandatory as $key => $val) {
-            if ((!$check_allowed_fields_for_template || in_array($key, $allowed_fields))
-                && (isset($input[$key])
-                    && (empty($input[$key]) || ($input[$key] == 'NULL'))
-                    // Take only into account already set items : do not block old tickets
-                    && (!empty($this->fields[$key]))
-                )) {
-               $mandatory_missing[$key] = $fieldsname[$val];
-            }
-         }
-         if (count($mandatory_missing)) {
-            //TRANS: %s are the fields concerned
-            $message = sprintf(__('Mandatory fields are not filled. Please correct: %s'),
-                               implode(", ", $mandatory_missing));
-            Session::addMessageAfterRedirect($message, false, ERROR);
-            return false;
-         }
       }
 
       // Process Business Rules
@@ -1241,9 +1110,6 @@ class Ticket extends CommonITILObject {
                                           'only_criteria' => $changes]);
          $input = Toolbox::stripslashes_deep($input);
       }
-
-      //Action for send_validation rule : do validation before clean
-      $this->manageValidationAdd($input);
 
       // Clean actors fields added for rules
       foreach ($tocleanafterrules as $key => $val) {
@@ -1542,6 +1408,9 @@ class Ticket extends CommonITILObject {
    function post_updateItem($history = 1) {
       global $CFG_GLPI;
 
+      //Action for send_validation rule : do validation before clean
+      $this->manageValidationAdd($this->input);
+
       // Put same status on duplicated tickets when solving or closing (autoclose on solve)
       if (isset($this->input['status'])
           && in_array('status', $this->updates)
@@ -1671,92 +1540,10 @@ class Ticket extends CommonITILObject {
 
 
    function prepareInputForAdd($input) {
-      global $CFG_GLPI, $DB;
-
-      // save value before clean;
-      $title = ltrim($input['name']);
       // Standard clean datas
       $input =  parent::prepareInputForAdd($input);
-
-      // Do not check mandatory on auto import (mailgates)
-      if (!isset($input['_auto_import'])) {
-         if (isset($input['_itiltemplates_id']) && $input['_itiltemplates_id']) {
-            $tt = new ITILTemplate();
-            if ($tt->getFromDBWithDatas($input['_itiltemplates_id'])) {
-               if (count($tt->mandatory)) {
-                  $mandatory_missing = [];
-                  $fieldsname        = $tt->getAllowedFieldsNames(true);
-                  foreach ($tt->mandatory as $key => $val) {
-                     // for title if mandatory (restore initial value)
-                     if ($key == 'name') {
-                        $input['name']                     = $title;
-                     }
-                     // Check only defined values : Not defined not in form
-                     if (isset($input[$key])) {
-                        // If content is also predefined need to be different from predefined value
-                        if (($key == 'content')
-                            && isset($tt->predefined['content'])) {
-                           // Clean new lines to be fix encoding
-                           if (strcmp(preg_replace("/\r?\n/", "",
-                                                   Html::cleanPostForTextArea($input[$key])),
-                                      preg_replace("/\r?\n/", "",
-                                                   $tt->predefined['content'])) == 0) {
-                              $mandatory_missing[$key] = $fieldsname[$val];
-                           }
-                        }
-
-                        if (empty($input[$key]) || ($input[$key] == 'NULL')
-                            || (is_array($input[$key])
-                                && ($input[$key] === [0 => "0"]))) {
-                           $mandatory_missing[$key] = $fieldsname[$val];
-                        }
-                     }
-
-                     if (($key == '_add_validation')
-                         && !empty($input['users_id_validate'])
-                         && isset($input['users_id_validate'][0])
-                         && ($input['users_id_validate'][0] > 0)) {
-
-                        unset($mandatory_missing['_add_validation']);
-                     }
-
-                     // For time_to_resolve and time_to_own : check also slas
-                     // For internal_time_to_resolve and internal_time_to_own : check also olas
-                     foreach ([SLM::TTR, SLM::TTO] as $slmType) {
-                        list($dateField, $slaField) = SLA::getFieldNames($slmType);
-                        if (($key == $dateField)
-                            && isset($input[$slaField]) && ($input[$slaField] > 0)
-                            && isset($mandatory_missing[$dateField])) {
-                           unset($mandatory_missing[$dateField]);
-                        }
-                        list($dateField, $olaField) = OLA::getFieldNames($slmType);
-                        if (($key == $dateField)
-                            && isset($input[$olaField]) && ($input[$olaField] > 0)
-                            && isset($mandatory_missing[$dateField])) {
-                           unset($mandatory_missing[$dateField]);
-                        }
-                     }
-
-                     // For document mandatory
-                     if (($key == '_documents_id')
-                           && !isset($input['_filename'])
-                           && !isset($input['_tag_filename'])
-                           && !isset($input['_stock_image'])
-                           && !isset($input['_tag_stock_image'])) {
-
-                        $mandatory_missing[$key] = $fieldsname[$val];
-                     }
-                  }
-                  if (count($mandatory_missing)) {
-                     //TRANS: %s are the fields concerned
-                     $message = sprintf(__('Mandatory fields are not filled. Please correct: %s'),
-                                        implode(", ", $mandatory_missing));
-                     Session::addMessageAfterRedirect($message, false, ERROR);
-                     return false;
-                  }
-               }
-            }
-         }
+      if ($input === false) {
+         return false;
       }
 
       if (!isset($input["requesttypes_id"])) {
@@ -1788,6 +1575,7 @@ class Ticket extends CommonITILObject {
             foreach ($items as $items_id) {
                if ($item = getItemForItemtype($itemtype)) {
                   $item->getFromDB($items_id);
+                  $input['items_states']    = $item->fields['states_id'];
                   $input['items_locations'] = $item->fields['locations_id'];
                   if ($infocom->getFromDBforDevice($itemtype, $items_id)) {
                      $input['items_businesscriticities']
@@ -1991,6 +1779,8 @@ class Ticket extends CommonITILObject {
    function post_addItem() {
       global $CFG_GLPI;
 
+      $this->manageValidationAdd($this->input);
+
       // Log this event
       $username = 'anonymous';
       if (isset($_SESSION["glpiname"])) {
@@ -2097,29 +1887,6 @@ class Ticket extends CommonITILObject {
          }
       }
 
-      // Add tasks in tasktemplates if defined in itiltemplate
-      if (isset($this->input['_tasktemplates_id'])
-          && is_array($this->input['_tasktemplates_id'])
-          && count($this->input['_tasktemplates_id'])) {
-         $tasktemplate = new TaskTemplate;
-         $tickettask   = new TicketTask;
-         foreach ($this->input['_tasktemplates_id'] as $tasktemplates_id) {
-            $tasktemplate->getFromDB($tasktemplates_id);
-            $tasktemplate_content = Toolbox::addslashes_deep($tasktemplate->fields["content"]);
-            $tickettask->add(['tasktemplates_id'  => $tasktemplates_id,
-                              'content'           => $tasktemplate_content,
-                              'taskcategories_id' => $tasktemplate->fields['taskcategories_id'],
-                              'actiontime'        => $tasktemplate->fields['actiontime'],
-                              'state'             => $tasktemplate->fields['state'],
-                              'tickets_id'        => $this->fields['id'],
-                              'is_private'        => $tasktemplate->fields['is_private'],
-                              'users_id_tech'     => $tasktemplate->fields['users_id_tech'],
-                              'groups_id_tech'    => $tasktemplate->fields['groups_id_tech'],
-                              '_disablenotif'     => true
-                              ]);
-         }
-      }
-
       if (isset($this->input['_promoted_fup_id']) && $this->input['_promoted_fup_id'] > 0) {
          $fup = new ITILFollowup();
          $fup->getFromDB($this->input['_promoted_fup_id']);
@@ -2145,8 +1912,6 @@ class Ticket extends CommonITILObject {
       }
 
       parent::post_addItem();
-
-      $this->manageValidationAdd($this->input);
 
       // Processing Email
       if (!isset($this->input['_disablenotif']) && $CFG_GLPI["use_notifications"]) {
@@ -2684,8 +2449,6 @@ class Ticket extends CommonITILObject {
 
 
    static function showMassiveActionsSubForm(MassiveAction $ma) {
-      global $CFG_GLPI;
-
       switch ($ma->getAction()) {
          case 'merge_as_followup' :
             $itemtype = $ma->getItemtype(true);
@@ -2728,9 +2491,12 @@ class Ticket extends CommonITILObject {
             $merge_succeeded = false;
             $input = $ma->getInput();
 
+            $in_transaction = $DB->inTransaction();
             foreach ($ids as $id) {
                try {
-                  $DB->beginTransaction();
+                  if (!$in_transaction) {
+                     $DB->beginTransaction();
+                  }
                   $fup = new ITILFollowup();
                   $document_item = new Document_Item();
                   $input2 = [];
@@ -2833,7 +2599,9 @@ class Ticket extends CommonITILObject {
                         throw new \RuntimeException(ERROR_ON_ACTION, MassiveAction::ACTION_KO);
                      }
 
-                     $DB->commit();
+                     if (!$in_transaction) {
+                        $DB->commit();
+                     }
                      $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
                      Event::log($input['_mergeticket'], 'ticket', 4, 'tracking',
                         sprintf(__('%s merges ticket %s into %s'), $_SESSION['glpiname'],
@@ -2842,7 +2610,9 @@ class Ticket extends CommonITILObject {
                      throw new \RuntimeException(ERROR_RIGHT, MassiveAction::ACTION_NORIGHT);
                   }
                } catch (\RuntimeException $e) {
-                  $DB->rollBack();
+                  if (!$in_transaction) {
+                     $DB->rollBack();
+                  }
                   $ma->itemDone($item->getType(), $id, $e->getCode());
                   $ma->addMessage($item->getErrorMessage($e->getMessage()));
                }
@@ -3074,29 +2844,6 @@ class Ticket extends CommonITILObject {
          }
       }
       $tab = array_merge($tab, $location_so);
-
-      // For ticket template
-      $tab[] = [
-         'id'                 => '142',
-         'table'              => 'glpi_documents',
-         'field'              => 'name',
-         'name'               => _n('Document', 'Documents', Session::getPluralNumber()),
-         'forcegroupby'       => true,
-         'usehaving'          => true,
-         'nosearch'           => true,
-         'nodisplay'          => true,
-         'datatype'           => 'dropdown',
-         'massiveaction'      => false,
-         'joinparams'         => [
-            'jointype'           => 'items_id',
-            'beforejoin'         => [
-               'table'              => 'glpi_documents_items',
-               'joinparams'         => [
-                  'jointype'           => 'itemtype_item'
-               ]
-            ]
-         ]
-      ];
 
       $tab = array_merge($tab, $this->getSearchOptionsActors());
 
@@ -3752,7 +3499,7 @@ class Ticket extends CommonITILObject {
     * @return nothing (print the helpdesk)
    **/
    function showFormHelpdesk($ID, $ticket_template = false) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       if (!self::canCreate()) {
          return false;
@@ -3952,6 +3699,7 @@ class Ticket extends CommonITILObject {
 
       // Store predefined fields to be able not to take into account on change template
       $predefined_fields = [];
+      $key = $this->getTemplateFormFieldName();
 
       if (isset($tt->predefined) && count($tt->predefined)) {
          foreach ($tt->predefined as $predeffield => $predefvalue) {
@@ -3963,8 +3711,8 @@ class Ticket extends CommonITILObject {
                     && ($options[$predeffield] == $default_values[$predeffield]))
                    || (isset($options['_predefined_fields'][$predeffield])
                        && ($options[$predeffield] == $options['_predefined_fields'][$predeffield]))
-                   || (isset($options['_itiltemplates_id'])
-                       && ($options['_itiltemplates_id'] != $tt->getID()))) {
+                   || (isset($options[$key])
+                       && ($options[$key] != $tt->getID()))) {
                   $options[$predeffield]            = $predefvalue;
                   $predefined_fields[$predeffield] = $predefvalue;
                }
@@ -4207,7 +3955,7 @@ class Ticket extends CommonITILObject {
          echo "<td colspan='2' class='center'>";
 
          if ($tt->isField('id') && ($tt->fields['id'] > 0)) {
-            echo "<input type='hidden' name='_itiltemplates_id' value='".$tt->fields['id']."'>";
+            echo "<input type='hidden' name='$key' value='".$tt->fields['id']."'>";
             echo "<input type='hidden' name='_predefined_fields'
                    value=\"".Toolbox::prepareArrayForInput($predefined_fields)."\">";
          }
@@ -4274,12 +4022,6 @@ class Ticket extends CommonITILObject {
 
    }
 
-
-   /**
-    * @since 0.83
-    *
-    * @param $entity  integer  entities_id usefull is function called by cron (default 0)
-   **/
    static function getDefaultValues($entity = 0) {
       global $CFG_GLPI;
 
@@ -4384,132 +4126,6 @@ class Ticket extends CommonITILObject {
       );
    }
 
-
-   /**
-    * Get template to use
-    * Use force_template first, then try on template define for type and category
-    * then use default template of active profile of connected user and then use default entity one
-    *
-    * @param $force_template      integer itiltemplate_id to used (case of preview for example)
-    *                             (default 0)
-    * @param $type                integer type of the ticket (default 0)
-    * @param $itilcategories_id   integer ticket category (default 0)
-    * @param $entities_id         integer (default -1)
-    *
-    * @since 9.5.0
-    *
-    * @return ITIL template object
-   **/
-   function getITILTemplateToUse(
-      $force_template = 0,
-      $type = 0,
-      $itilcategories_id = 0,
-      $entities_id = -1
-   ) {
-      // Load ticket template if available :
-      $tt              = new ITILTemplate();
-      $template_loaded = false;
-
-      if ($force_template) {
-         // with type and categ
-         if ($tt->getFromDBWithDatas($force_template, true)) {
-            $template_loaded = true;
-         }
-      }
-
-      if (!$template_loaded
-          && $type
-          && $itilcategories_id) {
-
-         $categ = new ITILCategory();
-         if ($categ->getFromDB($itilcategories_id)) {
-            $field = '';
-            switch ($type) {
-               case Ticket::INCIDENT_TYPE:
-                  $field = 'itiltemplates_id_incident';
-                  break;
-
-               case Ticket::DEMAND_TYPE:
-                  $field = 'itiltemplates_id_demand';
-                  break;
-            }
-
-            if (!empty($field) && $categ->fields[$field]) {
-               // without type and categ
-               if ($tt->getFromDBWithDatas($categ->fields[$field], false)) {
-                  $template_loaded = true;
-               }
-            }
-         }
-      }
-
-      // If template loaded from type and category do not check after
-      if ($template_loaded) {
-         return $tt;
-      }
-
-      if (!$template_loaded) {
-         // load default profile one if not already loaded
-         if (isset($_SESSION['glpiactiveprofile']['itiltemplates_id'])
-             && $_SESSION['glpiactiveprofile']['itiltemplates_id']) {
-            // with type and categ
-            if ($tt->getFromDBWithDatas($_SESSION['glpiactiveprofile']['itiltemplates_id'],
-                                        true)) {
-               $template_loaded = true;
-            }
-         }
-      }
-
-      if (!$template_loaded
-          && ($entities_id >= 0)) {
-
-         // load default entity one if not already loaded
-         if ($template_id = Entity::getUsedConfig('itiltemplates_id', $entities_id)) {
-            // with type and categ
-            if ($tt->getFromDBWithDatas($template_id, true)) {
-               $template_loaded = true;
-            }
-         }
-      }
-
-      // Check if profile / entity set type and category and try to load template for these values
-      if ($template_loaded) { // template loaded for profile or entity
-         $newtype              = $type;
-         $newitilcategories_id = $itilcategories_id;
-         // Get predefined values for ticket template
-         if (isset($tt->predefined['itilcategories_id']) && $tt->predefined['itilcategories_id']) {
-            $newitilcategories_id = $tt->predefined['itilcategories_id'];
-         }
-         if (isset($tt->predefined['type']) && $tt->predefined['type']) {
-            $newtype = $tt->predefined['type'];
-         }
-         if ($newtype
-             && $newitilcategories_id) {
-
-            $categ = new ITILCategory();
-            if ($categ->getFromDB($newitilcategories_id)) {
-               $field = '';
-               switch ($newtype) {
-                  case self::INCIDENT_TYPE :
-                     $field = 'itiltemplates_id_incident';
-                     break;
-
-                  case self::DEMAND_TYPE :
-                     $field = 'itiltemplates_id_demand';
-                     break;
-               }
-
-               if (!empty($field) && $categ->fields[$field]) {
-                  // without type and categ
-                  if ($tt->getFromDBWithDatas($categ->fields[$field], false)) {
-                     $template_loaded = true;
-                  }
-               }
-            }
-         }
-      }
-      return $tt;
-   }
 
    function showForm($ID, $options = []) {
       global $CFG_GLPI;
@@ -4641,14 +4257,13 @@ class Ticket extends CommonITILObject {
          $options['_promoted_fup_id'] = 0;
       }
 
-      // Load ticket template if available :
-      if ($ID) {
-         $tt = $this->getITILTemplateToUse($options['template_preview'], $this->fields['type'],
-                                             $this->fields['itilcategories_id'], $this->fields['entities_id']);
-      } else {
-         $tt = $this->getITILTemplateToUse($options['template_preview'], $options['type'],
-                                             $options['itilcategories_id'], $options['entities_id']);
-      }
+      // Load template if available :
+      $tt = $this->getITILTemplateToUse(
+         $options['template_preview'],
+         $this->fields['type'],
+         ($ID ? $this->fields['itilcategories_id'] : $options['itilcategories_id']),
+         ($ID ? $this->fields['entities_id'] : $options['entities_id'])
+      );
 
       // Predefined fields from template : reset them
       if (isset($options['_predefined_fields'])) {
@@ -4661,6 +4276,7 @@ class Ticket extends CommonITILObject {
       // Store predefined fields to be able not to take into account on change template
       // Only manage predefined values on ticket creation
       $predefined_fields = [];
+      $tpl_key = $this->getTemplateFormFieldName();
       if (!$ID) {
 
          if (isset($tt->predefined) && count($tt->predefined)) {
@@ -4673,8 +4289,8 @@ class Ticket extends CommonITILObject {
                        && ($options[$predeffield] == $default_values[$predeffield]))
                       || (isset($options['_predefined_fields'][$predeffield])
                           && ($options[$predeffield] == $options['_predefined_fields'][$predeffield]))
-                      || (isset($options['_itiltemplates_id'])
-                          && ($options['_itiltemplates_id'] != $tt->getID()))
+                      || (isset($options[$tpl_key])
+                          && ($options[$tpl_key] != $tt->getID()))
                       // user pref for requestype can't overwrite requestype from template
                       // when change category
                       || (($predeffield == 'requesttypes_id')
@@ -4703,7 +4319,7 @@ class Ticket extends CommonITILObject {
          }
       }
       // Put ticket template on $options for actors
-      $options['_itiltemplate'] = $tt;
+      $options[str_replace('s_id', '', $tpl_key)] = $tt;
 
       // check right used for this ticket
       $canupdate     = !$ID
@@ -5411,7 +5027,7 @@ class Ticket extends CommonITILObject {
             }
             echo Html::submit(_x('button', 'Add'), $add_params);
             if ($tt->isField('id') && ($tt->fields['id'] > 0)) {
-               echo "<input type='hidden' name='_itiltemplates_id' value='".$tt->fields['id']."'>";
+               echo "<input type='hidden' name='$tpl_key' value='".$tt->fields['id']."'>";
                echo "<input type='hidden' name='_predefined_fields'
                       value=\"".Toolbox::prepareArrayForInput($predefined_fields)."\">";
             }
@@ -5438,8 +5054,6 @@ class Ticket extends CommonITILObject {
     * @param $size (default 25)
    **/
    static function showDocumentAddButton($size = 25) {
-      global $CFG_GLPI;
-
       echo "<script type='text/javascript'>var nbfiles=1; var maxfiles = 5;</script>";
       echo "<span id='addfilebutton' class='fa fa-plus pointer' title=\"".__s('Add')."\"".
              "\" onClick=\"if (nbfiles<maxfiles){
@@ -6062,7 +5676,7 @@ class Ticket extends CommonITILObject {
 
 
    static function showCentralNewList() {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       if (!Session::haveRight(self::$rightname, self::READALL)) {
          return false;
@@ -6122,7 +5736,7 @@ class Ticket extends CommonITILObject {
     * @return void (display a table)
    **/
    static function showListForItem(CommonDBTM $item, $withtemplate = 0) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       if (!Session::haveRightsOr(self::$rightname,
                                   [self::READALL, self::READMY, self::READASSIGN, CREATE])) {
@@ -6372,8 +5986,6 @@ class Ticket extends CommonITILObject {
     * @param $forcetab  string   name of the tab to force at the display (default '')
    **/
    static function showVeryShort($ID, $forcetab = '') {
-      global $CFG_GLPI;
-
       // Prints a job in short form
       // Should be called in a <table>-segment
       // Print links or not in case of user view
@@ -7051,7 +6663,6 @@ class Ticket extends CommonITILObject {
     * @return void
     */
    private function fillInputForBusinessRules(array &$input) {
-
       global $DB;
 
       $entities_id = isset($input['entities_id'])

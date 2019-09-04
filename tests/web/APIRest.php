@@ -343,25 +343,25 @@ class APIRest extends APIBaseClass {
     */
    public function testGetItemsCommonDBChild() {
       // test the case have DBChild not have entities_id
-      $ticketTemplate = new \ITILTemplate();
-      $ticketTMF = new \ITILTemplateMandatoryField();
+      $ticketTemplate = new \TicketTemplate();
+      $ticketTMF = new \TicketTemplateMandatoryField();
 
       $tt_id = $ticketTemplate->add([
-         'entities_id' => 0,
+         'entities_id' => getItemByTypeName('Entity', '_test_child_1', true),
          'name'        => 'test'
       ]);
       $this->boolean((bool)$tt_id)->isTrue();
 
       $ttmf_id = $ticketTMF->add([
-         'itiltemplates_id' => $tt_id,
+         'tickettemplates_id' => $tt_id,
          'num'                => 7
       ]);
       $this->boolean((bool)$ttmf_id)->isTrue();
 
       $data = $this->query('getItems',
                            ['query'     => [
-                               'searchText' => ['itiltemplates_id' => "^".$tt_id."$"]],
-                            'itemtype'   => 'ITILTemplateMandatoryField',
+                               'searchText' => ['tickettemplates_id' => "^".$tt_id."$"]],
+                            'itemtype'   => 'TicketTemplateMandatoryField',
                             'headers'    => ['Session-Token' => $this->session_token]],
                            200);
       if (isset($data['headers'])) {

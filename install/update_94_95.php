@@ -221,31 +221,32 @@ function update94to95() {
 
    $ADDTODISPLAYPREF['cluster'] = [31, 19];
    /** /Clusters */
+
    /** ITIL templates */
-   //rename tables
+   //rename tables -- usefull only for 9.5 rolling release
    foreach ([
-      'glpi_tickettemplates',
-      'glpi_tickettemplatepredefinedfields',
-      'glpi_tickettemplatemandatoryfields',
-      'glpi_tickettemplatehiddenfields'
+      'glpi_itiltemplates',
+      'glpi_itiltemplatepredefinedfields',
+      'glpi_itiltemplatemandatoryfields',
+      'glpi_itiltemplatehiddenfields',
    ] as $table) {
       if ($DB->tableExists($table)) {
-         $migration->renameTable($table, str_replace('ticket', 'itil', $table));
+         $migration->renameTable($table, str_replace('itil', 'ticket', $table));
       }
    }
-   //rename fkeys
+   //rename fkeys -- usefull only for 9.5 rolling release
    foreach ([
-      'glpi_entities'                     => 'tickettemplates_id',
-      'glpi_itilcategories'               => 'tickettemplates_id_incident',
-      'glpi_itilcategories'               => 'tickettemplates_id_demand',
-      'glpi_profiles'                     => 'tickettemplates_id',
-      'glpi_ticketrecurrents'             => 'tickettemplates_id',
-      'glpi_itiltemplatehiddenfields'     => 'tickettemplates_id',
-      'glpi_itiltemplatemandatoryfields'  => 'tickettemplates_id',
-      'glpi_itiltemplatepredefinedfields' => 'tickettemplates_id'
+      'glpi_entities'                        => 'itiltemplates_id',
+      'glpi_itilcategories'                  => 'itiltemplates_id_incident',
+      'glpi_itilcategories'                  => 'itiltemplates_id_demand',
+      'glpi_profiles'                        => 'itiltemplates_id',
+      'glpi_ticketrecurrents'                => 'itiltemplates_id',
+      'glpi_tickettemplatehiddenfields'      => 'itiltemplates_id',
+      'glpi_tickettemplatemandatoryfields'   => 'itiltemplates_id',
+      'glpi_tickettemplatepredefinedfields'  => 'itiltemplates_id'
    ] as $table => $field) {
       if ($DB->fieldExists($table, $field)) {
-         $migration->changeField($table, $field, str_replace('ticket', 'itil', $field), 'integer');
+         $migration->changeField($table, $field, str_replace('itil', 'ticket', $field), 'integer');
       }
    }
    //rename profilerights values
@@ -256,6 +257,83 @@ function update94to95() {
          ['name' => 'tickettemplate']
       )
    );
+
+   //create template tables for other itil objects
+   foreach (['change', 'problem'] as $itiltype) {
+      if (!$DB->tableExists("glpi_{$itiltype}templates")) {
+         $query = "CREATE TABLE `glpi_{$itiltype}templates` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `name` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+            `entities_id` int(11) NOT NULL DEFAULT '0',
+            `is_recursive` tinyint(1) NOT NULL DEFAULT '0',
+            `comment` text COLLATE utf8_unicode_ci,
+            PRIMARY KEY (`id`),
+            KEY `name` (`name`),
+            KEY `entities_id` (`entities_id`),
+            KEY `is_recursive` (`is_recursive`)
+            ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;";
+         $DB->queryOrDie($query, "add table glpi_{$itiltype}templates");
+         $migration->addPostQuery(
+            $DB->buildInsert(
+               "glpi_{$itiltype}templates",
+               [
+                  'id'           => 1,
+                  'name'         => 'Default',
+                  'is_recursive' => 1
+               ]
+            )
+         );
+      }
+
+      if (!$DB->tableExists("glpi_{$itiltype}templatehiddenfields")) {
+         $query = "CREATE TABLE `glpi_{$itiltype}templatehiddenfields` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `{$itiltype}templates_id` int(11) NOT NULL DEFAULT '0',
+            `num` int(11) NOT NULL DEFAULT '0',
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`{$itiltype}templates_id`,`num`),
+            KEY `{$itiltype}templates_id` (`{$itiltype}templates_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;";
+         $DB->queryOrDie($query, "add table glpi_{$itiltype}templatehiddenfields");
+      }
+
+      if (!$DB->tableExists("glpi_{$itiltype}templatemandatoryfields")) {
+         $query = "CREATE TABLE `glpi_{$itiltype}templatemandatoryfields` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `{$itiltype}templates_id` int(11) NOT NULL DEFAULT '0',
+            `num` int(11) NOT NULL DEFAULT '0',
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`{$itiltype}templates_id`,`num`),
+            KEY `{$itiltype}templates_id` (`{$itiltype}templates_id`)
+            ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;";
+         $DB->queryOrDie($query, "add table glpi_{$itiltype}templatemandatoryfields");
+         $migration->addPostQuery(
+            $DB->buildInsert(
+               "glpi_{$itiltype}templatemandatoryfields",
+               [
+                  'id'                       => 1,
+                  $itiltype.'templates_id'   => 1,
+                  'num'                      => 21
+               ]
+            )
+         );
+      }
+
+      if (!$DB->tableExists("glpi_{$itiltype}templatepredefinedfields")) {
+         $query = "CREATE TABLE `glpi_{$itiltype}templatepredefinedfields` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `{$itiltype}templates_id` int(11) NOT NULL DEFAULT '0',
+            `num` int(11) NOT NULL DEFAULT '0',
+            `value` text COLLATE utf8_unicode_ci,
+            PRIMARY KEY (`id`),
+            KEY `{$itiltype}templates_id` (`{$itiltype}templates_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;";
+         $DB->queryOrDie($query, "add table glpi_{$itiltype}templatepredefinedfields");
+      } else {
+         //drop key -- usefull only for 9.5 rolling release
+         $migration->dropKey("glpi_{$itiltype}templatepredefinedfields", 'unicity');
+      }
+   }
    /** /ITIL templates */
 
    /** add templates for followups */
@@ -282,6 +360,99 @@ function update94to95() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci";
       $DB->queryOrDie($query, "add table glpi_itilfollowuptemplates");
    }
+   /** /add templates for followups */
+
+   /** Add "date_creation" field on document_items */
+   if (!$DB->fieldExists('glpi_documents_items', 'date_creation')) {
+      $migration->addField('glpi_documents_items', 'date_creation', 'datetime');
+      $migration->addPostQuery(
+         $DB->buildUpdate(
+            'glpi_documents_items',
+            [
+               'date_creation' => new \QueryExpression(
+                  $DB->quoteName('date_mod')
+               )
+            ],
+            [true]
+         )
+      );
+      $migration->addKey('glpi_documents_items', 'date_creation');
+   }
+   /** /Add "date_creation" field on document_items */
+
+   /** Make datacenter pictures path relative */
+   $doc_send_url = '/front/document.send.php?file=_pictures/';
+
+   $fix_picture_fct = function($path) use ($doc_send_url) {
+      // Keep only part of URL corresponding to relative path inside GLPI_PICTURE_DIR
+      return preg_replace('/^.*' . preg_quote($doc_send_url, '/') . '(.+)$/', '$1', $path);
+   };
+
+   $common_dc_model_tables = [
+      'glpi_computermodels',
+      'glpi_enclosuremodels',
+      'glpi_monitormodels',
+      'glpi_networkequipmentmodels',
+      'glpi_pdumodels',
+      'glpi_peripheralmodels',
+   ];
+   foreach ($common_dc_model_tables as $table) {
+      $elements_to_fix = $DB->request(
+         [
+            'SELECT'    => ['id', 'picture_front', 'picture_rear'],
+            'FROM'      => $table,
+            'WHERE'     => [
+               'OR' => [
+                  'picture_front' => ['LIKE', '%' . $doc_send_url . '%'],
+                  'picture_rear' => ['LIKE', '%' . $doc_send_url . '%'],
+               ],
+            ],
+         ]
+      );
+      foreach ($elements_to_fix as $data) {
+         $data['picture_front'] = $DB->escape($fix_picture_fct($data['picture_front']));
+         $data['picture_rear']  = $DB->escape($fix_picture_fct($data['picture_rear']));
+         $DB->update($table, $data, ['id' => $data['id']]);
+      }
+   }
+
+   $elements_to_fix = $DB->request(
+      [
+         'SELECT'    => ['id', 'blueprint'],
+         'FROM'      => 'glpi_dcrooms',
+         'WHERE'     => [
+            'blueprint' => ['LIKE', '%' . $doc_send_url . '%'],
+         ],
+      ]
+   );
+   foreach ($elements_to_fix as $data) {
+      $data['blueprint'] = $DB->escape($fix_picture_fct($data['blueprint']));
+      $DB->update('glpi_dcrooms', $data, ['id' => $data['id']]);
+   }
+   /** /Make datacenter pictures path relative */
+
+   /** ITIL templates */
+   if (!$DB->fieldExists('glpi_itilcategories', 'changeemplates_id')) {
+      $migration->addField("glpi_itilcategories", "changetemplates_id", "integer", [
+            'after'  => "tickettemplates_id_demand",
+            'value'  => 0
+         ]
+      );
+   }
+   if (!$DB->fieldExists('glpi_itilcategories', 'problemtemplates_id')) {
+      $migration->addField("glpi_itilcategories", "problemtemplates_id", "integer", [
+            'after'  => "changetemplates_id",
+            'value'  => 0
+         ]
+      );
+   }
+
+   $migration->addKey('glpi_itilcategories', 'changetemplates_id');
+   $migration->addKey('glpi_itilcategories', 'problemtemplates_id');
+   $migration->addKey('glpi_tickettemplatehiddenfields', 'tickettemplates_id');
+   $migration->addKey('glpi_tickettemplatemandatoryfields', 'tickettemplates_id');
+   $migration->addKey('glpi_tickettemplatepredefinedfields', 'tickettemplates_id');
+   /** /ITiL templates */
 
    // ************ Keep it at the end **************
    foreach ($ADDTODISPLAYPREF as $type => $tab) {

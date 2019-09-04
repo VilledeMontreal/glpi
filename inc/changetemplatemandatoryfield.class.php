@@ -30,7 +30,17 @@
  * ---------------------------------------------------------------------
  */
 
-include ('../inc/includes.php');
+if (!defined('GLPI_ROOT')) {
+   die("Sorry. You can't access this file directly");
+}
 
-$dropdown = new ITILTemplate();
-include (GLPI_ROOT . "/front/dropdown.common.form.php");
+/// Mandatory fields for change template class
+/// since version 0.83
+class ChangeTemplateMandatoryField extends ITILTemplateMandatoryField {
+
+   // From CommonDBChild
+   static public $itemtype  = 'ChangeTemplate';
+   static public $items_id  = 'changetemplates_id';
+   static public $itiltype = 'Change';
+
+}

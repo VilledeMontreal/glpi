@@ -226,14 +226,14 @@ class Item_Ticket extends CommonDBRelation{
       }
 
       // Get ticket template
-      $tt = new ITILTemplate();
-      if (isset($options['_itiltemplate'])) {
-         $tt                  = $options['_itiltemplate'];
+      $tt = new TicketTemplate();
+      if (isset($options['_tickettemplate'])) {
+         $tt                  = $options['_tickettemplate'];
          if (isset($tt->fields['id'])) {
             $opt['templates_id'] = $tt->fields['id'];
          }
       } else if (isset($options['templates_id'])) {
-         $tt->getFromDBWithDatas($options['templates_id']);
+         $tt->getFromDBWithData($options['templates_id']);
          if (isset($tt->fields['id'])) {
             $opt['templates_id'] = $tt->fields['id'];
          }
