@@ -968,6 +968,8 @@ class DBmysql {
     * @return mixed
     */
    public static function quoteValue($value) {
+      global $DB;
+      
       if ($value instanceof QueryParam || $value instanceof QueryExpression) {
          //no quote for query parameters nor expressions
          $value = $value->getValue();
