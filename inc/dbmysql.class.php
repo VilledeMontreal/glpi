@@ -1091,6 +1091,8 @@ class DBmysql {
     * @return mixed
     */
    public static function quoteValue($value) {
+      global $DB;
+      
       if ($value instanceof QueryParam || $value instanceof QueryExpression) {
          //no quote for query parameters nor expressions
          $value = $value->getValue();
@@ -1098,7 +1100,10 @@ class DBmysql {
          $value = 'NULL';
       } else if (!preg_match("/^`.*?`$/", $value)) { //`field` is valid only for mysql :/
          //phone numbers may start with '+' and will be considered as numeric
-         $value = "'$value'";
+         $value = sprintf(
+            "'%s'",
+            $DB->escape($value)
+         );
       }
       return $value;
    }
