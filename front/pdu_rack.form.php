@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -66,6 +66,9 @@ if (isset($_GET['id'])) {
       'racks_id'     => $_GET['racks_id'],
    ];
 }
+
+$_SESSION['glpilisturl'][PDU_Rack::getType()] = $rack->getSearchURL();
+
 $ajax = isset($_REQUEST['ajax']) ? true : false;
 
 if (!$ajax) {

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,6 +34,8 @@ namespace tests\units;
 
 use PHPMailer\PHPMailer\PHPMailer;
 use \DbTestCase;
+use Log;
+use Session;
 
 /* Test for inc/config.class.php */
 
@@ -73,17 +75,18 @@ class Config extends DbTestCase {
 
       $this->login();
       $this->array(\Config::getMenuContent())
-         ->hasSize(3)
-         ->hasKeys(['title', 'page', 'options']);
+         ->hasSize(4)
+         ->hasKeys(['title', 'page', 'options', 'icon']);
    }
 
    public function testDefineTabs() {
       $expected = [
-         'Config$1'  => 'General setup',
-         'Config$2'  => 'Default values',
-         'Config$3'  => 'Assets',
-         'Config$4'  => 'Assistance',
-         'Log$1'     => 'Historical'
+         'Config$1'      => 'General setup',
+         'Config$2'      => 'Default values',
+         'Config$3'      => 'Assets',
+         'Config$4'      => 'Assistance',
+         'GLPINetwork$1' => 'GLPI Network',
+         'Log$1'         => 'Historical',
       ];
       $this
          ->given($this->newTestedInstance)
@@ -102,12 +105,20 @@ class Config extends DbTestCase {
 
       //check extra tabs from superadmin profile
       $this->login();
-      unset($expected['Log$1']);
-      $expected['Config$9'] = 'Logs purge';
-      $expected['Config$5'] = 'System';
-      $expected['Config$7'] = 'Performance';
-      $expected['Config$8'] = 'API';
-      $expected['Log$1']    = 'Historical';
+      $expected = [
+         'Config$1'      => 'General setup',
+         'Config$2'      => 'Default values',
+         'Config$3'      => 'Assets',
+         'Config$4'      => 'Assistance',
+         'Config$9'      => 'Logs purge',
+         'Config$5'      => 'System',
+         'Config$10'     => 'Security',
+         'Config$7'      => 'Performance',
+         'Config$8'      => 'API',
+         'Config$11'      => \Impact::getTypeName(),
+         'GLPINetwork$1' => 'GLPI Network',
+         'Log$1'         => 'Historical',
+      ];
       $this
          ->given($this->newTestedInstance)
             ->then
@@ -155,7 +166,6 @@ class Config extends DbTestCase {
 
    public function testValidatePassword() {
       global $CFG_GLPI;
-      unset($_SESSION['glpicronuserrunning']);
       $this->boolean((bool)$CFG_GLPI['use_password_security'])->isFalse();
 
       $this->boolean(\Config::validatePassword('mypass'))->isTrue();
@@ -169,82 +179,57 @@ class Config extends DbTestCase {
       $this->boolean(\Config::validatePassword(''))->isFalse();
 
       $expected = [
-         ERROR => [
-            'Password too short!',
-            'Password must include at least a digit!',
-            'Password must include at least a lowercase letter!',
-            'Password must include at least a uppercase letter!',
-            'Password must include at least a symbol!'
-         ]
+         'Password too short!',
+         'Password must include at least a digit!',
+         'Password must include at least a lowercase letter!',
+         'Password must include at least a uppercase letter!',
+         'Password must include at least a symbol!'
       ];
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
-
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
+      $this->hasSessionMessages(ERROR, $expected);
       $expected = [
-         ERROR => [
-            'Password must include at least a digit!',
-            'Password must include at least a uppercase letter!',
-            'Password must include at least a symbol!'
-         ]
+         'Password must include at least a digit!',
+         'Password must include at least a uppercase letter!',
+         'Password must include at least a symbol!'
       ];
       $this->boolean(\Config::validatePassword('mypassword'))->isFalse();
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
+      $this->hasSessionMessages(ERROR, $expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $CFG_GLPI['password_min_length'] = strlen('mypass');
       $this->boolean(\Config::validatePassword('mypass'))->isFalse();
       $CFG_GLPI['password_min_length'] = 8; //reset
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
+      $this->hasSessionMessages(ERROR, $expected);
+
       $expected = [
-         ERROR => [
-            'Password must include at least a uppercase letter!',
-            'Password must include at least a symbol!'
-         ]
+         'Password must include at least a uppercase letter!',
+         'Password must include at least a symbol!'
       ];
       $this->boolean(\Config::validatePassword('my1password'))->isFalse();
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
+      $this->hasSessionMessages(ERROR, $expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $CFG_GLPI['password_need_number'] = 0;
       $this->boolean(\Config::validatePassword('mypassword'))->isFalse();
       $CFG_GLPI['password_need_number'] = 1; //reset
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
+      $this->hasSessionMessages(ERROR, $expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $expected = [
-         ERROR => [
-            'Password must include at least a symbol!'
-         ]
+         'Password must include at least a symbol!'
       ];
       $this->boolean(\Config::validatePassword('my1paSsword'))->isFalse();
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
+      $this->hasSessionMessages(ERROR, $expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $CFG_GLPI['password_need_caps'] = 0;
       $this->boolean(\Config::validatePassword('my1password'))->isFalse();
       $CFG_GLPI['password_need_caps'] = 1; //reset
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isIdenticalTo($expected);
+      $this->hasSessionMessages(ERROR, $expected);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $this->boolean(\Config::validatePassword('my1paSsw@rd'))->isTrue();
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isEmpty();
+      $this->hasNoSessionMessage(ERROR);
 
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
       $CFG_GLPI['password_need_symbol'] = 0;
       $this->boolean(\Config::validatePassword('my1paSsword'))->isTrue();
       $CFG_GLPI['password_need_symbol'] = 1; //reset
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])
-         ->isEmpty();
+      $this->hasNoSessionMessage(ERROR);
    }
 
    public function testGetLibraries() {
@@ -369,7 +354,7 @@ class Config extends DbTestCase {
          ->size->isGreaterThan(170);
 
       $conf = \Config::getConfigurationValues('core', ['version', 'dbversion']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'dbversion' => GLPI_SCHEMA_VERSION,
          'version'   => GLPI_VERSION
       ]);
@@ -377,7 +362,7 @@ class Config extends DbTestCase {
 
    public function testSetConfigurationValues() {
       $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'notification_to_myself'   => '1',
          'version'                  => GLPI_VERSION
       ]);
@@ -385,7 +370,7 @@ class Config extends DbTestCase {
       //update configuration value
       \Config::setConfigurationValues('core', ['notification_to_myself' => 0]);
       $conf = \Config::getConfigurationValues('core', ['version', 'notification_to_myself']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'notification_to_myself'   => '0',
          'version'                  => GLPI_VERSION
       ]);
@@ -393,14 +378,14 @@ class Config extends DbTestCase {
 
       //check new configuration key does not exists
       $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'version' => GLPI_VERSION
       ]);
 
       //add new configuration key
       \Config::setConfigurationValues('core', ['new_configuration_key' => 'test']);
       $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'new_configuration_key' => 'test',
          'version'               => GLPI_VERSION
       ]);
@@ -408,7 +393,7 @@ class Config extends DbTestCase {
       //drop new configuration key
       \Config::deleteConfigurationValues('core', ['new_configuration_key']);
       $conf = \Config::getConfigurationValues('core', ['version', 'new_configuration_key']);
-      $this->array($conf)->isIdenticalTo([
+      $this->array($conf)->isEqualTo([
          'version' => GLPI_VERSION
       ]);
    }
@@ -502,6 +487,8 @@ class Config extends DbTestCase {
             ->string($this->testedInstance->getLanguage('fr'))
                ->isIdenticalTo('fr_FR')
             ->string($this->testedInstance->getLanguage('fr_FR'))
+               ->isIdenticalTo('fr_FR')
+            ->string($this->testedInstance->getLanguage('fr-FR'))
                ->isIdenticalTo('fr_FR')
             ->string($this->testedInstance->getLanguage('Français'))
                ->isIdenticalTo('fr_FR')
@@ -609,5 +596,231 @@ class Config extends DbTestCase {
             ->variable[$key]
                ->isEqualTo($replacement_item->fields['id']);
       }
+   }
+
+   public function testDevicesInMenu() {
+      global $CFG_GLPI, $DB;
+
+      $conf = new \Config();
+      $this->array($CFG_GLPI['devices_in_menu'])->isIdenticalTo([
+         'Item_DeviceSimcard'
+      ]);
+
+      //Config::prepareInputForUpdate() always return false.
+      $conf->update([
+         'id'                       => 1,
+         '_update_devices_in_menu'  => 1,
+         'devices_in_menu'          => ['Item_DeviceSimcard', 'Item_DeviceBattery']
+      ]);
+
+      //check values in db
+      $res = $DB->request([
+         'SELECT' => 'value',
+         'FROM'   => $conf->getTable(),
+         'WHERE'  => ['name' => 'devices_in_menu']
+      ])->next();
+      $this->array($res)->isIdenticalTo(
+         ['value' => exportArrayToDB(['Item_DeviceSimcard', 'Item_DeviceBattery'])]
+      );
+   }
+
+   /**
+    * Test password expiration delay configuration update.
+    */
+   public function testPasswordExpirationDelayUpdate() {
+      global $DB;
+
+      $conf = new \Config();
+      $crontask = new \CronTask();
+
+      // create some non local users for the test
+      foreach ([\Auth::LDAP, \Auth::EXTERNAL, \Auth::CAS] as $authtype) {
+         $user = new \User();
+         $user_id = $user->add(
+            [
+               'name'     => 'test_user_' . mt_rand(),
+               'authtype' => $authtype,
+            ]
+         );
+         $this->integer($user_id)->isGreaterThan(0);
+      }
+
+      // get count of users using local auth
+      $local_users_count = countElementsInTable(
+         \User::getTable(),
+         ['authtype' => \Auth::DB_GLPI]
+      );
+      // get count of users using external auth
+      $external_users_count = countElementsInTable(
+         \User::getTable(),
+         ['NOT' => ['authtype' => \Auth::DB_GLPI]]
+      );
+      // reset 'password_last_update' to null for the test
+      $DB->update(\User::getTable(), ['password_last_update' => null], [true]);
+
+      // initial data:
+      //  - password expiration is not active
+      //  - users from installation data have no value for password_last_update
+      //  - crontask is not active
+      $values = \Config::getConfigurationValues('core');
+      $this->array($values)->hasKey('password_expiration_delay');
+      $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(-1);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['authtype' => \Auth::DB_GLPI, 'password_last_update' => null]
+         )
+      )->isEqualTo($local_users_count);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['NOT' => ['authtype' => \Auth::DB_GLPI], 'password_last_update' => null]
+         )
+      )->isEqualTo($external_users_count);
+      $this->boolean($crontask->getFromDBbyName(\User::getType(), 'passwordexpiration'))->isTrue();
+      $this->integer((int)$crontask->fields['state'])->isIdenticalTo(0);
+
+      // check that activation of password expiration reset `password_last_update` to current date
+      // for all local users but not for external users
+      // and activate passwordexpiration crontask
+      $current_time = $_SESSION['glpi_currenttime'];
+      $update_datetime = date('Y-m-d H:i:s', strtotime('-15 days')); // arbitrary date
+      $_SESSION['glpi_currenttime'] = $update_datetime;
+      $conf->update(
+         [
+            'id'                        => 1,
+            'password_expiration_delay' => 30
+         ]
+      );
+      $_SESSION['glpi_currenttime'] = $current_time;
+      $values = \Config::getConfigurationValues('core');
+      $this->array($values)->hasKey('password_expiration_delay');
+      $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(30);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['authtype' => \Auth::DB_GLPI, 'password_last_update' => $update_datetime]
+         )
+      )->isEqualTo($local_users_count);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['NOT' => ['authtype' => \Auth::DB_GLPI], 'password_last_update' => null]
+         )
+      )->isEqualTo($external_users_count);
+      $this->boolean($crontask->getFromDBbyName(\User::getType(), 'passwordexpiration'))->isTrue();
+      $this->integer((int)$crontask->fields['state'])->isIdenticalTo(1);
+
+      // check that changing password expiration delay does not reset `password_last_update` to current date
+      // if password expiration was already active
+      $current_time = $_SESSION['glpi_currenttime'];
+      $new_update_datetime = date('Y-m-d H:i:s', strtotime('-5 days')); // arbitrary date
+      $_SESSION['glpi_currenttime'] = $new_update_datetime;
+      $conf->update(
+         [
+            'id'                        => 1,
+            'password_expiration_delay' => 45
+         ]
+      );
+      $_SESSION['glpi_currenttime'] = $current_time;
+      $values = \Config::getConfigurationValues('core');
+      $this->array($values)->hasKey('password_expiration_delay');
+      $this->integer((int)$values['password_expiration_delay'])->isIdenticalTo(45);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['authtype' => \Auth::DB_GLPI, 'password_last_update' => $update_datetime] // previous config update
+         )
+      )->isEqualTo($local_users_count);
+      $this->integer(
+         countElementsInTable(
+            \User::getTable(),
+            ['NOT' => ['authtype' => \Auth::DB_GLPI], 'password_last_update' => null]
+         )
+      )->isEqualTo($external_users_count);
+   }
+
+   protected function logConfigChangeProvider() {
+      global $PLUGIN_HOOKS;
+
+      $PLUGIN_HOOKS['secured_configs']['tester'] = ['passwd'];
+
+      return [
+         [
+            'context'          => 'core',
+            'name'             => 'unexisting_config',
+            'is_secured'       => false,
+            'old_value_prefix' => 'unexisting_config ',
+         ],
+         [
+            'context'          => 'plugin:tester',
+            'name'             => 'check',
+            'is_secured'       => false,
+            'old_value_prefix' => 'check (plugin:tester) ',
+         ],
+         [
+            'context'          => 'plugin:tester',
+            'name'             => 'passwd',
+            'is_secured'       => true,
+            'old_value_prefix' => 'passwd (plugin:tester) ',
+         ]
+      ];
+   }
+
+   /**
+    * @dataProvider logConfigChangeProvider
+    */
+   public function testLogConfigChange(string $context, string $name, bool $is_secured, string $old_value_prefix) {
+      $history_crit = ['itemtype' => \Config::getType(), 'old_value' => ['LIKE', $name . ' %']];
+
+      $expected_history = [];
+      $history_entry_fields = [
+         'itemtype'         => \Config::getType(),
+         'items_id'         => 1,
+         'itemtype_link'    => '',
+         'linked_action'    => 0,
+         'user_name'        => Session::getLoginUserID(false),
+         'date_mod'         => $_SESSION['glpi_currenttime'],
+         'id_search_option' => 1,
+      ];
+
+      $clean_ids = function (&$value, $key) {
+         unset($value['id']);
+      };
+
+      // History on first value
+      \Config::setConfigurationValues($context, [$name => 'first value']);
+      $expected_history = [
+         $history_entry_fields + [
+            'old_value' => $old_value_prefix . ($is_secured ? '********' : ''),
+            'new_value' => $is_secured ? '********' : 'first value',
+         ],
+      ];
+
+      $found_history = array_values(getAllDataFromTable(Log::getTable(), $history_crit));
+      array_walk($found_history, $clean_ids);
+      $this->array($found_history)->isEqualTo($expected_history);
+
+      // History on updated value
+      \Config::setConfigurationValues($context, [$name => 'new value']);
+      $expected_history[] = $history_entry_fields + [
+         'old_value' => $old_value_prefix . ($is_secured ? '********' : 'first value'),
+         'new_value' => $is_secured ? '********' : 'new value',
+      ];
+
+      $found_history = array_values(getAllDataFromTable(Log::getTable(), $history_crit));
+      array_walk($found_history, $clean_ids);
+      $this->array($found_history)->isEqualTo($expected_history);
+
+      // History on config deletion
+      \Config::deleteConfigurationValues($context, [$name]);
+      $expected_history[] = $history_entry_fields + [
+         'old_value' => $old_value_prefix . ($is_secured ? '********' : 'new value'),
+         'new_value' => $is_secured ? '********' : '',
+      ];
+
+      $found_history = array_values(getAllDataFromTable(Log::getTable(), $history_crit));
+      array_walk($found_history, $clean_ids);
+      $this->array($found_history)->isEqualTo($expected_history);
    }
 }

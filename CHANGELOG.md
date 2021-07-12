@@ -3,7 +3,53 @@
 The present file will list all changes made to the project; according to the
 [Keep a Changelog](http://keepachangelog.com/) project.
 
-## [9.5] unreleased
+## [9.5.6] unreleased
+
+### API changes
+
+#### Deprecated
+
+- Usage of "followups" option in `CommonITILObject::showShort()`
+- `CommonITILTask::showInObjectSumnary()`
+- `ITILFollowup::showShortForITILObject()`
+
+## [9.5.5] 2021-04-13
+
+### API changes
+
+#### Changed
+
+- Remove deprecation of `Search::getMetaReferenceItemtype()`
+
+## [9.5.4] 2021-03-02
+
+### Changed
+
+- `iframe` elements are not anymore allowed in rich text unless `GLPI_ALLOW_IFRAME_IN_RICH_TEXT` constant is defined to `true`
+
+### API changes
+
+#### Deprecated
+
+- `Search::getMetaReferenceItemtype()`
+
+## [9.5.3] 2020-11-25
+
+### Deprecated
+- Usage of alternative DB connection encoding (`DB::$dbenc` property).
+
+## [9.5.2] 2020-10-07
+
+### API changes
+
+#### Removed
+
+- Ability to use SQL expressions as string in criterion values in SQL iterator (replaced by usage of `QueryExpression`).
+- Ability to delete a plugin image using `/front/pluginimage.send.php` script.
+
+## [9.5.1] 2020-07-16
+
+## [9.5.0] 2020-07-07
 
 ### Added
 
@@ -14,16 +60,49 @@ The present file will list all changes made to the project; according to the
 - Operating system links on Monitors, Peripherals, Phones and Printers.
 - Add datacenter items to global search
 - Project task search options for Projects
+- Automatic action to purge closed tickets
+- Ability to automatically calculate project's percent done
+- Software link on Phones.
+- Add and answer approvals from timeline
+- Add lightbox with PhotoSwipe to timeline images
+- Ability to copy tasks while merging tickets
+- the API gives the ID of the user who logs in with initSession
+- Kanban view for projects
+- Network ports on Monitors
+- Add warning when there are unsaved changes in forms
+- Add ability to get information from the status endpoint in JSON format using Accept header
+- Add `glpi:system:status` CLI command for getting the GLPI status
 
 ### Changed
 
+- PHP error_reporting and display_errors configuration directives are no longer overrided by GLPI, unless in debug mode (which forces reporting and display of all errors).
 - `scripts/migrations/racks_plugin.php` has been replaced by `glpi:migration:racks_plugin_to_core` command available using `bin/console`
+- Encryption alogithm improved using libsodium
 
 ### API changes
 
+#### Added
+
+- Add translation functions `__()`,  `_n()`,  `_x()` and  `_nx()` in javascript in browser context.
+- `Migration::renameItemtype()` method to update of database schema/values when an itemtype class is renamed
+- Menu returned by `CommonGLPI::getMenuContent()` method override may now define an icon for each menu entry.
+- `CommonDBConnexity::getItemsAssociatedTo()` method to get the items associated to the given one
+- `CommonDBConnexity::getItemsAssociationRequest()` method to get the DB request to use to get the items associated to the given one
+- `CommonDBTM::clone()` method to clone the current item
+- `CommonDBTM::prepareInputForClone()` method to modify the input data that will be used for the cloning
+- `CommonDBTM::post_clone()` method to perform other steps after an item has been cloned (like clone the elements it is associated to)
+
 #### Changes
 
+- jQuery library has been upgraded from 2.2.x to 3.4.x. jQuery Migrate is used to ensure backward compatibility in most cases.
 - `DBmysqlIterator::handleOrderClause()` supports QueryExpressions
+- Use Laminas instead of deprecated ZendFramework
+- Database datetime fields have been replaced by timestamp fields to handle timezones support.
+- Database integer/float fields values are now returned as number instead of strings from DB read operations.
+- Field `domains_id` of Computer, NetworkEquipment and Printer has been dropped and data has been transfered into `glpi_domains_items` table.
+- Plugin status hook can now be used to provide an array with more information about the plugin's status the status of any child services.
+    - Returned array should contain a 'status' value at least (See status values in Glpi\System\Status\StatusChecker)
+    - Old style returns are still supported
 
 #### Deprecated
 
@@ -41,9 +120,56 @@ The present file will list all changes made to the project; according to the
 - `DBMysql::isMySQLStrictMode()`
 - `getAllDatasFromTable` renamed to `getAllDataFromTable()`
 - Usage of `$order` parameter in `getAllDataFromTable()` (`DbUtils::getAllDataFromTable()`)
-- All `TicketTemplate` classes has been renamed to `ITILTemplate`
 - `Ticket::getTicketTemplateToUse()` renamed to `Ticket::getITILTemplateToUse()`
-- `TicketTemplate::getFromDBWithDatas()` renamed to `Ticket::getFromDBWithData()` (inherited from `ITILTemplate`)
+- `TicketTemplate::getFromDBWithDatas()` renamed to `TicketTemplate::getFromDBWithData()` (inherited from `ITILTemplate`)
+- `Computer_SoftwareLicense` replaced by `Item_SoftwareLicense` and table `glpi_computers_softwarelicenses` renamed to `glpi_items_softwarelicenses`
+- `Computer_SoftwareVersion` replaced by `Item_SoftwareVersion` and table `glpi_computers_softwareversions` renamed to `glpi_items_softwareversions`
+- `Item_SoftwareVersion::updateDatasForComputer` renamed to `Item_SoftwareVersion::updateDatasForItem`
+- `Item_SoftwareVersion::showForComputer` renamed to `Item_SoftwareVersion::showForItem`
+- `Item_SoftwareVersion::softsByCategory` renamed to `Item_SoftwareVersion::softwareByCategory`
+- `Item_SoftwareVersion::displaySoftsByLicense` renamed to `Item_SoftwareVersion::displaySoftwareByLicense`
+- `Item_SoftwareVersion::cloneComputer` renamed to `Item_SoftwareVersion::cloneItem`
+- `Transfer::transferComputerSoftwares` renamed to `Transfer::transferItemSoftwares`
+- 'getRealQueryForTreeItem()'
+- ``getCommonSelect`` and ``getCommonLeftJoin()`` from ``Ticket``, ``Change`` and ``Problem`` are replaced with ``getCommonCriteria()`` compliant with db iterator
+- `Config::checkWriteAccessToDirs()`
+- `Config::displayCheckExtensions()`
+- `Toolbox::checkSELinux()`
+- `Toolbox::userErrorHandlerDebug()`
+- `Toolbox::userErrorHandlerNormal()`
+- `Html::jsDisable()`
+- `Html::jsEnable()`
+- `Plugin::setLoaded()`
+- `Plugin::setUnloaded()`
+- `Plugin::setUnloadedByName()`
+- Usage of `$LOADED_PLUGINS` global variable
+- `CommonDBTM::getRawName()` replaced by `CommonDBTM::getFriendlyName()`
+- `Calendar_Holiday::cloneCalendar()`
+- `CalendarSegment::cloneCalendar()`
+- `Computer_Item::cloneComputer()`
+- `Computer_Item::cloneItem()`
+- `ComputerAntivirus::cloneComputer()`
+- `Contract::cloneItem()`
+- `Contract_Item::cloneItem()`
+- `ContractCost::cloneContract()`
+- `Document_Item::cloneItem()`
+- `Infocom::cloneItem()`
+- `Item_Devices::cloneItem()`
+- `Item_Disk::cloneItem()`
+- `Item_OperatingSystem::cloneItem()`
+- `Item_SoftwareLicense::cloneComputer()`
+- `Item_SoftwareLicense::cloneItem()`
+- `Item_SoftwareVersion::cloneComputer()`
+- `Item_SoftwareVersion::cloneItem()`
+- `Itil_Project::cloneItilProject()`
+- `KnowbaseItem_Item::cloneItem()`
+- `NetworkPort::cloneItem()`
+- `Notepad::cloneItem()`
+- `ProjectCost::cloneProject()`
+- `ProjectTeam::cloneProjectTask()`
+- `ProjectTask::cloneProjectTeam()`
+- Usage of `GLPIKEY` constant
+- `Toolbox::encrypt()` and `Toolbox::decrypt()` because they use the old encryption aglogithm
 
 #### Removed
 
@@ -67,8 +193,24 @@ The present file will list all changes made to the project; according to the
 - 'SELECT DISTINCT' and 'DISTINCT FIELDS' criteria in `DBmysqlIterator::buildQuery()`
 - `CommonDBTM::getTablesOf()`
 - `CommonDBTM::getForeignKeyFieldsOf()`
+- `TicketFollowup`
+- `getDateRequest` and `DbUtils::getDateRequest()`
+- `Html::convertTagFromRichTextToImageTag()`
+- `Transfer::createSearchConditionUsingArray()`
+- Unused constants GLPI_FONT_FREESANS and GLPI_SCRIPT_DIR
 
-## [9.4.3] unreleased
+## [9.4.6] 2020-05-05
+
+## [9.4.5] 2019-12-18
+
+## [9.4.4] 2019-09-24
+
+### API changes
+
+#### Changes
+- For security reasons, autocompletion feature requires now to be authorized by a `'autocomplete' => true` flag in corresponding field search option.
+
+## [9.4.3] 2019-06-20
 
 ### API changes
 

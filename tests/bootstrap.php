@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,28 +30,40 @@
  * ---------------------------------------------------------------------
  */
 
+ini_set('display_errors', 'On');
 error_reporting(E_ALL);
 
-define('GLPI_CACHE_DIR', __DIR__ . '/files/_cache');
-define('GLPI_PICTURE_DIR', __DIR__ . '/files/_pictures');
-define('GLPI_CONFIG_DIR', __DIR__);
-define('GLPI_LOG_DIR', __DIR__ . '/files/_log');
+define('GLPI_ROOT', __DIR__ . '/../');
+define('GLPI_CONFIG_DIR', __DIR__ . '/config');
+define('GLPI_VAR_DIR', __DIR__ . '/files');
 define('GLPI_URI', (getenv('GLPI_URI') ?: 'http://localhost:8088'));
+
+define(
+   'PLUGINS_DIRECTORIES',
+   [
+      GLPI_ROOT . '/plugins',
+      GLPI_ROOT . '/tests/fixtures/plugins',
+   ]
+);
+
 define('TU_USER', '_test_user');
 define('TU_PASS', 'PhpUnit_4');
-define('GLPI_ROOT', __DIR__ . '/../');
 
-is_dir(GLPI_LOG_DIR) or mkdir(GLPI_LOG_DIR, 0755, true);
-is_dir(GLPI_CACHE_DIR) or mkdir(GLPI_CACHE_DIR, 0755, true);
-is_dir(GLPI_PICTURE_DIR) or mkdir(GLPI_PICTURE_DIR, 0755, true);
-
-if (!file_exists(GLPI_CONFIG_DIR . '/config_db.php')) {
-   die("\nConfiguration file for tests not found\n\nrun: bin/console glpi:database:install --config-dir=./tests ...\n\n");
-}
 global $CFG_GLPI, $GLPI_CACHE;
 
-include_once (GLPI_ROOT . "/inc/define.php");
-include __DIR__ . '/../inc/autoload.function.php';
+include (GLPI_ROOT . "/inc/based_config.php");
+
+if (!file_exists(GLPI_CONFIG_DIR . '/config_db.php')) {
+   die("\nConfiguration file for tests not found\n\nrun: bin/console glpi:database:install --config-dir=./tests/config ...\n\n");
+}
+
+// Create subdirectories of GLPI_VAR_DIR based on defined constants
+foreach (get_defined_constants() as $constant_name => $constant_value) {
+   if (preg_match('/^GLPI_[\w]+_DIR$/', $constant_name)
+       && preg_match('/^' . preg_quote(GLPI_VAR_DIR, '/') . '\//', $constant_value)) {
+      is_dir($constant_value) or mkdir($constant_value, 0755, true);
+   }
+}
 
 //init cache
 $GLPI_CACHE = Config::getCache('cache_db');
@@ -80,12 +92,12 @@ class GlpitestSQLError extends Exception
 }
 
 function loadDataset() {
-   global $CFG_GLPI;
+   global $CFG_GLPI, $DB;
 
    // Unit test data definition
    $data = [
       // bump this version to force reload of the full dataset, when content change
-      '_version' => '4.3',
+      '_version' => '4.6',
 
       // Type => array of entries
       'Entity' => [
@@ -131,6 +143,14 @@ function loadDataset() {
             'name'        => '_test_pc22',
             'entities_id' => '_test_child_2',
          ]
+      ], 'ComputerModel' => [
+         [
+            'name'           => '_test_computermodel_1',
+            'product_number' => 'CMP_ADEAF5E1',
+         ], [
+            'name'           => '_test_computermodel_2',
+            'product_number' => 'CMP_567AEC68',
+         ],
       ], 'Software' => [
          [
             'name'         => '_test_soft',
@@ -183,7 +203,7 @@ function loadDataset() {
             'password2'     => TU_PASS,
             'entities_id'   => '_test_root_entity',
             'profiles_id'   => 4, // TODO manage test profiles
-            '_entities_id'  => '_test_root_entity',
+            '_entities_id'  => 0,
             '_profiles_id'  => 4,
             '_is_recursive' => 1,
          ]
@@ -305,7 +325,21 @@ function loadDataset() {
             'content'        => 'Content for ticket _ticket03',
             'users_id_recipient' => TU_USER,
             'entities_id'    => '_test_child_1'
-         ]
+         ],
+         [
+            'id'             => 100, // Force ID that will be used in imap test suite fixtures
+            'name'           => '_ticket100',
+            'content'        => 'Content for ticket _ticket100',
+            'users_id_recipient' => TU_USER,
+            'entities_id'    => '_test_root_entity'
+         ],
+         [
+            'id'             => 101, // Force ID that will be used in imap test suite fixtures
+            'name'           => '_ticket101',
+            'content'        => 'Content for ticket _ticket101',
+            'users_id_recipient' => TU_USER,
+            'entities_id'    => '_test_root_entity'
+         ],
       ], 'TicketTask' => [
          [
             'tickets_id'         => '_ticket01',
@@ -430,28 +464,35 @@ function loadDataset() {
             'softwares_id' => '_test_soft',
             'softwarelicenses_id' => '_test_softlic_1',
          ],
-      ], 'Computer_SoftwareLicense' => [
+      ], 'Item_SoftwareLicense' => [
          [
-            'softwarelicenses_id' => '_test_softlic_1',
-            'computers_id'        => '_test_pc21',
+            'softwarelicenses_id'   => '_test_softlic_1',
+            'items_id'              => '_test_pc21',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_1',
-            'computers_id'        => '_test_pc01',
+            'softwarelicenses_id'   => '_test_softlic_1',
+            'items_id'              => '_test_pc01',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_1',
-            'computers_id'        => '_test_pc02',
+            'softwarelicenses_id'   => '_test_softlic_1',
+            'items_id'              => '_test_pc02',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_2',
-            'computers_id'        => '_test_pc02',
+            'softwarelicenses_id'   => '_test_softlic_2',
+            'items_id'              => '_test_pc02',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_3',
-            'computers_id'        => '_test_pc02',
+            'softwarelicenses_id'   => '_test_softlic_3',
+            'items_id'              => '_test_pc02',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_3',
-            'computers_id'        => '_test_pc21',
+            'softwarelicenses_id'   => '_test_softlic_3',
+            'items_id'              => '_test_pc21',
+            'itemtype'              => 'Computer',
          ], [
-            'softwarelicenses_id' => '_test_softlic_2',
-            'computers_id'        => '_test_pc21',
+            'softwarelicenses_id'   => '_test_softlic_2',
+            'items_id'              => '_test_pc21',
+            'itemtype'              => 'Computer',
          ]
       ], 'devicesimcard' => [
          [
@@ -465,10 +506,10 @@ function loadDataset() {
             'entities_id'  => '_test_root_entity',
             'is_recursive' => 1
          ]
-      ], 'AuthLdap' => [
+      ], 'AuthLDAP' => [
          [
             'name'            => '_local_ldap',
-            'host'            => '127.0.0.1',
+            'host'            => 'openldap',
             'basedn'          => 'dc=glpi,dc=org',
             'rootdn'          => 'cn=Manager,dc=glpi,dc=org',
             'port'            => '3890',
@@ -486,27 +527,100 @@ function loadDataset() {
             'title_field'     => 'title',
             'category_field'  => 'businesscategory',
             'language_field'  => 'preferredlanguage',
-            'group_search_type'  => \AuthLdap::GROUP_SEARCH_GROUP,
+            'group_search_type'  => \AuthLDAP::GROUP_SEARCH_GROUP,
             'group_condition' => '(objectclass=groupOfNames)',
             'group_member_field' => 'member'
          ]
-      ]
-
+      ], 'Holiday'   => [
+         [
+            'name'         => 'X-Mas',
+            'entities_id'  => '_test_root_entity',
+            'is_recursive' => 1,
+            'begin_date'   => '2018-12-29',
+            'end_date'     => '2019-01-06'
+         ]
+      ], 'Glpi\\Dashboard\\Dashboard' => [
+         [
+            'key'     => 'test_dashboard',
+            'name'    => 'Test_Dashboard',
+            'context' => 'core',
+         ], [
+            'key'     => 'test_dashboard2',
+            'name'    => 'Test_Dashboard_2',
+            'context' => 'core'
+         ], [
+            'key'     => 'test_dashboard3',
+            'name'    => 'Test_Dashboard_3',
+            'context' => 'oustide_core',
+         ]
+      ], 'Glpi\\Dashboard\\Item' => [
+         [
+            'dashboards_dashboards_id' => 'Test_Dashboard',
+            'gridstack_id'             => 'bn_count_Computer_1',
+            'card_id'                  => 'bn_count_Computer',
+            'x'                        => 0,
+            'y'                        => 0,
+            'width'                    => 2,
+            'height'                   => 2,
+            'card_options'             => '{"color": "#FFFFFF"}'
+         ], [
+            'dashboards_dashboards_id' => 'Test_Dashboard',
+            'gridstack_id'             => 'bn_count_Computer_2',
+            'card_id'                  => 'bn_count_Computer',
+            'x'                        => 2,
+            'y'                        => 0,
+            'width'                    => 2,
+            'height'                   => 2,
+            'card_options'             => '{"color": "#FFFFFF"}'
+         ], [
+            'dashboards_dashboards_id' => 'Test_Dashboard',
+            'gridstack_id'             => 'bn_count_Computer_3',
+            'card_id'                  => 'bn_count_Computer',
+            'x'                        => 4,
+            'y'                        => 0,
+            'width'                    => 2,
+            'height'                   => 2,
+            'card_options'             => '{"color": "#FFFFFF"}'
+         ]
+      ], 'Glpi\\Dashboard\\Right' => [
+         [
+            'dashboards_dashboards_id' => 'Test_Dashboard',
+            'itemtype'                 => 'Entity',
+            'items_id'                 => 0,
+         ], [
+            'dashboards_dashboards_id' => 'Test_Dashboard',
+            'itemtype'                 => 'Profile',
+            'items_id'                 => 3,
+         ]
+      ], 'Plugin' => [
+         [
+            'directory'    => 'tester',
+            'name'         => 'tester',
+            'version'      => '1.0.0',
+            'state'        => 1,
+         ]
+      ],
    ];
 
    // To bypass various right checks
+   $session_bak = $_SESSION;
    $_SESSION['glpishowallentities'] = 1;
    $_SESSION['glpicronuserrunning'] = "cron_phpunit";
    $_SESSION['glpi_use_mode']       = Session::NORMAL_MODE;
+   $_SESSION['glpiactive_entity']   = 0;
    $_SESSION['glpiactiveentities']  = [0];
    $_SESSION['glpiactiveentities_string'] = "'0'";
    $CFG_GLPI['root_doc']            = '/glpi';
 
-   // need to set theses in DB, because tests for API use http call and this bootstrap file is not called
+   $DB->beginTransaction();
+
    Config::setConfigurationValues('core', ['url_base'     => GLPI_URI,
                                            'url_base_api' => GLPI_URI . '/apirest.php']);
    $CFG_GLPI['url_base']      = GLPI_URI;
    $CFG_GLPI['url_base_api']  = GLPI_URI . '/apirest.php';
+
+   // make all caldav component available for tests (for default usage we don't VTODO)
+   $CFG_GLPI['caldav_supported_components']  = ['VEVENT', 'VJOURNAL', 'VTODO'];
 
    $conf = Config::getConfigurationValues('phpunit');
    if (isset($conf['dataset']) && $conf['dataset']==$data['_version']) {
@@ -561,6 +675,9 @@ function loadDataset() {
       echo "\nDone\n\n";
       Config::setConfigurationValues('phpunit', ['dataset' => $data['_version']]);
    }
+   $DB->commit();
+
+   $_SESSION = $session_bak; // Unset force session variables
 }
 
 /**
@@ -569,7 +686,7 @@ function loadDataset() {
  * @param string  $type
  * @param string  $name
  * @param boolean $onlyid
- * @return the item, or its id
+ * @return CommonDBTM|false the item, or its id
  */
 function getItemByTypeName($type, $name, $onlyid = false) {
 

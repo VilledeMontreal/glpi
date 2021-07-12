@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -62,5 +62,10 @@ class QueryParam  {
     */
    public function getValue() {
       return $this->value;
+   }
+
+
+   public function __toString() {
+      return $this->getValue();
    }
 }

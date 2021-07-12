@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -77,9 +77,6 @@ class KnowbaseItemTranslation extends CommonDBChild {
    }
 
 
-   /**
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (!$withtemplate) {
@@ -138,10 +135,10 @@ class KnowbaseItemTranslation extends CommonDBChild {
     *
     * @param $options      array of options
     *
-    * @return nothing (display item : question and answer)
+    * @return void
    **/
    function showFull($options = []) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       if (!$this->can($this->fields['id'], READ)) {
          return false;
@@ -181,7 +178,7 @@ class KnowbaseItemTranslation extends CommonDBChild {
     * @return true;
    **/
    static function showTranslations(KnowbaseItem $item) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       $canedit = $item->can($item->getID(), UPDATE);
       $rand    = mt_rand();
@@ -265,12 +262,10 @@ class KnowbaseItemTranslation extends CommonDBChild {
    /**
     * Display translation form
     *
-    * @param $ID              field (default -1)
-    * @param $options   array
+    * @param integer $ID
+    * @param array   $options
     */
    function showForm($ID = -1, $options = []) {
-      global $CFG_GLPI;
-
       if (isset($options['parent']) && !empty($options['parent'])) {
          $item = $options['parent'];
       }
@@ -321,14 +316,12 @@ class KnowbaseItemTranslation extends CommonDBChild {
    /**
     * Get a translation for a value
     *
-    * @param $item       item to translate
-    * @param $field      field to return (default 'name')
+    * @param KnowbaseItem $item   item to translate
+    * @param string       $field  field to return (default 'name')
     *
-    * @return the field translated if a translation is available, or the original field if not
+    * @return string  the field translated if a translation is available, or the original field if not
    **/
    static function getTranslatedValue(KnowbaseItem $item, $field = "name") {
-      global $DB;
-
       $obj   = new self;
       $found = $obj->find([
          'knowbaseitems_id'   => $item->getID(),
@@ -375,9 +368,9 @@ class KnowbaseItemTranslation extends CommonDBChild {
    /**
     * Return the number of translations for an item
     *
-    * @param item
+    * @param KnowbaseItem $item
     *
-    * @return the number of translations for this item
+    * @return integer  the number of translations for this item
    **/
    static function getNumberOfTranslationsForItem($item) {
 
@@ -397,8 +390,13 @@ class KnowbaseItemTranslation extends CommonDBChild {
       global $DB;
 
       $tab = [];
-      foreach ($DB->request(getTableForItemType(__CLASS__),
-                           "`knowbaseitems_id`='".$item->getID()."'") as $data) {
+
+      $iterator = $DB->request([
+         'FROM'   => getTableForItemType(__CLASS__),
+         'WHERE'  => ['knowbaseitems_id' => $item->getID()]
+      ]);
+
+      while ($data = $iterator->next()) {
          $tab[$data['language']] = $data['language'];
       }
       return $tab;

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -313,7 +313,9 @@ class Itil_Project extends CommonDBRelation {
          $used[$data['id']]     = $data['id'];
       }
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($itil->fields['status'], array_merge($itil->getClosedStatusArray(),
+                                                               $itil->getSolvedStatusArray()))) {
          echo '<div class="firstbloc">';
          $formId = 'itilproject_form' . $rand;
          echo '<form name="' . $formId .'"
@@ -394,16 +396,18 @@ class Itil_Project extends CommonDBRelation {
    /**
     * Duplicate all itil items from a project template to his clone.
     *
+    * @deprecated 9.5
+    *
     * @param integer $oldid  ID of the item to clone
     * @param integer $newid  ID of the item cloned
     *
     * @return void
     **/
    static function cloneItilProject($oldid, $newid) {
-
       global $DB;
 
-      $itil_items = $DB->request(self::getTable(), ['WHERE'  => "`projects_id` = '$oldid'"]);
+      Toolbox::deprecated('Use clone');
+      $itil_items = $DB->request(self::getTable(), ['WHERE'  => ['projects_id' => $oldid]]);
       foreach ($itil_items as $data) {
          unset($data['id']);
          $data['projects_id'] = $newid;

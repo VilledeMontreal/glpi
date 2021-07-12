@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -66,7 +66,7 @@ class Printer extends DbTestCase {
 
       // fields property
       $this->array($obj->fields)
-         ->string['id']->isEqualTo($id)
+         ->integer['id']->isEqualTo($id)
          ->string['name']->isidenticalTo($this->method);
    }
 

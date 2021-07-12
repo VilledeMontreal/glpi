@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -52,6 +52,12 @@ if (isset($_POST["table"])
 
    if (isset($_POST['withlink'])) {
       $itemtype = getItemTypeForTable($_POST["table"]);
+      if (!Session::validateIDOR([
+         'itemtype'    => $itemtype,
+         '_idor_token' => $_POST['_idor_token'] ?? ""
+      ])) {
+         exit();
+      }
       $item = new $itemtype;
       $item->getFromDB(intval($_POST["value"]));
       echo '&nbsp;'.$item->getLinks();

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -29,6 +29,8 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+use PHPMailer\PHPMailer\PHPMailer;
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
@@ -137,52 +139,72 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
          }
          $mmail->Subject  = $current->fields['name'];
 
-         if (empty($current->fields['body_html'])) {
-            $mmail->isHTML(false);
-            $mmail->Body = GLPIMailer::normalizeBreaks($current->fields['body_text']);
-         } else {
-            $mmail->isHTML(true);
-            $mmail->Body = '';
-            $current->fields['body_html'] = Html::entity_decode_deep($current->fields['body_html']);
+         $is_html = !empty($current->fields['body_html']);
 
-            // manage item attached documents
-            $document_items = $DB->request('glpi_documents_items', [
+         $documents_ids = [];
+         $documents_to_attach = [];
+         if ($is_html || $CFG_GLPI['attach_ticket_documents_to_mail']) {
+            // Retieve document list if mail is in HTML format (for inline images)
+            // or if documents are attached to mail.
+            $item = getItemForItemtype($current->fields['itemtype']);
+            $doc_crit = [
                'items_id' => $current->fields['items_id'],
                'itemtype' => $current->fields['itemtype'],
-            ]);
+            ];
+            if ($item instanceof CommonITILObject) {
+               $item->getFromDB($current->fields['items_id']);
+               $doc_crit = $item->getAssociatedDocumentsCriteria(true);
+               if ($is_html) {
+                  // Remove documents having "NO_TIMELINE" position if mail is HTML, as
+                  // these documents corresponds to inlined images.
+                  // If notification is in plain text, they should be kepts as they cannot be rendered in text.
+                  $doc_crit[] = [
+                     'timeline_position'  => ['>', CommonITILObject::NO_TIMELINE]
+                  ];
+               }
+            }
+            $doc_items_iterator = $DB->request(
+               [
+                  'SELECT' => ['documents_id'],
+                  'FROM'   => Document_Item::getTable(),
+                  'WHERE'  => $doc_crit,
+               ]
+            );
+            foreach ($doc_items_iterator as $doc_item) {
+               $documents_ids[] = $doc_item['documents_id'];
+            }
+         }
+
+         $mmail->isHTML($is_html);
+         if (!$is_html) {
+            $mmail->Body = GLPIMailer::normalizeBreaks($current->fields['body_text']);
+            $documents_to_attach = $documents_ids; // Attach all documents
+         } else {
+            $mmail->Body = '';
+            $current->fields['body_html'] = Toolbox::doubleEncodeEmails($current->fields['body_html']);
+            $current->fields['body_html'] = Html::entity_decode_deep($current->fields['body_html']);
+
             $inline_docs = [];
             $doc = new Document();
-            if (count($document_items)) {
-               foreach ($document_items as $doc_i_data) {
-                  $doc->getFromDB($doc_i_data['documents_id']);
-                  // Add embeded image if tag present in ticket content
-                  if (preg_match_all('/'.Document::getImageTag($doc->fields['tag']).'/',
-                                     $current->fields['body_html'], $matches, PREG_PATTERN_ORDER)) {
-                     $image_path = Document::getImage(
-                        GLPI_DOC_DIR."/".$doc->fields['filepath'],
-                        'mail'
-                     );
-                     if ($mmail->AddEmbeddedImage($image_path,
-                                                  $doc->fields['tag'],
-                                                  $doc->fields['filename'],
-                                                  'base64',
-                                                  $doc->fields['mime'])) {
-                        $inline_docs[$doc_i_data['documents_id']] = $doc->fields['tag'];
-                     }
-                  } else if ($CFG_GLPI['attach_ticket_documents_to_mail']) {
-                     // Add all other attachments, according to configuration
-                     $path = GLPI_DOC_DIR."/".$doc->fields['filepath'];
-                     if (Document::isImage($path)) {
-                        $path = Document::getImage(
-                           $path,
-                           'mail'
-                        );
-                     }
-                     $mmail->addAttachment(
-                        $path,
-                        $doc->fields['filename']
-                     );
+            foreach ($documents_ids as $document_id) {
+               $doc->getFromDB($document_id);
+               // Add embeded image if tag present in ticket content
+               if (preg_match_all('/'.preg_quote($doc->fields['tag']).'/',
+                                  $current->fields['body_html'], $matches, PREG_PATTERN_ORDER)) {
+                  $image_path = Document::getImage(
+                     GLPI_DOC_DIR."/".$doc->fields['filepath'],
+                     'mail'
+                  );
+                  if ($mmail->AddEmbeddedImage($image_path,
+                                               $doc->fields['tag'],
+                                               $doc->fields['filename'],
+                                               'base64',
+                                               $doc->fields['mime'])) {
+                     $inline_docs[$document_id] = $doc->fields['tag'];
                   }
+               } else {
+                  // Attach only documents that are not inlined images
+                  $documents_to_attach[] = $document_id;
                }
             }
 
@@ -198,16 +220,12 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
 
                         //find width
                         $width = null;
-                        if (preg_match("/width=[\"|'](\d*(\.\d*)?)[\"|']/", $matches[0][$pos], $wmatches)) {
-                           if (isset($wmatches[1])) {
-                              $width = round($wmatches[1]);
-                           }
+                        if (preg_match("/width=[\"|'](\d+)(\.\d+)?[\"|']/", $matches[0][$pos], $wmatches)) {
+                           $width = intval($wmatches[1]);
                         }
                         $height = null;
-                        if (preg_match("/height=[\"|'](\d*(\.\d*)?)[\"|']/", $matches[0][$pos], $hmatches)) {
-                           if (isset($wmatches[1])) {
-                              $height = round($hmatches[1]);
-                           }
+                        if (preg_match("/height=[\"|'](\d+)(\.\d+)?[\"|']/", $matches[0][$pos], $hmatches)) {
+                           $height = intval($hmatches[1]);
                         }
 
                         $image_path = Document::getImage(
@@ -244,6 +262,8 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
             $mmail->Body    = GLPIMailer::normalizeBreaks($current->fields['body_html']);
             $mmail->AltBody = GLPIMailer::normalizeBreaks($current->fields['body_text']);
          }
+
+         self::attachDocuments($mmail, $documents_to_attach);
 
          $recipient = $current->getField('recipient');
          if (defined('GLPI_FORCE_MAIL')) {
@@ -309,6 +329,49 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
       }
 
       return count($processed);
+   }
+
+   /**
+    * Attach documents to message.
+    * Documents will not be attached if configuration says they should not be.
+    *
+    * @param GLPIMailer $mmail
+    * @param array      $documents_ids
+    *
+    * @return void
+    */
+   static private function attachDocuments(GLPIMailer $mmail, array $documents_ids) {
+      global $CFG_GLPI;
+
+      if (!$CFG_GLPI['attach_ticket_documents_to_mail']) {
+         return;
+      }
+
+      $document = new Document();
+      foreach ($documents_ids as $document_id) {
+         $document->getFromDB($document_id);
+         $path = GLPI_DOC_DIR . "/" . $document->fields['filepath'];
+         if (Document::isImage($path)) {
+            $path = Document::getImage(
+               $path,
+               'mail'
+            );
+         }
+
+         $encoding = PHPMailer::ENCODING_BASE64;
+         $mime = mime_content_type($path);
+         if ($mime == "message/rfc822") {
+            // messages/rfc822 can't be encoded in base64 according to RFC2046
+            // https://datatracker.ietf.org/doc/html/rfc2046
+            $encoding = PHPMailer::ENCODING_8BIT;
+         }
+
+         $mmail->addAttachment(
+            $path,
+            $document->fields['filename'],
+            $encoding
+         );
+      }
    }
 
    static protected function extraRaise($params) {

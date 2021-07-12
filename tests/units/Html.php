@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -31,6 +31,8 @@
 */
 
 namespace tests\units;
+
+use org\bovigo\vfs\vfsStream;
 
 /* Test for inc/html.class.php */
 
@@ -156,7 +158,23 @@ class Html extends \GLPITestCase {
 
    public function providerClean() {
       return [
-            ['<p>Hello<script type="text/javascript">alert("Damn!");</script></p>', 'Hello', '<p>Hello</p>'],
+         // script is not allowed
+         ['<p>Hello<script type="text/javascript">alert("Damn!");</script></p>', 'Hello', '<p>Hello</p>'],
+         // nested list should be preserved
+         ['<ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>', 'onenestedtwo', '<ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>'],
+         // on* attributes are not allowed
+         ['<img src="test.png" onerror="javascript:alert(document.cookie);" alt="test image" />', '', '<img src="test.png" alt="test image" />'],
+         ['<img src="test.png" onload="javascript:alert(document.cookie);" alt="test image" />', '', '<img src="test.png" alt="test image" />'],
+         // iframes should not be preserved by default
+         ['Here is an iframe: <iframe src="http://glpi-project.org/"></iframe>', 'Here is an iframe:', 'Here is an iframe:'],
+         // HTML comments should be removed
+         ['<p>Legit<!-- This is an HTML comment --> text</p>', 'Legit text', '<p>Legit text</p>'],
+         // CDATA should be removed
+         ['<p><![CDATA[Some CDATA]]>Legit text</p>', 'Legit text', '<p>Legit text</p>'],
+         // <email@domain.com> should be twice encoded
+         ['From: Test User <test@glpi-project.org>', 'From: Test User test@glpi-project.org', 'From: Test User test@glpi-project.org'],
+         // <a href="mailto:email@domain.com"> should be preserved
+         ['Email me @: <a href="mailto:email@domain.com">email@domain.com</a>', 'Email me @: email@domain.com', 'Email me @: <a href="mailto:email@domain.com">email@domain.com</a>'],
       ];
    }
 
@@ -325,7 +343,9 @@ class Html extends \GLPITestCase {
          'Phone',
          'Rack',
          'Enclosure',
-         'PDU'
+         'PDU',
+         'PassiveDCEquipment',
+         'Item_DeviceSimcard'
       ];
       $this->string($menu['assets']['title'])->isIdenticalTo('Assets');
       $this->array($menu['assets']['types'])->isIdenticalTo($expected);
@@ -351,7 +371,9 @@ class Html extends \GLPITestCase {
          'Line',
          'Certificate',
          'Datacenter',
-         'Cluster'
+         'Cluster',
+         'Domain',
+         'Appliance'
       ];
       $this->string($menu['management']['title'])->isIdenticalTo('Management');
       $this->array($menu['management']['types'])->isIdenticalTo($expected);
@@ -364,7 +386,8 @@ class Html extends \GLPITestCase {
          'ReservationItem',
          'Report',
          'MigrationCleaner',
-         'SavedSearch'
+         'SavedSearch',
+         'Impact'
       ];
       $this->string($menu['tools']['title'])->isIdenticalTo('Tools');
       $this->array($menu['tools']['types'])->isIdenticalTo($expected);
@@ -380,7 +403,6 @@ class Html extends \GLPITestCase {
          'Rule',
          'Profile',
          'QueuedNotification',
-         'Backup',
          'Glpi\\Event'
       ];
       $this->string($menu['admin']['title'])->isIdenticalTo('Administration');
@@ -393,7 +415,7 @@ class Html extends \GLPITestCase {
          'SLM',
          'Config',
          'FieldUnicity',
-         'Crontask',
+         'CronTask',
          'Auth',
          'MailCollector',
          'Link',
@@ -609,8 +631,8 @@ class Html extends \GLPITestCase {
 
    public function testManageRefreshPage() {
       //no session refresh, no args => no timer
-      if (isset($_SESSION['glpirefresh_ticket_list'])) {
-         unset($_SESSION['glpirefresh_ticket_list']);
+      if (isset($_SESSION['glpirefresh_views'])) {
+         unset($_SESSION['glpirefresh_views']);
       }
 
       $base_script = \Html::scriptBlock("window.setInterval(function() {
@@ -622,7 +644,7 @@ class Html extends \GLPITestCase {
       $this->string($message)->isIdenticalTo($expected);
 
       //Set session refresh to one minute
-      $_SESSION['glpirefresh_ticket_list'] = 1;
+      $_SESSION['glpirefresh_views'] = 1;
       $expected = str_replace("##CALLBACK##", "window.location.reload()", $base_script);
       $expected = str_replace("##TIMER##", 1 * MINUTE_TIMESTAMP * 1000, $expected);
       $message = \Html::manageRefreshPage();
@@ -911,5 +933,158 @@ class Html extends \GLPITestCase {
     */
    public function testGetBackUrl($url_in, $url_out) {
       $this->string(\Html::getBackUrl($url_in), $url_out);
+   }
+
+   public function testGetScssFileHash() {
+
+      $structure = [
+         'css' => [
+            'all.scss' => <<<SCSS
+body {
+   font-size: 12px;
+}
+@import 'imports/borders';     /* import without extension */
+@import 'imports/colors.scss'; /* import with extension */
+SCSS
+            ,
+
+            'another.scss' => <<<SCSS
+form input {
+   background: grey;
+}
+SCSS
+            ,
+
+            'imports' => [
+               'borders.scss' => <<<SCSS
+.big-border {
+   border: 5px dashed black;
+}
+SCSS
+               ,
+               'colors.scss' => <<<SCSS
+.red {
+   color:red;
+}
+SCSS
+            ],
+         ],
+      ];
+      vfsStream::setup('glpi', null, $structure);
+
+      $files_md5 = [
+         'all.scss'             => md5_file(vfsStream::url('glpi/css/all.scss')),
+         'another.scss'         => md5_file(vfsStream::url('glpi/css/another.scss')),
+         'imports/borders.scss' => md5_file(vfsStream::url('glpi/css/imports/borders.scss')),
+         'imports/colors.scss'  => md5_file(vfsStream::url('glpi/css/imports/colors.scss')),
+      ];
+
+      // Composite scss file hash corresponds to self md5 suffixed by all imported scss md5
+      $this->string(\Html::getScssFileHash(vfsStream::url('glpi/css/all.scss')))
+         ->isEqualTo($files_md5['all.scss'] . $files_md5['imports/borders.scss'] . $files_md5['imports/colors.scss']);
+
+      // Simple scss file hash corresponds to self md5
+      $this->string(\Html::getScssFileHash(vfsStream::url('glpi/css/another.scss')))
+         ->isEqualTo($files_md5['another.scss']);
+   }
+
+
+   protected function testGetGenericDateTimeSearchItemsProvider(): array {
+      return [
+         [
+            'options' => [
+               'with_time'          => true,
+               'with_future'        => false,
+               'with_days'          => false,
+               'with_specific_date' => false,
+            ],
+            'check_values' => [
+               'NOW'       => "Now",
+               '-4HOUR'    => "- 4 hours",
+               '-14MINUTE' => "- 14 minutes",
+            ],
+            'unwanted' => ['0', '4DAY', 'LASTMONDAY'],
+         ],
+         [
+            'options' => [
+               'with_time'          => true,
+               'with_future'        => true,
+               'with_days'          => false,
+               'with_specific_date' => false,
+            ],
+            'check_values' => [
+               'NOW'       => "Now",
+               '-4HOUR'    => "- 4 hours",
+               '-14MINUTE' => "- 14 minutes",
+               '5DAY'      => "+ 5 days",
+               '11HOUR'    => "+ 11 hours",
+            ],
+            'unwanted' => ['0', 'LASTMONDAY'],
+         ],
+         [
+            'options' => [
+               'with_time'          => false,
+               'with_future'        => true,
+               'with_days'          => false,
+               'with_specific_date' => false,
+            ],
+            'check_values' => [
+               'NOW'       => "Today",
+               '4DAY'      => "+ 4 days",
+               '-3DAY'      => "- 3 days",
+            ],
+            'unwanted' => ['0', 'LASTMONDAY', '-3MINUTE'],
+         ],
+         [
+            'options' => [
+               'with_time'          => true,
+               'with_future'        => false,
+               'with_days'          => true,
+               'with_specific_date' => false,
+            ],
+            'check_values' => [
+               'NOW'        => "Now",
+               'TODAY'      => "Today",
+               '-4HOUR'     => "- 4 hours",
+               '-14MINUTE'  => "- 14 minutes",
+               'LASTMONDAY' => "last Monday",
+               'BEGINMONTH' => "Beginning of the month",
+               'BEGINYEAR'  => "Beginning of the year",
+            ],
+            'unwanted' => ['0', '+2DAY',],
+         ],
+         [
+            'options' => [
+               'with_time'          => false,
+               'with_future'        => false,
+               'with_days'          => false,
+               'with_specific_date' => true,
+            ],
+            'check_values' => [
+               '0' => "Specify a date",
+            ],
+            'unwanted' => ['+2DAY', 'LASTMONDAY', '-3MINUTE'],
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider testGetGenericDateTimeSearchItemsProvider
+    */
+   public function testGetGenericDateTimeSearchItems(
+      array $options,
+      array $check_values,
+      array $unwanted
+   ) {
+      $values = \Html::getGenericDateTimeSearchItems($options);
+
+      foreach ($check_values as $key => $value) {
+         $this->array($values)->hasKey($key);
+         $this->string($values[$key])->isEqualTo($value);
+      }
+
+      foreach ($unwanted as $key) {
+         $this->array($values)->notHasKey($key);
+      }
    }
 }

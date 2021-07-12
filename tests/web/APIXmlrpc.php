@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,26 +30,23 @@
  * ---------------------------------------------------------------------
  */
 
-namespace tests\units;
+namespace tests\units\Glpi\Api;
 
 use \GuzzleHttp\Exception\ClientException;
 use \GuzzleHttp;
 use \APIBaseClass;
 
-/* Test for inc/apixmlrpc.class.php */
+/* Test for inc/api/apixmlrpc.class.php */
 
 /**
  * @engine isolate
  */
 class APIXmlrpc extends APIBaseClass {
 
-   public function setUp() {
-      parent::setUp();
-      $this->boolean(extension_loaded('xmlrpc'))->isTrue('xmlrpc extension is missing');
-   }
-
    public function beforeTestMethod($method) {
       global $CFG_GLPI;
+
+      $this->boolean(extension_loaded('xmlrpc'))->isTrue('xmlrpc extension is missing');
 
       $this->http_client = new GuzzleHttp\Client();
       $this->base_uri    = trim($CFG_GLPI['url_base'], "/")."/apixmlrpc.php";
@@ -64,7 +61,7 @@ class APIXmlrpc extends APIBaseClass {
                                                        'headers' => $headers]);
    }
 
-   protected function query($resource = "", $params = [], $expected_code = 200, $expected_symbol = '') {
+   protected function query($resource = "", $params = [], $expected_codes = 200, $expected_symbol = '') {
       //reconstruct params for xmlrpc (base params done for rest)
       $flat_params = array_merge($params,
                                  isset($params['query'])   ? $params['query']   : [],
@@ -81,7 +78,7 @@ class APIXmlrpc extends APIBaseClass {
          $res = $this->doHttpRequest($resource, $flat_params);
       } catch (\Exception $e) {
          $response = $e->getResponse();
-         $this->variable($response->getStatusCode())->isEqualTo($expected_code);
+         $this->variable($response->getStatusCode())->isEqualTo($expected_codes);
          $body = xmlrpc_decode($response->getBody());
          $this->array($body)
             ->hasKey('0')
@@ -92,7 +89,7 @@ class APIXmlrpc extends APIBaseClass {
       if (isset($this->last_error)) {
          $this->variable($res)->isNotNull();
       }
-      $this->variable($res->getStatusCode())->isEqualTo($expected_code);
+      $this->variable($res->getStatusCode())->isEqualTo($expected_codes);
       // retrieve data
       $data = xmlrpc_decode($res->getBody());
       if (is_array($data)) {
@@ -106,6 +103,7 @@ class APIXmlrpc extends APIBaseClass {
     * @covers API::initSession
     */
    public function initSessionCredentials() {
+      $uid = getItemByTypeName('User', TU_USER, true);
       $data = $this->query('initSession',
             ['query' => [
                   'login'    => TU_USER,

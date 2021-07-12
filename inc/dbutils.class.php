@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -261,26 +261,22 @@ final class DbUtils {
 
          $itemtype = $prefix.$table;
          // Get real existence of itemtype
-         if (class_exists($itemtype)) {
-            $item_class = new ReflectionClass($itemtype);
-            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
-               $itemtype                                   = get_class($item);
-               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-               return $itemtype;
-            }
+         if ($item = $this->getItemForItemtype($itemtype)) {
+            $itemtype                                   = get_class($item);
+            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+            return $itemtype;
          }
+
          // Namespaced item
          $itemtype = $pref2 . str_replace('_', '\\', $table);
-         if (class_exists($itemtype)) {
-            $item_class = new ReflectionClass($itemtype);
-            if (!$item_class->isAbstract() && ($item = $this->getItemForItemtype($itemtype))) {
-               $itemtype                                   = get_class($item);
-               $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
-               $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
-               return $itemtype;
-            }
+         if ($item = $this->getItemForItemtype($itemtype)) {
+            $itemtype                                   = get_class($item);
+            $CFG_GLPI['glpiitemtypetables'][$inittable] = $itemtype;
+            $CFG_GLPI['glpitablesitemtype'][$itemtype]  = $inittable;
+            return $itemtype;
          }
+
          return "UNKNOWN";
       }
    }
@@ -298,10 +294,45 @@ final class DbUtils {
          //to avoid issues when pecl-event is installed...
          $itemtype = 'Glpi\\Event';
       }
-      if (class_exists($itemtype)) {
-         return new $itemtype();
+
+      // If itemtype starts with "Glpi\" or "GlpiPlugin\" followed by a "\",
+      // then it is a namespaced itemtype that has been "sanitized".
+      // Strip slashes to get its actual value.
+      $sanitized_namespaced_pattern = '/^'
+         . '(' . preg_quote(NS_GLPI, '/') . '|' . preg_quote(NS_PLUG, '/') . ')' // start with GLPI core or plugin namespace
+         . preg_quote('\\', '/') // followed by an additionnal \
+         . '/';
+      if (preg_match($sanitized_namespaced_pattern, $itemtype)) {
+         $itemtype = stripslashes($itemtype);
       }
-      return false;
+
+      if (!is_subclass_of($itemtype, CommonGLPI::class, true)) {
+         // Only CommonGLPI sublasses are valid itemtypes
+         return false;
+      }
+
+      $item_class = new ReflectionClass($itemtype);
+      if ($item_class->isAbstract()) {
+         trigger_error(
+            sprintf('Cannot instanciate "%s" as it is an abstract class.', $itemtype),
+            E_USER_WARNING
+         );
+         return false;
+      }
+
+      if (($constructor = $item_class->getConstructor()) !== null) {
+         foreach ($constructor->getParameters() as $parameter) {
+            if (!$parameter->isOptional()) {
+               trigger_error(
+                  sprintf('Cannot instanciate "%s" as its constructor has non optionnal parameters.', $itemtype),
+                  E_USER_WARNING
+               );
+               return false;
+            }
+         }
+      }
+
+      return new $itemtype();
    }
 
    /**
@@ -497,6 +528,7 @@ final class DbUtils {
     */
    public function getEntitiesRestrictRequest($separator = "AND", $table = "", $field = "", $value = '',
                                        $is_recursive = false, $complete_request = false) {
+      global $DB;
 
       $query = $separator ." ( ";
 
@@ -522,9 +554,9 @@ final class DbUtils {
          }
       }
       if (empty($table)) {
-         $field = "`$field`";
+         $field = $DB->quoteName($field);
       } else {
-         $field = "`$table`.`$field`";
+         $field = $DB->quoteName("$table.$field");
       }
 
       $query .= "$field";
@@ -565,8 +597,8 @@ final class DbUtils {
             if ($table == 'glpi_entities') {
                $query .= " OR $field IN ('" . implode("','", $ancestors) . "')";
             } else {
-               $recur = (empty($table) ? '`is_recursive`' : "`$table`.`is_recursive`");
-               $query .= " OR ($recur='1' AND $field IN ('" . implode("','", $ancestors) . "'))";
+               $recur = $DB->quoteName((empty($table) ? 'is_recursive' : "$table.is_recursive"));
+               $query .= " OR ($recur='1' AND $field IN (" . implode(', ', $ancestors) . '))';
             }
          }
       }
@@ -678,7 +710,7 @@ final class DbUtils {
    public function getSonsOf($table, $IDf) {
       global $DB, $GLPI_CACHE;
 
-      $ckey = 'sons_cache_' . md5($table . $IDf);
+      $ckey = 'sons_cache_' . $table . '_' . $IDf;
       $sons = false;
 
       if (Toolbox::useCache()) {
@@ -712,7 +744,7 @@ final class DbUtils {
 
       if (!is_array($sons)) {
          // IDs to be present in the final array
-         $sons[$IDf] = "$IDf";
+         $sons[$IDf] = $IDf;
          // current ID found to be added
          $found = [];
          // First request init the  varriables
@@ -787,9 +819,9 @@ final class DbUtils {
 
       $ckey = 'ancestors_cache_';
       if (is_array($items_id)) {
-         $ckey .= md5($table . implode('|', $items_id));
+         $ckey .= $table . '_' . md5(implode('|', $items_id));
       } else {
-         $ckey .= md5($table . $items_id);
+         $ckey .= $table . '_' . $items_id;
       }
       $ancestors = [];
 
@@ -1093,6 +1125,12 @@ final class DbUtils {
          } else {
             $name = $result['completename'];
          }
+
+         // Separator is not encoded in DB, and it could not be changed as this is mandatory to be able to split tree
+         // correctly even if some tree elements are containing ">" char in their name (this one will be encoded).
+         $separator = ' > ';
+         $name = implode(Toolbox::clean_cross_side_scripting_deep($separator), explode($separator, $name));
+
          if ($tooltip) {
             $comment  = sprintf(__('%1$s: %2$s')."<br>",
                               "<span class='b'>".__('Complete name')."</span>",
@@ -1306,8 +1344,11 @@ final class DbUtils {
     * @param string  $reallink real field to link ($table.id if not set) (default ='')
     *
     * @return string the query
+    *
+    * @Deprecated 9.5.0
     */
    public function getRealQueryForTreeItem($table, $IDf, $reallink = "") {
+      Toolbox::deprecated();
 
       if (empty($IDf)) {
          return "";
@@ -1366,7 +1407,7 @@ final class DbUtils {
     *
     * @return string formatted username
     */
-   public function formatUserName($ID, $login, $realname, $firstname, $link = 0, $cut = 0, $force_config = false) {
+   public function formatUserName($ID, $login, $realname, $firstname, $link = 1, $cut = 0, $force_config = false) {
       global $CFG_GLPI;
 
       $before = "";
@@ -1383,37 +1424,38 @@ final class DbUtils {
       }
 
       if (strlen($realname) > 0) {
-         $temp = $realname;
+         $formatted = $realname;
 
          if (strlen($firstname) > 0) {
             if ($order == User::FIRSTNAME_BEFORE) {
-               $temp = $firstname." ".$temp;
+               $formatted = $firstname." ".$formatted;
             } else {
-               $temp .= " ".$firstname;
+               $formatted .= " ".$firstname;
             }
          }
 
          if (($cut > 0)
-            && (Toolbox::strlen($temp) > $cut)) {
-            $temp = Toolbox::substr($temp, 0, $cut)." ...";
+            && (Toolbox::strlen($formatted) > $cut)) {
+            $formatted = Toolbox::substr($formatted, 0, $cut)." ...";
          }
 
       } else {
-         $temp = $login;
+         $formatted = $login;
       }
 
       if ($ID > 0
-         && ((strlen($temp) == 0) || $id_visible)) {
-         $temp = sprintf(__('%1$s (%2$s)'), $temp, $ID);
+         && ((strlen($formatted) == 0) || $id_visible)) {
+         $formatted = sprintf(__('%1$s (%2$s)'), $formatted, $ID);
       }
 
       if (($link == 1)
          && ($ID > 0)) {
-         $before = "<a title=\"".$temp."\" href='".User::getFormURLWithID($ID)."'>";
+         $before = "<a title=\"".Toolbox::addslashes_deep($formatted)."\"
+                       href='".User::getFormURLWithID($ID)."'>";
          $after  = "</a>";
       }
 
-      $username = $before.$temp.$after;
+      $username = $before.$formatted.$after;
       return $username;
    }
 
@@ -1471,12 +1513,12 @@ final class DbUtils {
 
                $email           = UserEmail::getDefaultForUser($ID);
                if (!empty($email)) {
-                  $comments[] = ['name'  => __('Email'),
+                  $comments[] = ['name'  => _n('Email', 'Emails', 1),
                                  'value' => $email];
                }
 
                if (!empty($data["phone"])) {
-                  $comments[] = ['name'  => __('Phone'),
+                  $comments[] = ['name'  => Phone::getTypeName(1),
                                  'value' => $data["phone"]];
                }
 
@@ -1486,7 +1528,7 @@ final class DbUtils {
                }
 
                if ($data["locations_id"] > 0) {
-                  $comments[] = ['name'  => __('Location'),
+                  $comments[] = ['name'  => Location::getTypeName(1),
                                  'value' => Dropdown::getDropdownName("glpi_locations",
                                                                            $data["locations_id"])];
                }
@@ -1503,7 +1545,6 @@ final class DbUtils {
                                                                            $data["usercategories_id"])];
                }
                if (count($comments)) {
-                  $user['comment'] = $user['comment'];
                   foreach ($comments as $datas) {
                      // Do not use SPAN here
                      $user['comment'] .= sprintf(__('%1$s: %2$s')."<br>",
@@ -1692,33 +1733,6 @@ final class DbUtils {
       if (method_exists($DB, "close")) {
          $DB->close();
       }
-   }
-
-   /**
-    * Add dates for request
-    *
-    * @Deprecated 9.4
-    *
-    * @param string $field table.field to request
-    * @param string $begin begin date
-    * @param string $end   end date
-    *
-    * @return string SQL
-    */
-   public function getDateRequest($field, $begin, $end) {
-      Toolbox::deprecated('Use getDateCriteria');
-      $sql = '';
-      if (!empty($begin)) {
-         $sql .= " $field >= '$begin' ";
-      }
-
-      if (!empty($end)) {
-         if (!empty($sql)) {
-            $sql .= " AND ";
-         }
-         $sql .= " $field <= ADDDATE('$end' , INTERVAL 1 DAY) ";
-      }
-      return " (".$sql.") ";
    }
 
    /**

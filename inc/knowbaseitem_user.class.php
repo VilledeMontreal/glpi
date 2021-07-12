@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -51,7 +51,7 @@ class KnowbaseItem_User extends CommonDBRelation {
    /**
     * Get users for a knowbaseitem
     *
-    * @param $knowbaseitems_id ID of the knowbaseitem
+    * @param integer $knowbaseitems_id  ID of the knowbaseitem
     *
     * @return array of users linked to a knowbaseitem
    **/

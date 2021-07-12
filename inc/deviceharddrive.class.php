@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -59,7 +59,7 @@ class DeviceHardDrive extends CommonDevice {
                                      'type'  => 'text',
                                      'unit'  => __('Mio')],
                                ['name'  => 'deviceharddrivemodels_id',
-                                     'label' => __('Model'),
+                                     'label' => _n('Model', 'Models', 1),
                                      'type'  => 'dropdownValue'],
                                ['name'  => 'interfacetypes_id',
                                      'label' => __('Interface'),
@@ -75,7 +75,8 @@ class DeviceHardDrive extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'capacity_default',
          'name'               => __('Capacity by default'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -83,7 +84,8 @@ class DeviceHardDrive extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'rpm',
          'name'               => __('Rpm'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -91,7 +93,8 @@ class DeviceHardDrive extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'cache',
          'name'               => __('Cache'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -106,7 +109,7 @@ class DeviceHardDrive extends CommonDevice {
          'id'                 => '15',
          'table'              => 'glpi_deviceharddrivemodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -131,29 +134,16 @@ class DeviceHardDrive extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDropdown::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
-      return self::prepareInputForAddOrUpdate($input);
+      return $this->prepareInputForAddOrUpdate($input);
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDropdown::prepareInputForUpdate()
-   **/
    function prepareInputForUpdate($input) {
-      return self::prepareInputForAddOrUpdate($input);
+      return $this->prepareInputForAddOrUpdate($input);
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableHeader()
-   **/
    static function getHTMLTableHeader($itemtype, HTMLTableBase $base,
                                       HTMLTableSuperHeader $super = null,
                                       HTMLTableHeader $father = null, array $options = []) {
@@ -218,6 +208,8 @@ class DeviceHardDrive extends CommonDevice {
    }
 
    public static function rawSearchOptionsToAdd($itemtype, $main_joinparams) {
+      global $DB;
+
       $tab = [];
 
       $tab[] = [
@@ -249,10 +241,18 @@ class DeviceHardDrive extends CommonDevice {
          'width'              => 1000,
          'massiveaction'      => false,
          'joinparams'         => $main_joinparams,
-         'computation'        => '(SUM(TABLE.`capacity`) / COUNT(TABLE.`id`))
-                                       * COUNT(DISTINCT TABLE.`id`)'
+         'computation'        =>
+            '(SUM(' . $DB->quoteName('TABLE.capacity') . ') / COUNT(' .
+            $DB->quoteName('TABLE.id') . '))
+            * COUNT(DISTINCT ' . $DB->quoteName('TABLE.id') . ')',
+         'nometa'             => true, // cannot GROUP_CONCAT a SUM
       ];
 
       return $tab;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-hdd";
    }
 }

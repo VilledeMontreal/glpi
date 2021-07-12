@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -64,12 +64,20 @@ class Plugin extends DbTestCase {
       if (defined('GLPI_PREVER')) {
          $this->string($plugin->getGlpiPrever())->isIdenticalTo(GLPI_PREVER);
       } else {
-         $this->when(
-            function () use ($plugin) {
-               $plugin->getGlpiPrever();
-            }
-         )->error
-            ->exists();
+         if (version_compare(PHP_VERSION, '8.0.0-dev', '<')) {
+            $this->when(
+               function () use ($plugin) {
+                  $plugin->getGlpiPrever();
+               }
+            )->error
+               ->exists();
+         } else {
+            $this->exception(
+               function () use ($plugin) {
+                  $plugin->getGlpiPrever();
+               }
+            )->message->contains('Undefined constant "GLPI_PREVER"');
+         }
       }
    }
 
@@ -315,7 +323,7 @@ class Plugin extends DbTestCase {
 
    /**
     * Test state checking on an invalid directory corresponding to a known plugin.
-    * Should results in changing plugin state to "TOBECLEANED".
+    * Should results in no change in plugin state, as "TOBECLEANED" state is realtime computed.
     */
    public function testCheckPluginStateForInvalidKnownPlugin() {
 
@@ -325,19 +333,18 @@ class Plugin extends DbTestCase {
          'version'   => '1.0',
          'state'     => \Plugin::ACTIVATED,
       ];
-      $expected_data = array_merge(
-         $initial_data,
-         [
-            'state' => \Plugin::TOBECLEANED,
-         ]
-      );
+      $expected_data = $initial_data;
 
       $this->doTestCheckPluginState(
          $initial_data,
          null,
          $expected_data,
-         'Unable to load plugin "' . $this->test_plugin_directory . '" informations. Its state has been changed to "To be cleaned".'
+         'Unable to load plugin "' . $this->test_plugin_directory . '" information.'
       );
+
+      // check also Plugin::isActivated method
+      $plugin_inst = new \Plugin();
+      $this->boolean($plugin_inst->isActivated($this->test_plugin_directory));
    }
 
    /**
@@ -396,6 +403,10 @@ class Plugin extends DbTestCase {
          $expected_data,
          'Plugin "' . $this->test_plugin_directory . '" version changed. It has been deactivated as its update process has to be launched.'
       );
+
+      // check also Plugin::isUpdatable method
+      $plugin_inst = new \Plugin();
+      $this->boolean($plugin_inst->isUpdatable($this->test_plugin_directory));
    }
 
    /**
@@ -545,6 +556,10 @@ class Plugin extends DbTestCase {
          $expected_data,
          'Plugin "' . $this->test_plugin_directory . '" version changed. It has been deactivated as its update process has to be launched.'
       );
+
+      // check also Plugin::isUpdatable method
+      $plugin_inst = new \Plugin();
+      $this->boolean($plugin_inst->isUpdatable($this->test_plugin_directory));
    }
 
    /**
@@ -574,6 +589,40 @@ class Plugin extends DbTestCase {
 
    /**
     * Test state checking on a valid directory corresponding to a known inactive plugin with no modifications
+    * but not validating config.
+    * Should results in changing plugin state to "TOBECONFIGURED".
+    */
+   public function testCheckPluginStateForInactiveAndNotUpdatedPluginNotValidatingConfig() {
+
+      $initial_data = [
+         'directory' => $this->test_plugin_directory,
+         'name'      => 'Test plugin',
+         'version'   => '1.0',
+         'state'     => \Plugin::NOTACTIVATED,
+      ];
+      $setup_informations = [
+         'name'    => 'Test plugin',
+         'version' => '1.0',
+      ];
+      $expected_data = array_merge(
+         $initial_data,
+         [
+            'state' => \Plugin::TOBECONFIGURED,
+         ]
+      );
+
+      $this->function->plugin_test_check_config = false;
+
+      $this->doTestCheckPluginState(
+         $initial_data,
+         $setup_informations,
+         $expected_data,
+         'Plugin "' . $this->test_plugin_directory . '" must be configured.'
+      );
+   }
+
+   /**
+    * Test state checking on a valid directory corresponding to a known active plugin with no modifications
     * but not matching versions.
     * Should results in changing plugin state to "NOTACTIVATED".
     */
@@ -607,10 +656,14 @@ class Plugin extends DbTestCase {
          $expected_data,
          'Plugin "' . $this->test_plugin_directory . '" prerequisites are not matched. It has been deactivated.'
       );
+
+      // check also Plugin::isUpdatable method
+      $plugin_inst = new \Plugin();
+      $this->boolean($plugin_inst->isUpdatable($this->test_plugin_directory));
    }
 
    /**
-    * Test state checking on a valid directory corresponding to a known inactive plugin with no modifications
+    * Test state checking on a valid directory corresponding to a known active plugin with no modifications
     * but not matching prerequisites.
     * Should results in changing plugin state to "NOTACTIVATED".
     */
@@ -644,11 +697,11 @@ class Plugin extends DbTestCase {
    }
 
    /**
-    * Test state checking on a valid directory corresponding to a known inactive plugin with no modifications
+    * Test state checking on a valid directory corresponding to a known active plugin with no modifications
     * but not validating config.
-    * Should results in changing plugin state to "NOTACTIVATED".
+    * Should results in changing plugin state to "TOBECONFIGURED".
     */
-   public function testCheckPluginStateForActiveAndNotUpdatedPluginNotValidationConfig() {
+   public function testCheckPluginStateForActiveAndNotUpdatedPluginNotValidatingConfig() {
 
       $initial_data = [
          'directory' => $this->test_plugin_directory,
@@ -663,7 +716,7 @@ class Plugin extends DbTestCase {
       $expected_data = array_merge(
          $initial_data,
          [
-            'state' => \Plugin::NOTACTIVATED,
+            'state' => \Plugin::TOBECONFIGURED,
          ]
       );
 
@@ -673,12 +726,12 @@ class Plugin extends DbTestCase {
          $initial_data,
          $setup_informations,
          $expected_data,
-         'Plugin "' . $this->test_plugin_directory . '" prerequisites are not matched. It has been deactivated.'
+         'Plugin "' . $this->test_plugin_directory . '" must be configured.'
       );
    }
 
    /**
-    * Test state checking on a valid directory corresponding to a known inactive plugin with no modifications,
+    * Test state checking on a valid directory corresponding to a known active plugin with no modifications,
     * matching prerequisites and validating config.
     * Should results in no changes.
     */
@@ -707,6 +760,36 @@ class Plugin extends DbTestCase {
    }
 
    /**
+    * Test state checking on a valid directory corresponding to a known active plugin with no modifications
+    * having nor check_prerequisites nor check_config function.
+    * Should results in no changes.
+    */
+   public function testCheckPluginStateForActiveAndNotUpdatedPluginHavingNoCheckFunctions() {
+
+      $initial_data = [
+         'directory' => $this->test_plugin_directory,
+         'name'      => 'Test plugin',
+         'version'   => '1.0',
+         'state'     => \Plugin::ACTIVATED,
+      ];
+      $setup_informations = [
+         'name'    => 'Test plugin',
+         'version' => '1.0',
+      ];
+      $expected_data = $initial_data;
+
+      $this->doTestCheckPluginState(
+         $initial_data,
+         $setup_informations,
+         $expected_data
+      );
+
+      // check also Plugin::isActivated method
+      $plugin_inst = new \Plugin();
+      $this->boolean($plugin_inst->isActivated($this->test_plugin_directory));
+   }
+
+   /**
     * Test that state checking on a plugin directory.
     *
     * /!\ Each iteration on this method has to be done on a different test method, unless you change
@@ -714,7 +797,7 @@ class Plugin extends DbTestCase {
     * the plugin on each test.
     *
     * @param array|null  $initial_data       Initial data in DB, null for none.
-    * @param array|null  $setup_informations Informations hosted by setup file, null for none.
+    * @param array|null  $setup_informations Information hosted by setup file, null for none.
     * @param array|null  $expected_data      Expected data in DB, null for none.
     * @param string|null $expected_warning   Expected warning message, null for none.
     *
@@ -789,7 +872,7 @@ class Plugin extends DbTestCase {
     * Create test plugin files.
     *
     * @param boolean     $withsetup     Include setup file ?
-    * @param array       $informations  Informations to put in setup files.
+    * @param array       $informations  Information to put in setup files.
     * @param null|string $directory     Directory where to create files, null to use default location.
     *
     * @return void

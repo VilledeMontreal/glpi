@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -42,14 +42,14 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 9.5.0
 **/
-class ITILTemplatePredefinedField extends ITILTemplateField {
+abstract class ITILTemplatePredefinedField extends ITILTemplateField {
 
    static function getTypeName($nb = 0) {
       return _n('Predefined field', 'Predefined fields', $nb);
    }
 
 
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       $tt_class = static::$itemtype;
       $tt     = new $tt_class;
@@ -89,16 +89,19 @@ class ITILTemplatePredefinedField extends ITILTemplateField {
 
       // Try to delete itemtype -> delete items_id
       if ($this->fields['num'] == $itemtype_id) {
-         $query = "SELECT `id`
-                   FROM `".$this->getTable()."`
-                   WHERE `".static::$items_id."` = '".$this->fields[static::$items_id]."'
-                         AND `num` = '$items_id_id'";
+         $iterator = $DB->request([
+            'SELECT' => 'id',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+               static::$items_id => $this->fields[static::$items_id],
+               'num'             => $items_id_id
+            ]
+         ]);
 
-         if ($result = $DB->query($query)) {
-            if ($DB->numrows($result)) {
-               $a = new static();
-               $a->delete(['id' => $DB->result($result, 0, 0)]);
-            }
+         if (count($iterator)) {
+            $result = $iterator->next();
+            $a = new static();
+            $a->delete(['id' => $result['id']]);
          }
       }
    }
@@ -132,10 +135,10 @@ class ITILTemplatePredefinedField extends ITILTemplateField {
     *
     * @since 0.83
     *
-    * @param $ID                    integer  the template ID
-    * @param $withtypeandcategory   boolean   with type and category (false by default)
+    * @param integer $ID                   the template ID
+    * @param boolean $withtypeandcategory  with type and category (false by default)
     *
-    * @return an array of predefined fields
+    * @return array of predefined fields
    **/
    function getPredefinedFields($ID, $withtypeandcategory = false) {
       global $DB;
@@ -189,7 +192,7 @@ class ITILTemplatePredefinedField extends ITILTemplateField {
             $itemstable = 'glpi_items_tickets';
             break;
          default:
-            throw new \RuntimeException('Unknown ITIL type ' . itiltype);
+            throw new \RuntimeException('Unknown ITIL type ' . $itil_class);
       }
 
       $fields = [
@@ -220,10 +223,10 @@ class ITILTemplatePredefinedField extends ITILTemplateField {
     *
     * @since 0.83
     *
-    * @param $tt                       ITIL Template
-    * @param $withtemplate    boolean  Template or basic item (default 0)
+    * @param ITILTemplate $tt            ITIL Template
+    * @param boolean      $withtemplate  Template or basic item (default 0)
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForITILTemplate(ITILTemplate $tt, $withtemplate = 0) {
       global $DB, $CFG_GLPI;

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -100,7 +100,8 @@ abstract class CommonITILCost extends CommonDBChild {
          'name'               => __('Title'),
          'searchtype'         => 'contains',
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -172,7 +173,7 @@ abstract class CommonITILCost extends CommonDBChild {
          'id'                 => '18',
          'table'              => 'glpi_budgets',
          'field'              => 'name',
-         'name'               => _n('Budget', 'Budgets', 1),
+         'name'               => Budget::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -180,7 +181,7 @@ abstract class CommonITILCost extends CommonDBChild {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -190,11 +191,13 @@ abstract class CommonITILCost extends CommonDBChild {
 
 
    static function rawSearchOptionsToAdd() {
+      global $DB;
+
       $tab = [];
 
       $tab[] = [
          'id'                 => 'cost',
-         'name'               => __('Cost')
+         'name'               => _n('Cost', 'Costs', 1)
       ];
 
       $tab[] = [
@@ -209,12 +212,14 @@ abstract class CommonITILCost extends CommonDBChild {
          'joinparams'         => [
             'jointype'           => 'child'
          ],
-         'computation'        => '(SUM(TABLE.`actiontime`
-                                         * TABLE.`cost_time`/'.HOUR_TIMESTAMP.'
-                                         + TABLE.`cost_fixed`
-                                         + TABLE.`cost_material`)
-                                     / COUNT(TABLE.`id`))
-                                   * COUNT(DISTINCT TABLE.`id`)'
+         'computation'        =>
+            '(SUM(' . $DB->quoteName('TABLE.actiontime') . ' * ' .
+            $DB->quoteName('TABLE.cost_time') . '/' . HOUR_TIMESTAMP .
+            ' + ' . $DB->quoteName('TABLE.cost_fixed') . ' + ' .
+            $DB->quoteName('TABLE.cost_material') . ') / COUNT(' .
+            $DB->quoteName('TABLE.id') . ')) * COUNT(DISTINCT ' .
+            $DB->quoteName('TABLE.id') . ')',
+         'nometa'             => true, // cannot GROUP_CONCAT a SUM
       ];
 
       $tab[] = [
@@ -229,16 +234,19 @@ abstract class CommonITILCost extends CommonDBChild {
          'joinparams'         => [
             'jointype'           => 'child'
          ],
-         'computation'        => '(SUM(TABLE.`cost_time`*TABLE.`actiontime`/'.HOUR_TIMESTAMP.')
-                                      / COUNT(TABLE.`id`))
-                                    * COUNT(DISTINCT TABLE.`id`)'
+         'computation'        =>
+            '(SUM(' . $DB->quoteName('TABLE.actiontime') . ' * ' .
+            $DB->quoteName('TABLE.cost_time') . '/' . HOUR_TIMESTAMP .
+            ') / COUNT(' . $DB->quoteName('TABLE.id') . ')) * COUNT(DISTINCT ' .
+            $DB->quoteName('TABLE.id') . ')',
+         'nometa'             => true, // cannot GROUP_CONCAT a SUM
       ];
 
       $tab[] = [
          'id'                 => '49',
          'table'              => static::getTable(),
          'field'              => 'actiontime',
-         'name'               => sprintf(__('%1$s - %2$s'), __('Cost'), __('Duration')),
+         'name'               => sprintf(__('%1$s - %2$s'), _n('Cost', 'Costs', 1), __('Duration')),
          'datatype'           => 'timestamp',
          'forcegroupby'       => true,
          'usehaving'          => true,
@@ -260,8 +268,11 @@ abstract class CommonITILCost extends CommonDBChild {
          'joinparams'         => [
             'jointype'           => 'child'
          ],
-         'computation'        => '(SUM(TABLE.`cost_fixed`) / COUNT(TABLE.`id`))
-                                    * COUNT(DISTINCT TABLE.`id`)'
+         'computation'        =>
+            '(SUM(' . $DB->quoteName('TABLE.cost_fixed') . ') / COUNT(' .
+            $DB->quoteName('TABLE.id') . '))
+            * COUNT(DISTINCT ' . $DB->quoteName('TABLE.id') . ')',
+         'nometa'             => true, // cannot GROUP_CONCAT a SUM
       ];
 
       $tab[] = [
@@ -276,8 +287,11 @@ abstract class CommonITILCost extends CommonDBChild {
          'joinparams'         => [
             'jointype'           => 'child'
          ],
-         'computation'        => '(SUM(TABLE.`cost_material`) / COUNT(TABLE.`id`))
-                                    * COUNT(DISTINCT TABLE.`id`)'
+         'computation'        =>
+            '(SUM(' . $DB->quoteName('TABLE.cost_material') . ') / COUNT(' .
+            $DB->quoteName('TABLE.id') . '))
+            * COUNT(DISTINCT ' . $DB->quoteName('TABLE.id') . ')',
+         'nometa'             => true, // cannot GROUP_CONCAT a SUM
       ];
 
       return $tab;
@@ -443,7 +457,7 @@ abstract class CommonITILCost extends CommonDBChild {
       echo "</td>";
       echo "</tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Budget')."</td>";
+      echo "<tr class='tab_bg_1'><td>".Budget::getTypeName(1)."</td>";
       echo "<td>";
       Budget::dropdown(['value'  => $this->fields["budgets_id"],
                              'entity' => $this->fields["entities_id"]]);
@@ -500,7 +514,9 @@ abstract class CommonITILCost extends CommonDBChild {
 
       $rand   = mt_rand();
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($item->fields['status'], array_merge($item->getClosedStatusArray(),
+                                                         $item->getSolvedStatusArray()))) {
          echo "<div id='viewcost".$ID."_$rand'></div>\n";
          echo "<script type='text/javascript' >\n";
          echo "function viewAddCost".$ID."_$rand() {\n";
@@ -539,13 +555,13 @@ abstract class CommonITILCost extends CommonDBChild {
       if (count($iterator)) {
          echo "<tr>";
          if ($forproject) {
-            echo "<th>".__('Ticket')."</th>";
+            echo "<th>".Ticket::getTypeName(1)."</th>";
             $ticket = new Ticket();
          }
          echo "<th>".__('Name')."</th>";
          echo "<th>".__('Begin date')."</th>";
          echo "<th>".__('End date')."</th>";
-         echo "<th>".__('Budget')."</th>";
+         echo "<th>".Budget::getTypeName(1)."</th>";
          echo "<th>".__('Duration')."</th>";
          echo "<th>".__('Time cost')."</th>";
          echo "<th>".__('Fixed cost')."</th>";
@@ -638,7 +654,7 @@ abstract class CommonITILCost extends CommonDBChild {
 
       $result = $DB->request(
          [
-            'FROM'      => getTableForItemtype($type),
+            'FROM'      => getTableForItemType($type),
             'WHERE'     => [
                static::$items_id      => $ID,
             ],

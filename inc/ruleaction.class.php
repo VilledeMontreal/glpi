@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,6 +37,7 @@ if (!defined('GLPI_ROOT')) {
 class RuleAction extends CommonDBChild {
 
    // From CommonDBChild
+   static public $itemtype        = "Rule";
    static public $items_id        = 'rules_id';
    public $dohistory              = true;
    public $auto_message_on_action = false;
@@ -88,18 +89,13 @@ class RuleAction extends CommonDBChild {
       return _n('Action', 'Actions', $nb);
    }
 
-
-   /**
-    * @see CommonDBTM::getRawName()
-   **/
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       if ($rule = getItemForItemtype(static::$itemtype)) {
          return Html::clean($rule->getMinimalActionText($this->fields));
       }
       return '';
    }
-
 
    /**
     * @since 0.84
@@ -175,7 +171,8 @@ class RuleAction extends CommonDBChild {
          'name'               => __('Value'),
          'massiveaction'      => false,
          'datatype'           => 'specific',
-         'additionalfields'   => ['rules_id']
+         'additionalfields'   => ['rules_id'],
+         'autocomplete'       => true,
       ];
 
       return $tab;
@@ -237,8 +234,6 @@ class RuleAction extends CommonDBChild {
     * @param $options      array
    **/
    static function getSpecificValueToSelect($field, $name = '', $values = '', array $options = []) {
-      global $DB;
-
       if (!is_array($values)) {
          $values = [$field => $values];
       }
@@ -325,10 +320,12 @@ class RuleAction extends CommonDBChild {
    **/
    function addActionByAttributes($action, $ruleid, $field, $value) {
 
-      $input["action_type"]      = $action;
-      $input["field"]            = $field;
-      $input["value"]            = $value;
-      $input[static::$items_id]  = $ruleid;
+      $input = [
+         'action_type'     => $action,
+         'field'           => $field,
+         'value'           => $value,
+         static::$items_id => $ruleid,
+      ];
       $this->add($input);
    }
 
@@ -346,12 +343,14 @@ class RuleAction extends CommonDBChild {
    **/
    static function dropdownActions($options = []) {
 
-      $p['subtype']     = '';
-      $p['name']        = '';
-      $p['field']       = '';
-      $p['value']       = '';
-      $p['alreadyused'] = false;
-      $p['display']     = true;
+      $p = [
+         'subtype'     => '',
+         'name'        => '',
+         'field'       => '',
+         'value'       => '',
+         'alreadyused' => false,
+         'display'     => true,
+      ];
 
       if (is_array($options) && count($options)) {
          foreach ($options as $key => $val) {
@@ -401,6 +400,7 @@ class RuleAction extends CommonDBChild {
                    'send'                => __('Send'),
                    'add_validation'      => __('Send'),
                    'fromuser'            => __('Copy from user'),
+                   'defaultfromuser'     => __('Copy default from user'),
                    'fromitem'            => __('Copy from item')];
    }
 
@@ -476,7 +476,9 @@ class RuleAction extends CommonDBChild {
 
       $display = false;
 
-      $param['value'] = '';
+      $param = [
+         'value' => '',
+      ];
       if (isset($options['value'])) {
          $param['value'] = $options['value'];
       }
@@ -489,6 +491,7 @@ class RuleAction extends CommonDBChild {
             break;
 
          case 'fromuser' :
+         case 'defaultfromuser' :
          case 'fromitem' :
             Dropdown::showYesNo("value", $param['value'], 0);
             $display = true;

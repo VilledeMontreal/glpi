@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -151,7 +151,7 @@ class CartridgeItem_PrinterModel extends CommonDBRelation {
             $header_bottom .= Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
             $header_end    .= "</th>";
          }
-         $header_end .= "<th>".__('Model')."</th></tr>";
+         $header_end .= "<th>"._n('Model', 'Models', 1)."</th></tr>";
          echo $header_begin.$header_top.$header_end;
 
          foreach ($datas as $data) {

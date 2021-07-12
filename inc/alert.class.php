@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -59,11 +59,11 @@ class Alert extends CommonDBTM {
    /**
     * Clear all alerts of an alert type for an item
     *
-    *@param string  $itemtype   ID of the type to clear
-    *@param string  $ID         ID of the item to clear
-    *@param integer $alert_type ID of the alert type to clear
+    * @param string  $itemtype   ID of the type to clear
+    * @param string  $ID         ID of the item to clear
+    * @param integer $alert_type ID of the alert type to clear
     *
-    *@return void
+    * @return boolean
     */
    function clear($itemtype, $ID, $alert_type) {
 
@@ -196,15 +196,19 @@ class Alert extends CommonDBTM {
    /**
     * Does alert exists
     *
-    * @param string  $itemtype (default '')
-    * @param integer $items_id (default '')
-    * @param integer $type     (default '')
+    * @since 9.5.0 Made all params required. Dropped invalid defaults.
+    * @param string  $itemtype The item type
+    * @param integer $items_id The item's ID
+    * @param integer $type     The type of alert (see constants in {@link \Alert} class)
     *
     * @return integer|boolean
     */
-   static function alertExists($itemtype = '', $items_id = '', $type = '') {
+   static function alertExists($itemtype, $items_id, $type) {
       global $DB;
 
+      if ($items_id <= 0 || $type <= 0) {
+         return false;
+      }
       $iter = $DB->request(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type]);
       if ($row = $iter->next()) {
          return $row['id'];
@@ -217,16 +221,20 @@ class Alert extends CommonDBTM {
     * Get date of alert
     *
     * @since 0.84
+    * @since 9.5.0 Made all params required. Dropped invalid defaults.
     *
-    * @param string  $itemtype (default '')
-    * @param integer $items_id (default '')
-    * @param integer $type     (default '')
+    * @param string  $itemtype The item type
+    * @param integer $items_id The item's ID
+    * @param integer $type     The type of alert (see constants in {@link \Alert} class)
     *
     * @return mixed|boolean
     */
-   static function getAlertDate($itemtype = '', $items_id = '', $type = '') {
+   static function getAlertDate($itemtype, $items_id, $type) {
       global $DB;
 
+      if ($items_id <= 0 || $type <= 0) {
+         return false;
+      }
       $iter = $DB->request(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type]);
       if ($row = $iter->next()) {
          return $row['date'];
@@ -238,8 +246,8 @@ class Alert extends CommonDBTM {
    /**
     * Display last alert
     *
-    * @param string  $itemtype Item type
-    * @param integer $items_id Item ID
+    * @param string  $itemtype The item type
+    * @param integer $items_id The item's ID
     *
     * @return void
     */

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -99,6 +99,7 @@ class Profile_User extends CommonDBRelation {
                                           false, ERROR);
          return false;
       }
+
       return parent::prepareInputForAdd($input);
    }
 
@@ -109,8 +110,6 @@ class Profile_User extends CommonDBRelation {
     * @param $user User object
    **/
    static function showForUser(User $user) {
-      global $DB,$CFG_GLPI;
-
       $ID = $user->getField('id');
       if (!$user->can($ID, READ)) {
          return false;
@@ -174,7 +173,7 @@ class Profile_User extends CommonDBRelation {
             $header_bottom .= Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
             $header_end    .= "</th>";
          }
-         $header_end .= "<th>"._n('Entity', 'Entities', Session::getPluralNumber())."</th>";
+         $header_end .= "<th>".Entity::getTypeName(Session::getPluralNumber())."</th>";
          $header_end .= "<th>".sprintf(__('%1$s (%2$s)'), self::getTypeName(Session::getPluralNumber()),
                                        __('D=Dynamic, R=Recursive'));
          $header_end .= "</th></tr>";
@@ -277,7 +276,7 @@ class Profile_User extends CommonDBRelation {
          echo Toolbox::getItemTypeFormURL(__CLASS__)."'>";
          echo "<table class='tab_cadre_fixe'>";
          echo "<tr class='tab_bg_1'><th colspan='6'>".__('Add an authorization to a user')."</tr>";
-         echo "<tr class='tab_bg_1'><td class='tab_bg_2 center'>".__('User')."&nbsp;";
+         echo "<tr class='tab_bg_1'><td class='tab_bg_2 center'>".User::getTypeName(1)."&nbsp;";
          echo "<input type='hidden' name='entities_id' value='$ID'>";
          User::dropdown(['right' => 'all']);
          echo "</td><td class='tab_bg_2 center'>".self::getTypeName(1)."</td><td>";
@@ -348,7 +347,7 @@ class Profile_User extends CommonDBRelation {
       echo "<thead><tr>";
 
       echo "<th class='noHover' colspan='$headerspan'>";
-      printf(__('%1$s (%2$s)'), _n('User', 'Users', Session::getPluralNumber()), __('D=Dynamic, R=Recursive'));
+      printf(__('%1$s (%2$s)'), User::getTypeName(Session::getPluralNumber()), __('D=Dynamic, R=Recursive'));
       echo "</th></tr></thead>";
 
       if ($nb) {
@@ -374,7 +373,7 @@ class Profile_User extends CommonDBRelation {
                   $reduce_header++;
                }
                echo "<th colspan='".($headerspan-$reduce_header)."'>";
-               printf(__('%1$s: %2$s'), __('Profile'), $data["pname"]);
+               printf(__('%1$s: %2$s'), Profile::getTypeName(1), $data["pname"]);
                echo "</th></tr></tbody>";
                echo "<tbody id='profile".$data['pid']."_$rand'>";
                $i = 0;
@@ -437,7 +436,7 @@ class Profile_User extends CommonDBRelation {
     * @param $prof Profile object
    **/
    static function showForProfile(Profile $prof) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID      = $prof->fields['id'];
       $canedit = Session::haveRightsOr("user", [CREATE, UPDATE, DELETE, PURGE]);
@@ -491,9 +490,9 @@ class Profile_User extends CommonDBRelation {
          Html::showMassiveActions($massiveactionparams);
       }
       echo "<table class='tab_cadre_fixe'><tr>";
-      echo "<th>".sprintf(__('%1$s: %2$s'), __('Profile'), $prof->fields["name"])."</th></tr>\n";
+      echo "<th>".sprintf(__('%1$s: %2$s'), Profile::getTypeName(1), $prof->fields["name"])."</th></tr>\n";
 
-      echo "<tr><th colspan='2'>".sprintf(__('%1$s (%2$s)'), _n('User', 'Users', Session::getPluralNumber()),
+      echo "<tr><th colspan='2'>".sprintf(__('%1$s (%2$s)'), User::getTypeName(Session::getPluralNumber()),
                                           __('D=Dynamic, R=Recursive'))."</th></tr>";
       echo "</table>\n";
       echo "<table class='tab_cadre_fixe'>";
@@ -840,8 +839,6 @@ class Profile_User extends CommonDBRelation {
     * @return array of entities ID
    **/
    static function getForUser($user_ID, $only_dynamic = false) {
-      global $DB;
-
       $condition = ['users_id' => $user_ID];
 
       if ($only_dynamic) {
@@ -877,7 +874,9 @@ class Profile_User extends CommonDBRelation {
    **/
    static function deleteRights($user_ID, $only_dynamic = false) {
 
-      $crit['users_id'] = $user_ID;
+      $crit = [
+         'users_id' => $user_ID,
+      ];
 
       if ($only_dynamic) {
          $crit['is_dynamic'] = '1';
@@ -927,7 +926,7 @@ class Profile_User extends CommonDBRelation {
          'id'                 => '5',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown',
          'right'              => 'all'
@@ -937,7 +936,7 @@ class Profile_User extends CommonDBRelation {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => true,
          'datatype'           => 'dropdown'
       ];
@@ -959,11 +958,7 @@ class Profile_User extends CommonDBRelation {
       return _n('Profile', 'Profiles', $nb);
    }
 
-
-   /**
-    * @see CommonDBTM::getRawName()
-   **/
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       $name = sprintf(__('%1$s, %2$s'),
                       Dropdown::getDropdownName('glpi_profiles', $this->fields['profiles_id']),
@@ -981,7 +976,6 @@ class Profile_User extends CommonDBRelation {
       }
       return $name;
    }
-
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
       global $DB;
@@ -1060,8 +1054,6 @@ class Profile_User extends CommonDBRelation {
     * @see CommonDBRelation::getRelationMassiveActionsSpecificities()
    **/
    static function getRelationMassiveActionsSpecificities() {
-      global $CFG_GLPI;
-
       $specificities                            = parent::getRelationMassiveActionsSpecificities();
 
       $specificities['dropdown_method_2']       = 'dropdownUnder';
@@ -1080,7 +1072,7 @@ class Profile_User extends CommonDBRelation {
 
       if (($ma->getAction() == 'add')
           && ($peer_number == 2)) {
-         echo "<br><br>".sprintf(__('%1$s: %2$s'), _n('Entity', 'Entities', 1), '');
+         echo "<br><br>".sprintf(__('%1$s: %2$s'), Entity::getTypeName(1), '');
          Entity::dropdown(['entity' => $_SESSION['glpiactiveentities']]);
          echo "<br><br>".sprintf(__('%1$s: %2$s'), __('Recursive'), '');
          Html::showCheckbox(['name' => 'is_recursive']);
@@ -1112,7 +1104,7 @@ class Profile_User extends CommonDBRelation {
     * @since 9.3.1
     *
     * @param CommonDBTM $item  Item instance
-    * @param boolean    $noent Flag to not compute entity informations (see Document_Item::getListForItemParams)
+    * @param boolean    $noent Flag to not compute entity information (see Document_Item::getListForItemParams)
     *
     * @return array
     */

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -68,7 +68,7 @@ if (isset($_POST["add"])) {
                  //TRANS: %s is the user login
                  sprintf(__('%s purges a volume'), $_SESSION["glpiname"]));
    }
-   $itemtype = $_POST['itemtype'];
+   $itemtype = $disk->fields['itemtype'];
    $item = new $itemtype();
    $item->getFromDB($disk->fields['items_id']);
    Html::redirect($itemtype::getFormURLWithID($disk->fields['items_id']).

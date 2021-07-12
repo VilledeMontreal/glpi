@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -46,6 +46,10 @@ class ITILSolution extends CommonDBChild {
 
    static public $itemtype = 'itemtype'; // Class name or field name (start with itemtype) for link to Parent
    static public $items_id = 'items_id'; // Field name
+
+   public static function getNameField() {
+      return 'id';
+   }
 
    static function getTypeName($nb = 0) {
       return _n('Solution', 'Solutions', $nb);
@@ -121,10 +125,13 @@ class ITILSolution extends CommonDBChild {
          //when we came from aja/viewsubitem.php
          $options['item'] = $options['parent'];
       }
+      $options['formoptions'] = ($options['formoptions'] ?? '') . ' data-track-changes=true';
 
       $item = $options['item'];
       $this->item = $item;
       $item->check($item->getID(), READ);
+
+      $entities_id = isset($options['entities_id']) ? $options['entities_id'] : $item->getEntityID();
 
       if ($item instanceof Ticket && $this->isNewItem()) {
          $ti = new Ticket_Ticket();
@@ -164,11 +171,9 @@ class ITILSolution extends CommonDBChild {
          echo "<tr class='tab_bg_2'>";
          echo "<td>"._n('Solution template', 'Solution templates', 1)."</td><td>";
 
-         $entity = isset($options['entities_id']) ? $options['entities_id'] : $this->getEntityID();
-
          SolutionTemplate::dropdown([
             'value'    => 0,
-            'entity'   => $entity,
+            'entity'   => $entities_id,
             'rand'     => $rand_template,
             // Load type and solution from bookmark
             'toupdate' => [
@@ -192,17 +197,17 @@ class ITILSolution extends CommonDBChild {
       }
 
       echo "<tr class='tab_bg_2'>";
-      echo "<td>".__('Solution type')."</td><td>";
+      echo "<td>".SolutionType::getTypeName(1)."</td><td>";
 
       echo Html::hidden('itemtype', ['value' => $item->getType()]);
       echo Html::hidden('items_id', ['value' => $item->getID()]);
-      echo html::hidden('_no_message_link', ['value' => 1]);
+      echo Html::hidden('_no_message_link', ['value' => 1]);
 
       // Settings a solution will set status to solved
       if ($canedit) {
          SolutionType::dropdown(['value'  => $this->getField('solutiontypes_id'),
                                  'rand'   => $rand_type,
-                                 'entity' => $this->getEntityID()]);
+                                 'entity' => $entities_id]);
       } else {
          echo Dropdown::getDropdownName('glpi_solutiontypes',
                                         $this->getField('solutiontypes_id'));
@@ -275,7 +280,9 @@ class ITILSolution extends CommonDBChild {
    function prepareInputForAdd($input) {
       $input['users_id'] = Session::getLoginUserID();
 
-      if ($this->item == null) {
+      if ($this->item == null
+         || (isset($input['itemtype']) && isset($input['items_id']))
+      ) {
          $this->item = new $input['itemtype'];
          $this->item->getFromDB($input['items_id']);
       }
@@ -329,47 +336,67 @@ class ITILSolution extends CommonDBChild {
 
       // Replace inline pictures
       $this->input["_job"] = $this->item;
-      $this->input = $this->addFiles($this->input, ['force_update' => true]);
+      $this->input = $this->addFiles(
+         $this->input, [
+            'force_update' => true,
+            'name' => 'content',
+            'content_field' => 'content',
+         ]
+      );
 
       // Add solution to duplicates
       if ($this->item->getType() == 'Ticket' && !isset($this->input['_linked_ticket'])) {
          Ticket_Ticket::manageLinkedTicketsOnSolved($this->item->getID(), $this);
       }
 
-      $status = $item::SOLVED;
+      if (!isset($this->input['_linked_ticket'])) {
+         $status = $item::SOLVED;
 
-      //handle autoclose, for tickets only
-      if ($item->getType() == Ticket::getType()) {
-         $autoclosedelay =  Entity::getUsedConfig(
-            'autoclose_delay',
-            $this->item->getEntityID(),
-            '',
-            Entity::CONFIG_NEVER
-         );
+         //handle autoclose, for tickets only
+         if ($item->getType() == Ticket::getType()) {
+            $autoclosedelay =  Entity::getUsedConfig(
+               'autoclose_delay',
+               $this->item->getEntityID(),
+               '',
+               Entity::CONFIG_NEVER
+            );
 
-         // 0 = immediatly
-         if ($autoclosedelay == 0) {
-            $status = $item::CLOSED;
+            // 0 = immediatly
+            if ($autoclosedelay == 0) {
+               $status = $item::CLOSED;
+            }
          }
+
+         $this->item->update([
+            'id'     => $this->item->getID(),
+            'status' => $status
+         ]);
       }
 
-      $this->item->update([
-         'id'     => $this->item->getID(),
-         'status' => $status
-      ]);
       parent::post_addItem();
    }
 
-
-   /**
-    * @see CommonDBTM::prepareInputForUpdate()
-   **/
    function prepareInputForUpdate($input) {
 
-      // Replace inline pictures
-      $input = $this->addFiles($input);
+      if (!isset($this->fields['itemtype'])) {
+         return false;
+      }
+      $input["_job"] = new $this->fields['itemtype']();
+      if (!$input["_job"]->getFromDB($this->fields["items_id"])) {
+         return false;
+      }
 
       return $input;
+   }
+
+   function post_updateItem($history = 1) {
+      // Replace inline pictures
+      $options = [
+         'force_update' => true,
+         'name' => 'content',
+         'content_field' => 'content',
+      ];
+      $this->input = $this->addFiles($this->input, $options);
    }
 
 

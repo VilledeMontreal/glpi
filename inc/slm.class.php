@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -73,6 +73,7 @@ class SLM extends CommonDBTM {
 
       $ong = [];
       $this->addDefaultFormTab($ong);
+      $this->addImpactTab($ong, $options);
       $this->addStandardTab('SLA', $ong, $options);
       $this->addStandardTab('OLA', $ong, $options);
       $this->addStandardTab('Log', $ong, $options);
@@ -84,8 +85,8 @@ class SLM extends CommonDBTM {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
-            Sla::class,
-            Ola::class,
+            SLA::class,
+            OLA::class,
          ]
       );
    }
@@ -115,7 +116,7 @@ class SLM extends CommonDBTM {
             <textarea cols='45' rows='8' name='comment' >".$this->fields["comment"]."</textarea>";
       echo "</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Calendar')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Calendar', 'Calendars', 1)."</td>";
       echo "<td>";
 
       Calendar::dropdown(['value'      => $this->fields["calendars_id"],
@@ -143,7 +144,8 @@ class SLM extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -159,7 +161,7 @@ class SLM extends CommonDBTM {
          'id'                 => '4',
          'table'              => 'glpi_calendars',
          'field'              => 'name',
-         'name'               => __('Calendar'),
+         'name'               => _n('Calendar', 'Calendars', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -181,9 +183,10 @@ class SLM extends CommonDBTM {
       if (static::canView()) {
          $menu['title']           = self::getTypeName(2);
          $menu['page']            = static::getSearchURL(false);
+         $menu['icon']            = static::getIcon();
          $menu['links']['search'] = static::getSearchURL(false);
          if (static::canCreate()) {
-            $menu['links']['add'] = Slm::getFormURL(false);
+            $menu['links']['add'] = SLM::getFormURL(false);
          }
 
          $menu['options']['sla']['title']           = SLA::getTypeName(1);
@@ -209,4 +212,8 @@ class SLM extends CommonDBTM {
       return false;
    }
 
+
+   static function getIcon() {
+      return "fas fa-file-contract";
+   }
 }

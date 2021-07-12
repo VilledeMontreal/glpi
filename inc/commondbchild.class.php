@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -206,7 +206,7 @@ abstract class CommonDBChild extends CommonDBConnexity {
    function canChildItem($methodItem, $methodNotItem) {
 
       try {
-         return static::canConnexityItem($methodItem, $methodNotItem, static::$checkParentRights,
+         return $this->canConnexityItem($methodItem, $methodNotItem, static::$checkParentRights,
                                          static::$itemtype, static::$items_id);
       } catch (CommonDBConnexityItemNotFound $e) {
          return !static::$mustBeAttached;
@@ -369,9 +369,6 @@ abstract class CommonDBChild extends CommonDBConnexity {
    }
 
 
-   /**
-    * @since 0.84
-   **/
    function addNeededInfoToInput($input) {
 
       // is entity missing and forwarding on ?
@@ -398,9 +395,6 @@ abstract class CommonDBChild extends CommonDBConnexity {
    }
 
 
-   /**
-    * @since 0.84
-   **/
    function prepareInputForAdd($input) {
 
       if (!is_array($input)) {
@@ -417,9 +411,6 @@ abstract class CommonDBChild extends CommonDBConnexity {
    }
 
 
-   /**
-    * @since 0.84
-   **/
    function prepareInputForUpdate($input) {
 
       if (!is_array($input)) {
@@ -427,7 +418,7 @@ abstract class CommonDBChild extends CommonDBConnexity {
       }
 
       // True if item changed
-      if (!parent::checkAttachedItemChangesAllowed($input, [static::$itemtype,
+      if (!$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
                                                                  static::$items_id])) {
          return false;
       }
@@ -461,6 +452,7 @@ abstract class CommonDBChild extends CommonDBConnexity {
     * @return void
    **/
    function post_addItem() {
+      global $CFG_GLPI;
 
       if ((isset($this->input['_no_history']) && $this->input['_no_history'])
           || !static::$logs_for_parent) {
@@ -468,9 +460,23 @@ abstract class CommonDBChild extends CommonDBConnexity {
       }
 
       $item = $this->getItem();
+      if ($item === false) {
+         return;
+      }
 
-      if (($item !== false)
-          && $item->dohistory) {
+      if (in_array(static::class, $CFG_GLPI["infocom_types"], true) && in_array(static::$itemtype, $CFG_GLPI["infocom_types"], true)) {
+         // inherit infocom
+         $infocoms = Infocom::getItemsAssociatedTo(static::$itemtype::getType(), $this->fields[static::$itemtype::getForeignKeyField()]);
+         if (count($infocoms)) {
+            $infocom = reset($infocoms);
+            $infocom->clone([
+               'itemtype'  => self::getType(),
+               'items_id'  => $this->getID()
+            ]);
+         }
+      }
+
+      if ($item->dohistory) {
          $changes = [
             '0',
             '',
@@ -765,7 +771,7 @@ abstract class CommonDBChild extends CommonDBConnexity {
     * @param string       $field_name  the name of the HTML field inside Item's form
     * @param boolean|null $canedit     boolean to force rights, NULL to use default behaviour
     *
-    * @return void
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    static function showChildsForItemForm(CommonDBTM $item, $field_name, $canedit = null) {
       global $DB;
@@ -858,5 +864,21 @@ abstract class CommonDBChild extends CommonDBConnexity {
       }
 
       return $this->update($input);
+   }
+
+   public static final function getItemField($itemtype): string {
+      if (is_subclass_of($itemtype, 'Rule')) {
+         $itemtype = 'Rule';
+      }
+
+      if (isset(static::$items_id) && getItemtypeForForeignKeyField(static::$items_id) == $itemtype) {
+         return static::$items_id;
+      }
+
+      if (isset (static::$itemtype) && preg_match('/^itemtype/', static::$itemtype)) {
+         return static::$items_id;
+      }
+
+      throw new \RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
    }
 }

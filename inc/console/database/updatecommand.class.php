@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -42,7 +42,6 @@ use Migration;
 use Session;
 use Update;
 
-use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -57,6 +56,15 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
     * @var integer
     */
    const ERROR_NO_UNSTABLE_UPDATE = 1;
+
+   /**
+    * Error code returned when security key file is missing.
+    *
+    * @var integer
+    */
+   const ERROR_MISSING_SECURITY_KEY_FILE = 2;
+
+   protected $requires_db_up_to_date = false;
 
    protected function configure() {
       parent::configure();
@@ -83,6 +91,8 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
    protected function initialize(InputInterface $input, OutputInterface $output) {
 
       parent::initialize($input, $output);
+
+      $this->outputWarningOnMissingOptionnalRequirements();
 
       $this->db->disableTableCaching();
    }
@@ -111,7 +121,7 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
       $update->setMigration($migration);
 
       $informations = new Table($output);
-      $informations->setHeaders(['', __('Current'), __('Target')]);
+      $informations->setHeaders(['', __('Current'), _n('Target', 'Targets', 1)]);
       $informations->addRow([__('Database host'), $this->db->dbhost, '']);
       $informations->addRow([__('Database name'), $this->db->dbdefault, '']);
       $informations->addRow([__('Database user'), $this->db->dbuser, '']);
@@ -138,9 +148,23 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
          return 0;
       }
 
+      if ($update->isExpectedSecurityKeyFileMissing()) {
+         $output->writeln(
+            sprintf(
+               '<error>' . __('The key file "%s" used to encrypt/decrypt sensitive data is missing. You should retrieve it from your previous installation or encrypted data will be unreadable.') . '</error>',
+               $update->getExpectedSecurityKeyFilePath()
+            ),
+            OutputInterface::VERBOSITY_QUIET
+         );
+
+         if ($no_interaction) {
+            return self::ERROR_MISSING_SECURITY_KEY_FILE;
+         }
+      }
+
       if (!$no_interaction) {
          // Ask for confirmation (unless --no-interaction)
-         /** @var QuestionHelper $question_helper */
+         /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
          $question_helper = $this->getHelper('question');
          $run = $question_helper->ask(
             $input,
@@ -165,8 +189,8 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
       } else if ($force) {
          // Replay last update script even if there is no schema change.
          // It can be used in dev environment when update script has been updated/fixed.
-         include_once(GLPI_ROOT . '/install/update_94_95.php');
-         update94to95();
+         include_once(GLPI_ROOT . '/install/update_955_956.php');
+         update955to956();
 
          $output->writeln('<info>' . __('Last migration replayed.') . '</info>');
       }

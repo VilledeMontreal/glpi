@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -109,7 +109,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
     * @param Notification $notif        Notification object
     * @param boolean      $withtemplate Template or basic item (default '')
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForNotification(Notification $notif, $withtemplate = 0) {
       global $DB;
@@ -144,7 +144,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
       if ($iterator->numrows()) {
          $header = "<tr>";
          $header .= "<th>" . __('ID') . "</th>";
-         $header .= "<th>".__('Template')."</th>";
+         $header .= "<th>".static::getTypeName(1)."</th>";
          $header .= "<th>".__('Mode')."</th>";
          $header .= "</tr>";
          echo $header;
@@ -223,7 +223,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
       if ($iterator->numrows()) {
          $header = "<tr>";
          $header .= "<th>" . __('ID') . "</th>";
-         $header .= "<th>" . __('Notification') . "</th>";
+         $header .= "<th>" . _n('Notification', 'Notifications', 1) . "</th>";
          $header .= "<th>" . __('Mode') . "</th>";
          $header .= "</tr>";
          echo $header;
@@ -263,6 +263,27 @@ class Notification_NotificationTemplate extends CommonDBRelation {
    }
 
 
+   /**
+    * Form for Notification on Massive action
+   **/
+   static function showFormMassiveAction() {
+
+      echo __('Mode')."<br>";
+      self::dropdownMode(['name' => 'mode']);
+      echo "<br><br>";
+
+      echo NotificationTemplate::getTypeName(1)."<br>";
+      NotificationTemplate::dropdown([
+         'name'       => 'notificationtemplates_id',
+         'value'     => 0,
+         'comment'   => 1,
+      ]);
+      echo "<br><br>";
+
+      echo Html::submit(_x('button', 'Add'), ['name' => 'massiveaction']);
+   }
+
+
    function getName($options = []) {
       return $this->getID();
    }
@@ -279,8 +300,6 @@ class Notification_NotificationTemplate extends CommonDBRelation {
     * @return true if displayed  false if item not found or not right to display
    **/
    function showForm($ID, $options = []) {
-      global $CFG_GLPI;
-
       if (!Session::haveRight("notification", UPDATE)) {
          return false;
       }
@@ -301,7 +320,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
       }
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Notification')."</td>";
+      echo "<td>"._n('Notification', 'Notifications', 1)."</td>";
       echo "<td>".$notif->getLink()."</td>";
       echo "<td colspan='2'>&nbsp;</td>";
       echo "</tr>\n";
@@ -309,7 +328,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
       echo "<tr class='tab_bg_1'>";
       echo "<td>" . __('Mode') . "</td>";
       echo "<td>";
-      self::dropdownMode(['name' => 'mode', 'value' => $this->getField('mode'), 'multiple' => false]);
+      self::dropdownMode(['name' => 'mode', 'value' => $this->getField('mode')]);
       echo "</td>";
 
       echo "<td>". NotificationTemplate::getTypeName(1)."</td>";
@@ -373,7 +392,7 @@ class Notification_NotificationTemplate extends CommonDBRelation {
 
       $core_modes = [
          self::MODE_MAIL      => [
-            'label'  => __('Email'),
+            'label'  => _n('Email', 'Emails', 1),
             'from'   => 'core'
          ],
          self::MODE_AJAX      => [
@@ -434,7 +453,6 @@ class Notification_NotificationTemplate extends CommonDBRelation {
          case 'mode' :
             $options['value']    = $values[$field];
             $options['name']     = $name;
-            $options['multiple'] = false;
             return self::dropdownMode($options);
       }
       return parent::getSpecificValueToSelect($field, $name, $values, $options);
@@ -452,7 +470,6 @@ class Notification_NotificationTemplate extends CommonDBRelation {
       $p['name']     = 'modes';
       $p['display']  = true;
       $p['value']    = '';
-      $p['multiple'] = true;
 
       if (is_array($options) && count($options)) {
          foreach ($options as $key => $val) {

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,9 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
+use AppendIterator;
 use DirectoryIterator;
+use Plugin;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -54,6 +56,13 @@ use Symfony\Component\Console\Exception\CommandNotFoundException;
 class CommandLoader implements CommandLoaderInterface {
 
    /**
+    * Indicates if plugin commands should be included.
+    *
+    * @var bool
+    */
+   private $include_plugins;
+
+   /**
     * Root directory path to search on.
     * @var string
     */
@@ -62,49 +71,79 @@ class CommandLoader implements CommandLoaderInterface {
    /**
     * Found commands.
     *
-    * @var Command[]
+    * @var Command[]|null
     */
-   private $commands = [];
+   private $commands = null;
 
    /**
-    * @param string $rootdir Root directory path of application.
+    * Plugins info services
+    *
+    * @var Plugin|null
     */
-   public function __construct($include_plugins = true, $rootdir = GLPI_ROOT) {
+   private $plugin = null;
 
-      $this->rootdir = $rootdir;
-
-      $this->findCoreCommands();
-      $this->findToolsCommands();
-
-      if ($include_plugins) {
-         $this->findPluginCommands();
-      }
+   /**
+    * @param bool          $include_plugins
+    * @param string        $rootdir         Root directory path of application.
+    * @param Plugin|null   $plugin          Needed for units test as we lack DI.
+    */
+   public function __construct($include_plugins = true, $rootdir = GLPI_ROOT, ?Plugin $plugin = null) {
+      $this->include_plugins = $include_plugins;
+      $this->rootdir         = $rootdir;
+      $this->plugin          = $plugin;
    }
 
    public function get($name) {
-      if (!array_key_exists($name, $this->commands)) {
+      $commands = $this->getCommands();
+
+      if (!array_key_exists($name, $commands)) {
          throw new CommandNotFoundException(sprintf('Command "%s" does not exist.', $name));
       }
 
-      return $this->commands[$name];
+      return $commands[$name];
    }
 
    public function has($name) {
-      return array_key_exists($name, $this->commands);
+      $commands = $this->getCommands();
+
+      return array_key_exists($name, $commands);
    }
 
    public function getNames() {
-      return array_keys($this->commands);
+      $commands = $this->getCommands();
+
+      return array_keys($commands);
    }
 
    /**
-    * Register plugin commands in command list.
+    * Indicates if plugin commands should be included.
+    *
+    * @param bool $include_plugins
     *
     * @return void
     */
-   public function registerPluginsCommands() {
+   public function setIncludePlugins(bool $include_plugins) {
+      $this->include_plugins = $include_plugins;
 
-      $this->findPluginCommands();
+      $this->commands = null; // Reset registered command list to force (un)registration of plugins commands
+   }
+
+   /**
+    * Get registered commands.
+    *
+    * @return Command[]
+    */
+   private function getCommands() {
+      if ($this->commands === null) {
+         $this->findCoreCommands();
+         $this->findToolsCommands();
+
+         if ($this->include_plugins) {
+            $this->findPluginCommands();
+         }
+      }
+
+      return $this->commands;
    }
 
    /**
@@ -126,15 +165,10 @@ class CommandLoader implements CommandLoaderInterface {
             continue;
          }
 
-         $is_in_namespace = strpos(
-            $this->getRelativePath($basedir, $file->getPathname()),
-            DIRECTORY_SEPARATOR
-         ) > 0;
-
          $class = $this->getCommandClassnameFromFile(
             $file,
             $basedir,
-            $is_in_namespace ? 'glpi\\' : null
+            ['', NS_GLPI]
          );
 
          if (null === $class) {
@@ -152,13 +186,32 @@ class CommandLoader implements CommandLoaderInterface {
     */
    private function findPluginCommands() {
 
-      $basedir = $this->rootdir . DIRECTORY_SEPARATOR . 'plugins';
+      if ($this->plugin === null) {
+         $this->plugin = new Plugin();
+      }
 
-      $plugins_directories = new DirectoryIterator($basedir);
+      $plugins_directories = new AppendIterator();
+      foreach (PLUGINS_DIRECTORIES as $directory) {
+         $directory = str_replace(GLPI_ROOT, $this->rootdir, $directory);
+         $plugins_directories->append(new DirectoryIterator($directory));
+      }
+
+      $already_loaded = [];
+
       /** @var SplFileInfo $plugin_directory */
       foreach ($plugins_directories as $plugin_directory) {
          if (in_array($plugin_directory->getFilename(), ['.', '..'])) {
             continue;
+         }
+
+         $plugin_key = $plugin_directory->getFilename();
+
+         if (in_array($plugin_key, $already_loaded)) {
+            continue; // Do not load twice commands of plugin that is installed on multiple locations
+         }
+
+         if (!$this->plugin->isActivated($plugin_key)) {
+            continue; // Do not load commands of disabled plugins
          }
 
          $plugin_basedir = $plugin_directory->getPathname() . DIRECTORY_SEPARATOR . 'inc';
@@ -166,7 +219,10 @@ class CommandLoader implements CommandLoaderInterface {
             continue;
          }
 
-         $plugin_files = new DirectoryIterator($plugin_basedir);
+         $plugin_files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($plugin_basedir),
+            RecursiveIteratorIterator::SELF_FIRST
+         );
          /** @var SplFileInfo $file */
          foreach ($plugin_files as $file) {
             if (!$file->isReadable() || !$file->isFile()) {
@@ -176,7 +232,10 @@ class CommandLoader implements CommandLoaderInterface {
             $class = $this->getCommandClassnameFromFile(
                $file,
                $plugin_basedir,
-               'plugin' . $plugin_directory->getFilename()
+               [
+                  NS_PLUG . ucfirst($plugin_key) . '\\',
+                  'Plugin' . ucfirst($plugin_key),
+               ]
             );
 
             if (null === $class) {
@@ -185,6 +244,8 @@ class CommandLoader implements CommandLoaderInterface {
 
             $this->registerCommand(new $class());
          }
+
+         $already_loaded[] = $plugin_key;
       }
    }
 
@@ -241,13 +302,13 @@ class CommandLoader implements CommandLoaderInterface {
    /**
     * Return classname of command contained in file, if file contains one.
     *
-    * @param SplFileInfo $file    File to inspect
-    * @param string      $basedir Directory containing classes (eg GLPI_ROOT . '/inc')
-    * @param string      $prefix  Prefix to add to classname (eg 'PluginExample')
+    * @param SplFileInfo $file      File to inspect
+    * @param string      $basedir   Directory containing classes (eg GLPI_ROOT . '/inc')
+    * @param array       $prefixes  Possible prefixes to add to classname (eg 'PluginExample', 'GlpiPlugin\Example')
     *
     * @return null|string
     */
-   private function getCommandClassnameFromFile(SplFileInfo $file, $basedir, $prefix = null) {
+   private function getCommandClassnameFromFile(SplFileInfo $file, $basedir, array $prefixes = []) {
 
       // Check if file is readable and contained classname finishes by "command"
       if (!$file->isReadable() || !$file->isFile()
@@ -262,15 +323,25 @@ class CommandLoader implements CommandLoaderInterface {
          ['', '\\'],
          $this->getRelativePath($basedir, $file->getPathname())
       );
-      if (null !== $prefix) {
-         $classname = $prefix . $classname;
+
+      if (empty($prefixes)) {
+         $prefixes = [''];
       }
+      foreach ($prefixes as $prefix) {
+         $classname_to_check = $prefix . $classname;
 
-      include_once($file->getPathname()); // Required as ReflectionClass will not use autoload
+         include_once($file->getPathname()); // Required as ReflectionClass will not use autoload
 
-      $reflectionClass = new ReflectionClass($classname);
-      if ($reflectionClass->isInstantiable() && $reflectionClass->isSubclassOf(Command::class)) {
-         return $classname;
+         if (!class_exists($classname_to_check, false)) {
+            // Try with other prefixes.
+            // Needed as a file located in root source dir of Glpi can be either namespaced either not.
+            continue;
+         }
+
+         $reflectionClass = new ReflectionClass($classname_to_check);
+         if ($reflectionClass->isInstantiable() && $reflectionClass->isSubclassOf(Command::class)) {
+            return $classname_to_check;
+         }
       }
 
       return null;

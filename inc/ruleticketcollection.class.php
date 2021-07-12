@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -118,6 +118,10 @@ class RuleTicketCollection extends RuleCollection {
                $input['_groups_id_of_requester'][$g['id']] = $g['id'];
             }
          }
+      }
+
+      if (isset($input['itilcategories_id'])) {
+         $input['itilcategories_id_cn'] = $input['itilcategories_id'];
       }
       return $input;
    }

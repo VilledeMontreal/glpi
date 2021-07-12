@@ -7,7 +7,7 @@ if (!defined('GLPI_ROOT')) {
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -40,7 +40,7 @@ class Item_Rack extends CommonDBRelation {
    static public $items_id_1 = 'racks_id';
    static public $itemtype_2 = 'itemtype';
    static public $items_id_2 = 'items_id';
-   static public $checkItem_1_Rights = self::DONT_CHECK_ITEM_RIGHTS;
+   static public $checkItem_2_Rights = self::DONT_CHECK_ITEM_RIGHTS;
    static public $mustBeAttached_1      = false;
    static public $mustBeAttached_2      = false;
 
@@ -149,7 +149,7 @@ class Item_Rack extends CommonDBRelation {
             $header .= Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
             $header .= "</th>";
          }
-         $header .= "<th>".__('Item')."</th>";
+         $header .= "<th>"._n('Item', 'Items', 1)."</th>";
          $header .= "<th>".__('Position')."</th>";
          $header .= "<th>".__('Orientation')."</th>";
          $header .= "</tr>";
@@ -287,13 +287,13 @@ class Item_Rack extends CommonDBRelation {
          echo __('Following elements are out of rack bounds');
          echo "</th></thead><tbody>";
          foreach ($outbound as $out) {
-            echo "<tr><td>".self::getCell($out)."</td></tr>";
+            echo "<tr><td>".self::getCell($out, !$canedit)."</td></tr>";
          }
          echo "</tbody></table>";
       }
 
-      $nb_top_pdu = count(Pdu_Rack::getForRackSide($rack, Pdu_Rack::SIDE_TOP));
-      $nb_bot_pdu = count(Pdu_Rack::getForRackSide($rack, Pdu_Rack::SIDE_BOTTOM));
+      $nb_top_pdu = count(PDU_Rack::getForRackSide($rack, PDU_Rack::SIDE_TOP));
+      $nb_bot_pdu = count(PDU_Rack::getForRackSide($rack, PDU_Rack::SIDE_BOTTOM));
 
       echo '
       <div class="racks_row">
@@ -314,11 +314,15 @@ class Item_Rack extends CommonDBRelation {
       echo '<ul class="indexes"></ul>
             <div class="grid-stack grid-stack-2 grid-rack"
                  id="grid-front"
-                 data-gs-width="2"
-                 data-gs-height="'.($rack->fields['number_units'] + 1).'">
-               <div class="racks_add"></div>';
+                 data-gs-column="2"
+                 data-gs-max-row="'.($rack->fields['number_units'] + 1).'">';
+
+      if ($link->canCreate()) {
+         echo '<div class="racks_add"></div>';
+      }
+
       foreach ($data[Rack::FRONT] as $current_item) {
-         echo self::getCell($current_item);
+         echo self::getCell($current_item, !$canedit);
       }
       echo '   <div class="grid-stack-item lock-bottom"
                     data-gs-no-resize="true" data-gs-no-move="true"
@@ -334,16 +338,20 @@ class Item_Rack extends CommonDBRelation {
          <div class="racks_col">
             <h2>'.__('Rear').'</h2>';
       echo '<div class="rack_side rack_rear">';
-      Pdu_Rack::showVizForRack($rack, Pdu_Rack::SIDE_TOP);
-      Pdu_Rack::showVizForRack($rack, Pdu_Rack::SIDE_LEFT);
+      PDU_Rack::showVizForRack($rack, PDU_Rack::SIDE_TOP);
+      PDU_Rack::showVizForRack($rack, PDU_Rack::SIDE_LEFT);
       echo '<ul class="indexes"></ul>
             <div class="grid-stack grid-stack-2 grid-rack"
                  id="grid2-rear"
-                 data-gs-width="2"
-                 data-gs-height="'.($rack->fields['number_units'] + 1).'">
-               <div class="racks_add"></div>';
+                 data-gs-column="2"
+                 data-gs-max-row="'.($rack->fields['number_units'] + 1).'">';
+
+      if ($link->canCreate()) {
+         echo '<div class="racks_add"></div>';
+      }
+
       foreach ($data[Rack::REAR] as $current_item) {
-         echo self::getCell($current_item);
+         echo self::getCell($current_item, !$canedit);
       }
       echo '   <div class="grid-stack-item lock-bottom"
                     data-gs-no-resize="true" data-gs-no-move="true"
@@ -351,14 +359,14 @@ class Item_Rack extends CommonDBRelation {
                </div>
             </div>
             <ul class="indexes"></ul>';
-      Pdu_Rack::showVizForRack($rack, Pdu_Rack::SIDE_RIGHT);
-      Pdu_Rack::showVizForRack($rack, Pdu_Rack::SIDE_BOTTOM);
+      PDU_Rack::showVizForRack($rack, PDU_Rack::SIDE_RIGHT);
+      PDU_Rack::showVizForRack($rack, PDU_Rack::SIDE_BOTTOM);
       echo '</div>';
       echo '
          </div>
          <div class="racks_col">';
       self::showStats($rack);
-      Pdu_Rack::showStatsForRack($rack);
+      PDU_Rack::showStatsForRack($rack);
       echo '</div>'; // .racks_col
       echo '</div>'; // .racks_row
       echo '<div class="sep"></div>';
@@ -430,6 +438,11 @@ class Item_Rack extends CommonDBRelation {
                            dirty = false;
                         }
                      }
+                  }).fail(function() {
+                     dirty = true;
+                     grid.move(item.el, x_before_drag, y_before_drag);
+                     dirty = false;
+                     displayAjaxMessageAfterRedirect();
                   });
                });
             })
@@ -619,7 +632,7 @@ JAVASCRIPT;
       //TODO: update orientation according to item model depth
 
       echo "</td>";
-      echo "<td><label for='dropdown_items_id$rand'>".__('Item')."</label></td>";
+      echo "<td><label for='dropdown_items_id$rand'>"._n('Item', 'Items', 1)."</label></td>";
       echo "<td id='items_id'>";
       if (isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])) {
          $itemtype = $this->fields['itemtype'];
@@ -643,7 +656,7 @@ JAVASCRIPT;
       echo "</tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_racks_id$rand'>".__('Rack')."</label></td>";
+      echo "<td><label for='dropdown_racks_id$rand'>".Rack::getTypeName(1)."</label></td>";
       echo "<td>";
       Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
       echo "</td>";
@@ -760,7 +773,7 @@ JAVASCRIPT;
     *
     * @return string
     */
-   private static function getCell($cell) {
+   private static function getCell($cell, $readonly = false) {
       if ($cell) {
          $item        = $cell['item'];
          $gs_item     = $cell['gs_item'];
@@ -791,8 +804,8 @@ JAVASCRIPT;
                          ? "reserved"
                          : "";
          $icon        = $reserved
-                         ? self::getIcon("Reserved")
-                         : self::getIcon(get_class($item));
+                         ? self::getItemIcon("Reserved")
+                         : self::getItemIcon(get_class($item));
          $bg_color    = $gs_item['bgcolor'];
          if ($item->maybeDeleted() && $item->isDeleted()) {
             $bg_color = '#ff0000'; //red for deleted items
@@ -822,7 +835,7 @@ JAVASCRIPT;
                </span>";
          if (!empty($typename)) {
             $tip.= "<span>
-                     <label>".__('Type').":</label>
+                     <label>"._n('Type', 'Types', 1).":</label>
                      $typename
                   </span>";
          }
@@ -853,11 +866,12 @@ JAVASCRIPT;
 
          $tip.= "</span>";
 
+         $readonly_attr = $readonly ? 'data-gs-no-move="true"' : '';
          return "
          <div class='grid-stack-item $back_class $half_class $reserved_cl $img_class'
                data-gs-width='{$gs_item['width']}' data-gs-height='{$gs_item['height']}'
                data-gs-x='{$gs_item['x']}' data-gs-y='{$gs_item['y']}'
-               data-gs-id='{$gs_item['id']}'
+               data-gs-id='{$gs_item['id']}' {$readonly_attr}
                style='background-color: $bg_color; color: $fg_color;'>
             <div class='grid-stack-item-content' style='$fg_color_s $img_s'>
                $icon".
@@ -883,29 +897,18 @@ JAVASCRIPT;
     * @param  string $itemtype  A rackable itemtype
     * @return string           The i html tag
     */
-   private static function getIcon($itemtype = "") {
+   private static function getItemIcon($itemtype = "") {
       $icon = "";
       switch ($itemtype) {
          case "Computer":
-            $icon = "fa fa-server";
-            break;
-         case "Monitor":
-            $icon = "fa fa-tv";
-            break;
-         case "NetworkEquipment":
-            $icon = "fa fa-sitemap";
-            break;
-         case "Peripheral":
-            $icon = "fab fa-usb";
-            break;
-         case "Enclosure":
-            $icon = "fa fa-th";
-            break;
-         case "PDU":
-            $icon = "fa fa-plug";
+            $icon = "fas fa-server";
             break;
          case "Reserved":
-            $icon = "fa-lock";
+            $icon = "fas fa-lock";
+            break;
+
+         default:
+            $icon = $itemtype::getIcon();
             break;
       }
 
@@ -1078,7 +1081,7 @@ JAVASCRIPT;
       return $input;
    }
 
-   function getRawName() {
+   protected function computeFriendlyName() {
       $rack = new Rack();
       $rack->getFromDB($this->fields['racks_id']);
       $name = sprintf(

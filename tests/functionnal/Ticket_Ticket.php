@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -147,12 +147,13 @@ class Ticket_Ticket extends DbTestCase {
 
       //PARENT_OF is stored as inversed child
       $this->array($link->fields)
-         ->string['tickets_id_1']->isIdenticalTo($ttwo->getID())
-         ->string['tickets_id_2']->isIdenticalTo($tone->getID())
-         ->string['link']->isEqualTo(\Ticket_Ticket::SON_OF);
+         ->integer['tickets_id_1']->isIdenticalTo($ttwo->getID())
+         ->integer['tickets_id_2']->isIdenticalTo($tone->getID())
+         ->integer['link']->isEqualTo(\Ticket_Ticket::SON_OF);
    }
 
    public function testNumberOpen() {
+      $this->login();
       $this->createTickets();
       $tone = $this->tone;
       $ttwo = $this->ttwo;

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -91,13 +91,13 @@ class Contract_Item extends CommonDBRelation{
          case 'items_id':
             if (isset($values['itemtype'])) {
                if (isset($options['comments']) && $options['comments']) {
-                  $tmp = Dropdown::getDropdownName(getTableForItemtype($values['itemtype']),
+                  $tmp = Dropdown::getDropdownName(getTableForItemType($values['itemtype']),
                                                    $values[$field], 1);
                   return sprintf(__('%1$s %2$s'), $tmp['name'],
                                  Html::showToolTip($tmp['comment'], ['display' => false]));
 
                }
-               return Dropdown::getDropdownName(getTableForItemtype($values['itemtype']),
+               return Dropdown::getDropdownName(getTableForItemType($values['itemtype']),
                                                 $values[$field]);
             }
             break;
@@ -151,7 +151,7 @@ class Contract_Item extends CommonDBRelation{
          'id'                 => '4',
          'table'              => $this->getTable(),
          'field'              => 'itemtype',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'massiveaction'      => false,
          'datatype'           => 'itemtypename',
          'itemtype_list'      => 'contract_types'
@@ -235,6 +235,7 @@ class Contract_Item extends CommonDBRelation{
    /**
     * Duplicate contracts from an item template to its clone
     *
+    * @deprecated 9.5
     * @since 0.84
     *
     * @param string  $itemtype     itemtype of the item
@@ -247,6 +248,7 @@ class Contract_Item extends CommonDBRelation{
    static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '') {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       if (empty($newitemtype)) {
          $newitemtype = $itemtype;
       }
@@ -276,7 +278,7 @@ class Contract_Item extends CommonDBRelation{
     * @since 0.84
     *
     * @param CommonDBTM $item         CommonDBTM object wanted
-    * @param boolean    $withtemplate not used (to be deleted)
+    * @param integer    $withtemplate
     *
     * @return void
    **/
@@ -348,10 +350,10 @@ class Contract_Item extends CommonDBRelation{
       }
 
       $header_end .= "<th>".__('Name')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>"._x('phone', 'Number')."</th>";
-      $header_end .= "<th>".__('Contract type')."</th>";
-      $header_end .= "<th>".__('Supplier')."</th>";
+      $header_end .= "<th>".ContractType::getTypeName(1)."</th>";
+      $header_end .= "<th>".Supplier::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Start date')."</th>";
       $header_end .= "<th>".__('Initial contract period')."</th>";
       $header_end .= "</tr>";
@@ -426,9 +428,9 @@ class Contract_Item extends CommonDBRelation{
     * @since 0.84
     *
     * @param Contract $contract     Contract object
-    * @param boolean  $withtemplate (default 0)
+    * @param integer  $withtemplate (default 0)
     *
-    * @return void (display)
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    static function showForContract(Contract $contract, $withtemplate = 0) {
       global $DB, $CFG_GLPI;
@@ -597,8 +599,8 @@ class Contract_Item extends CommonDBRelation{
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Name')."</th>";
       $header_end .= "<th>".__('Serial number')."</th>";
       $header_end .= "<th>".__('Inventory number')."</th>";
@@ -632,8 +634,13 @@ class Contract_Item extends CommonDBRelation{
                    || empty($data["name"])) {
                   $name = sprintf(__('%1$s (%2$s)'), $name, $objdata["id"]);
                }
-               $link = $itemtype::getFormURLWithID($objdata["id"]);
-               $name = "<a href=\"".$link."\">".$name."</a>";
+
+               if ($item->can($objdata['id'], READ)) {
+                  $link     = $itemtype::getFormURLWithID($objdata['id']);
+                  $namelink = "<a href=\"".$link."\">".$name."</a>";
+               } else {
+                  $namelink = $name;
+               }
 
                echo "<tr class='tab_bg_1'>";
                if ($canedit) {
@@ -651,7 +658,7 @@ class Contract_Item extends CommonDBRelation{
                echo Dropdown::getDropdownName("glpi_entities", $objdata['entity'])."</td>";
                echo "<td class='center".
                       (isset($objdata['is_deleted']) && $objdata['is_deleted'] ? " tab_bg_2_2'" : "'");
-               echo ">".$name."</td>";
+               echo ">".$namelink."</td>";
                echo"<td class='center'>".
                       (isset($objdata["serial"])? "".$objdata["serial"]."" :"-")."</td>";
                echo "<td class='center'>".

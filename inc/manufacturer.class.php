@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -46,10 +46,6 @@ class Manufacturer extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDropdown::displaySpecificTypeField()
-   **/
    function displaySpecificTypeField($ID, $field = []) {
 
       switch ($field['type']) {
@@ -60,10 +56,6 @@ class Manufacturer extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDropdown::getAdditionalFields()
-   **/
    function getAdditionalFields() {
 
       return [['name'  => 'none',
@@ -115,10 +107,6 @@ class Manufacturer extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDBTM::post_addItem()
-   **/
    function post_addItem() {
 
       $this->post_workOnItem();
@@ -126,10 +114,6 @@ class Manufacturer extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    * @see CommonDBTM::post_updateItem()
-   **/
    function post_updateItem($history = 1) {
 
       $this->post_workOnItem();
@@ -138,9 +122,9 @@ class Manufacturer extends CommonDropdown {
 
 
    /**
-    * @param $old_name Old name (need to be addslashes)
+    * @param null|string $old_name  Old name (need to be addslashes)
     *
-    * @return new addslashes name
+    * @return null|string new addslashes name
    **/
    static function processName($old_name) {
 
@@ -184,7 +168,7 @@ class Manufacturer extends CommonDropdown {
          return;
       }
 
-      $base->addHeader($column_name, __('Manufacturer'), $super, $father);
+      $base->addHeader($column_name, Manufacturer::getTypeName(1), $super, $father);
    }
 
 

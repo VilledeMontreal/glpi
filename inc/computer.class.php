@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,13 +38,14 @@ if (!defined('GLPI_ROOT')) {
  *  Computer class
 **/
 class Computer extends CommonDBTM {
-   use DCBreadcrumb;
+   use Glpi\Features\DCBreadcrumb;
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    public $dohistory                   = true;
 
    static protected $forward_entity_to = ['Item_Disk','ComputerVirtualMachine',
-                                          'Computer_SoftwareVersion', 'Infocom',
+                                          'Item_SoftwareVersion', 'Infocom',
                                           'NetworkPort', 'ReservationItem',
                                           'Item_OperatingSystem'];
    // Specific ones
@@ -54,6 +55,22 @@ class Computer extends CommonDBTM {
    static $rightname                   = 'computer';
    protected $usenotepad               = true;
 
+   public function getCloneRelations() :array {
+      return [
+         Item_OperatingSystem::class,
+         Item_Devices::class,
+         Infocom::class,
+         Item_Disk::class,
+         Item_SoftwareVersion::class,
+         Item_SoftwareLicense::class,
+         Contract_Item::class,
+         Document_Item::class,
+         NetworkPort::class,
+         Computer_Item::class,
+         Notepad::class,
+         KnowbaseItem_Item::class
+      ];
+   }
 
    static function getTypeName($nb = 0) {
       return _n('Computer', 'Computers', $nb);
@@ -74,10 +91,11 @@ class Computer extends CommonDBTM {
 
       $ong = [];
       $this->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('Item_OperatingSystem', $ong, $options)
          ->addStandardTab('Item_Devices', $ong, $options)
          ->addStandardTab('Item_Disk', $ong, $options)
-         ->addStandardTab('Computer_SoftwareVersion', $ong, $options)
+         ->addStandardTab('Item_SoftwareVersion', $ong, $options)
          ->addStandardTab('Computer_Item', $ong, $options)
          ->addStandardTab('NetworkPort', $ong, $options)
          ->addStandardTab('Infocom', $ong, $options)
@@ -94,6 +112,8 @@ class Computer extends CommonDBTM {
          ->addStandardTab('Lock', $ong, $options)
          ->addStandardTab('Notepad', $ong, $options)
          ->addStandardTab('Reservation', $ong, $options)
+         ->addStandardTab('Domain_Item', $ong, $options)
+         ->addStandardTab('Appliance_Item', $ong, $options)
          ->addStandardTab('Log', $ong, $options);
 
       return $ong;
@@ -102,15 +122,15 @@ class Computer extends CommonDBTM {
 
    function post_restoreItem() {
 
-      $comp_softvers = new Computer_SoftwareVersion();
-      $comp_softvers->updateDatasForComputer($this->fields['id']);
+      $comp_softvers = new Item_SoftwareVersion();
+      $comp_softvers->updateDatasForItem('Computer', $this->fields['id']);
    }
 
 
    function post_deleteItem() {
 
-      $comp_softvers = new Computer_SoftwareVersion();
-      $comp_softvers->updateDatasForComputer($this->fields['id']);
+      $comp_softvers = new Item_SoftwareVersion();
+      $comp_softvers->updateDatasForItem('Computer', $this->fields['id']);
    }
 
 
@@ -118,32 +138,34 @@ class Computer extends CommonDBTM {
       global $DB, $CFG_GLPI;
 
       $changes = [];
-      for ($i=0; $i<count($this->updates); $i++) {
+      $update_count = count($this->updates ?? []);
+      $input = Toolbox::addslashes_deep($this->fields);
+      for ($i=0; $i < $update_count; $i++) {
          // Update contact of attached items
          if ($this->updates[$i] == 'contact_num' && $CFG_GLPI['is_contact_autoupdate']) {
-            $changes['contact_num'] = $this->fields['contact_num'];
+            $changes['contact_num'] = $input['contact_num'];
          }
          if ($this->updates[$i] == 'contact' && $CFG_GLPI['is_contact_autoupdate']) {
-            $changes['contact'] = $this->fields['contact'];
+            $changes['contact'] = $input['contact'];
          }
          // Update users and groups of attached items
          if ($this->updates[$i] == 'users_id'
              && $CFG_GLPI['is_user_autoupdate']) {
-            $changes['users_id'] = $this->fields['users_id'];
+            $changes['users_id'] = $input['users_id'];
          }
          if ($this->updates[$i] == 'groups_id'
              && $CFG_GLPI['is_group_autoupdate']) {
-            $changes['groups_id'] = $this->fields['groups_id'];
+            $changes['groups_id'] = $input['groups_id'];
          }
          // Update state of attached items
          if (($this->updates[$i] == 'states_id')
              && ($CFG_GLPI['state_autoupdate_mode'] < 0)) {
-            $changes['states_id'] = $this->fields['states_id'];
+            $changes['states_id'] = $input['states_id'];
          }
          // Update loction of attached items
          if ($this->updates[$i] == 'locations_id'
              && $CFG_GLPI['is_location_autoupdate']) {
-            $changes['locations_id'] = $this->fields['locations_id'];
+            $changes['locations_id'] = $input['locations_id'];
          }
       }
 
@@ -246,56 +268,14 @@ class Computer extends CommonDBTM {
    }
 
 
-   function post_addItem() {
-
-      // Manage add from template
-      if (isset($this->input["_oldID"])) {
-         // ADD OS
-         Item_OperatingSystem::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Devices
-         Item_devices::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Infocoms
-         Infocom::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD volumes
-         Item_Disk::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD software
-         Computer_SoftwareVersion::cloneComputer($this->input["_oldID"], $this->fields['id']);
-
-         Computer_SoftwareLicense::cloneComputer($this->input["_oldID"], $this->fields['id']);
-
-         // ADD Contract
-         Contract_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Documents
-         Document_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Ports
-         NetworkPort::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // Add connected devices
-         Computer_Item::cloneComputer($this->input["_oldID"], $this->fields['id']);
-
-         //Add notepad
-         Notepad::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         //Add KB links
-         KnowbaseItem_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-      }
-   }
-
-
    function cleanDBonPurge() {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
             Certificate_Item::class,
             Computer_Item::class,
-            Computer_SoftwareLicense::class,
-            Computer_SoftwareVersion::class,
+            Item_SoftwareLicense::class,
+            Item_SoftwareVersion::class,
             ComputerAntivirus::class,
             ComputerVirtualMachine::class,
             Item_Disk::class,
@@ -359,14 +339,14 @@ class Computer extends CommonDBTM {
 
       echo "<tr class='tab_bg_1'>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_locations_id$randDropdown'>".__('Location')."</label></td>";
+      echo "<td><label for='dropdown_locations_id$randDropdown'>".Location::getTypeName(1)."</label></td>";
       echo "<td>";
       Location::dropdown(['value'  => $this->fields["locations_id"],
                                'entity' => $this->fields["entities_id"],
                                'rand' => $randDropdown]);
       echo "</td>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_computertypes_id$randDropdown'>".__('Type')."</label></td>";
+      echo "<td><label for='dropdown_computertypes_id$randDropdown'>"._n('Type', 'Types', 1)."</label></td>";
       echo "<td>";
       ComputerType::dropdown(['value' => $this->fields["computertypes_id"], 'rand' => $randDropdown]);
       echo "</td></tr>\n";
@@ -382,7 +362,7 @@ class Computer extends CommonDBTM {
                            'rand'   => $randDropdown]);
       echo "</td>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_manufacturers_id$randDropdown'>".__('Manufacturer')."</label></td>";
+      echo "<td><label for='dropdown_manufacturers_id$randDropdown'>".Manufacturer::getTypeName(1)."</label></td>";
       echo "<td>";
       Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"], 'rand' => $randDropdown]);
       echo "</td></tr>\n";
@@ -401,7 +381,7 @@ class Computer extends CommonDBTM {
 
       echo "</td>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_computermodels_id$randDropdown'>".__('Model')."</label></td>";
+      echo "<td><label for='dropdown_computermodels_id$randDropdown'>"._n('Model', 'Models', 1)."</label></td>";
       echo "<td>";
       ComputerModel::dropdown(['value' => $this->fields["computermodels_id"], 'rand' => $randDropdown]);
       echo "</td></tr>\n";
@@ -443,7 +423,7 @@ class Computer extends CommonDBTM {
 
       echo "<tr class='tab_bg_1'>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_users_id$randDropdown'>".__('User')."</label></td>";
+      echo "<td><label for='dropdown_users_id$randDropdown'>".User::getTypeName(1)."</label></td>";
       echo "<td>";
       User::dropdown(['value'  => $this->fields["users_id"],
                            'entity' => $this->fields["entities_id"],
@@ -451,14 +431,14 @@ class Computer extends CommonDBTM {
                            'rand'   => $randDropdown]);
       echo "</td>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_networks_id$randDropdown'>".__('Network')."</label></td>";
+      echo "<td><label for='dropdown_networks_id$randDropdown'>"._n('Network', 'Networks', 1)."</label></td>";
       echo "<td>";
       Network::dropdown(['value' => $this->fields["networks_id"], 'rand' => $randDropdown]);
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_groups_id$randDropdown'>".__('Group')."</label></td>";
+      echo "<td><label for='dropdown_groups_id$randDropdown'>".Group::getTypeName(1)."</label></td>";
       echo "<td>";
       Group::dropdown([
          'value'     => $this->fields["groups_id"],
@@ -470,24 +450,16 @@ class Computer extends CommonDBTM {
       echo "</td>";
 
       // Display auto inventory informations
-      $rowspan        = 4;
+      $rowspan        = 3;
 
       echo "<td rowspan='$rowspan'><label for='comment'>".__('Comments')."</label></td>";
       echo "<td rowspan='$rowspan' class='middle'>";
 
-      echo "<textarea cols='45' rows='".($rowspan+3)."' id='comment' name='comment' >".
+      echo "<textarea cols='45' rows='".($rowspan+2)."' id='comment' name='comment' >".
            $this->fields["comment"];
       echo "</textarea></td></tr>";
 
-      echo "<tr class='tab_bg_1'>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_domains_id$randDropdown'>".__('Domain')."</label></td>";
-      echo "<td >";
-      Domain::dropdown(['value'  => $this->fields["domains_id"],
-                             'entity' => $this->fields["entities_id"],
-                             'rand'   => $randDropdown]);
-      echo "</td></tr>";
-
       echo "<tr class='tab_bg_1'>";
       echo "<td><label for='textfield_uuid$rand'>".__('UUID')."</label></td>";
       echo "<td >";
@@ -497,7 +469,7 @@ class Computer extends CommonDBTM {
 
       echo "<tr class='tab_bg_1'>";
       $randDropdown = mt_rand();
-      echo "<td><label for='dropdown_autoupdatesystems_id$randDropdown'>".__('Update Source')."</label></td>";
+      echo "<td><label for='dropdown_autoupdatesystems_id$randDropdown'>".AutoUpdateSystem::getTypeName(1)."</label></td>";
       echo "<td >";
       AutoUpdateSystem::dropdown(['value' => $this->fields["autoupdatesystems_id"], 'rand' => $randDropdown]);
       echo "</td></tr>";
@@ -539,15 +511,19 @@ class Computer extends CommonDBTM {
       $actions = parent::getSpecificMassiveActions($checkitem);
 
       if ($isadmin) {
-         $actions['Item_OperatingSystem'.MassiveAction::CLASS_ACTION_SEPARATOR.'update']    = OperatingSystem::getTypeName();
-         $actions['Computer_Item'.MassiveAction::CLASS_ACTION_SEPARATOR.'add']    = _x('button', 'Connect');
-         $actions['Computer_SoftwareVersion'.MassiveAction::CLASS_ACTION_SEPARATOR.'add'] = _x('button', 'Install');
+         $actions += [
+            'Item_OperatingSystem'.MassiveAction::CLASS_ACTION_SEPARATOR.'update'
+               => OperatingSystem::getTypeName(),
+            'Computer_Item'.MassiveAction::CLASS_ACTION_SEPARATOR.'add'
+               => "<i class='ma-icon fas fa-plug'></i>".
+                  _x('button', 'Connect'),
+            'Item_SoftwareVersion'.MassiveAction::CLASS_ACTION_SEPARATOR.'add'
+               => "<i class='ma-icon fas fa-laptop-medical'></i>".
+                  _x('button', 'Install')
 
-         $kb_item = new KnowbaseItem();
-         $kb_item->getEmpty();
-         if ($kb_item->canViewItem()) {
-            $actions['KnowbaseItem_Item'.MassiveAction::CLASS_ACTION_SEPARATOR.'add'] = _x('button', 'Link knowledgebase article');
-         }
+         ];
+
+         KnowbaseItem_Item::getMassiveActionsForItemtype($actions, __CLASS__, 0, $checkitem);
       }
 
       return $actions;
@@ -556,21 +532,7 @@ class Computer extends CommonDBTM {
 
    function rawSearchOptions() {
 
-      $tab = [];
-
-      $tab[] = [
-         'id'                 => 'common',
-         'name'               => __('Characteristics')
-      ];
-
-      $tab[] = [
-         'id'                 => '1',
-         'table'              => $this->getTable(),
-         'field'              => 'name',
-         'name'               => __('Name'),
-         'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
-      ];
+      $tab = parent::rawSearchOptions();
 
       $tab[] = [
          'id'                 => '2',
@@ -587,7 +549,7 @@ class Computer extends CommonDBTM {
          'id'                 => '4',
          'table'              => 'glpi_computertypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -595,7 +557,7 @@ class Computer extends CommonDBTM {
          'id'                 => '40',
          'table'              => 'glpi_computermodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -612,7 +574,7 @@ class Computer extends CommonDBTM {
          'id'                 => '42',
          'table'              => 'glpi_autoupdatesystems',
          'field'              => 'name',
-         'name'               => __('Update Source'),
+         'name'               => AutoUpdateSystem::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -621,7 +583,8 @@ class Computer extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'uuid',
          'name'               => __('UUID'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -629,7 +592,8 @@ class Computer extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'serial',
          'name'               => __('Serial number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -637,7 +601,8 @@ class Computer extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -653,7 +618,8 @@ class Computer extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'contact',
          'name'               => __('Alternate username'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -661,14 +627,15 @@ class Computer extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'contact_num',
          'name'               => __('Alternate username number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '70',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'datatype'           => 'dropdown',
          'right'              => 'all'
       ];
@@ -677,7 +644,7 @@ class Computer extends CommonDBTM {
          'id'                 => '71',
          'table'              => 'glpi_groups',
          'field'              => 'completename',
-         'name'               => __('Group'),
+         'name'               => Group::getTypeName(1),
          'condition'          => ['is_itemgroup' => 1],
          'datatype'           => 'dropdown'
       ];
@@ -704,15 +671,7 @@ class Computer extends CommonDBTM {
          'id'                 => '32',
          'table'              => 'glpi_networks',
          'field'              => 'name',
-         'name'               => __('Network'),
-         'datatype'           => 'dropdown'
-      ];
-
-      $tab[] = [
-         'id'                 => '33',
-         'table'              => 'glpi_domains',
-         'field'              => 'name',
-         'name'               => __('Domain'),
+         'name'               => _n('Network', 'Networks', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -720,7 +679,7 @@ class Computer extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -745,18 +704,27 @@ class Computer extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '65',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
       // add operating system search options
       $tab = array_merge($tab, Item_OperatingSystem::rawSearchOptionsToAdd(get_class($this)));
-
-      // add objectlock search options
-      $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
 
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
@@ -771,6 +739,10 @@ class Computer extends CommonDBTM {
       $tab = array_merge($tab, Datacenter::rawSearchOptionsToAdd(get_class($this)));
 
       return $tab;
+   }
+
+   static function getIcon() {
+      return "fas fa-laptop";
    }
 
 }

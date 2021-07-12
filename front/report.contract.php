@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -59,7 +59,7 @@ Dropdown::showFromArray('item_type', $values, ['value'    => 0,
                                                    'multiple' => true]);
 echo "</td> ";
 
-echo "<td class='center' width='20%'>". __('Date')."</td>";
+echo "<td class='center' width='20%'>". _n('Date', 'Dates', 1)."</td>";
 echo "<td width='30%'>";
 $y      = date("Y");
 $values = [ 0 => __('All')];

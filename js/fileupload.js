@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -28,6 +28,9 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+/* global fileType, getExtIcon, getSize, isImage, stopEvent, Uint8Array */
+
 function uploadFile(file, editor, input_name) {
    var returnTag = false;
 
@@ -51,7 +54,6 @@ function uploadFile(file, editor, input_name) {
                returnTag = '';
                var tag = getFileTag(element);
                //if is an image add tag
-               /* global isImage */
                if (isImage(file)) {
                   returnTag = tag.tag;
                }
@@ -131,8 +133,7 @@ var displayUploadedFile = function(file, tag, editor, input_name) {
    if (filecontainer.length) {
       var ext = file.name.split('.').pop();
 
-      /* global getExtIcon getSize */
-      var p = $('<p/>')
+      var p = $('<p></p>')
          .attr('id',file.id)
          .html(
             getExtIcon(ext)
@@ -269,16 +270,16 @@ var dataURItoBlob = function(dataURI) {
 
    // separate out the mime component
    var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+   var imgExt = mimeString.split('/')[1];
 
    // write the bytes of the string to a typed array
-   /* global Uint8Array */
    var ia = new Uint8Array(byteString.length);
    for (var i = 0; i < byteString.length; i++) {
       ia[i] = byteString.charCodeAt(i);
    }
 
    var file = new Blob([ia], {type:mimeString});
-   file.name = 'image_paste'+ Math.floor((Math.random() * 10000000) + 1)+".png";
+   file.name = 'image_paste' + Math.floor((Math.random() * 10000000) + 1) + '.' + imgExt;
 
    return file;
 };
@@ -310,7 +311,7 @@ var isImageBlobFromPaste = function(content) {
 * @return {string}  Source of image or empty string.
 */
 var extractSrcFromImgTag = function(content) {
-   var foundImage = $('<div/>').append(content).find('img');
+   var foundImage = $('<div></div>').append(content).find('img');
    if (foundImage.length > 0) {
       return foundImage.attr('src');
    }
@@ -325,7 +326,8 @@ var extractSrcFromImgTag = function(content) {
  */
 var insertImageInTinyMCE = function(editor, image) {
    //make ajax call for upload doc
-   var tag = uploadFile(image, editor);
+   var input_name = $(editor.targetElm).attr('name');
+   var tag = uploadFile(image, editor, input_name);
    if (tag !== false) {
       insertImgFromFile(editor, image, tag);
    }
@@ -343,7 +345,6 @@ if (typeof tinyMCE != 'undefined') {
       editor.on('PastePreProcess', function(event) {
          //Check if data is an image
          if (isImageFromPaste(event.content)) {
-            /* global stopEvent */
             stopEvent(event);
 
             //extract base64 data
@@ -357,23 +358,33 @@ if (typeof tinyMCE != 'undefined') {
             }
 
          } else if (isImageBlobFromPaste(event.content)) {
-            /* global stopEvent */
             stopEvent(event);
 
             var src = extractSrcFromImgTag(event.content);
+
             var xhr = new XMLHttpRequest();
             xhr.open('GET', src, true);
-            xhr.responseType = 'blob';
+            xhr.responseType = 'arraybuffer';
             xhr.onload = function() {
-               if (this.status == 200) {
-                  // fill missing file properties
-                  var file  = new Blob([this.response], {type: 'image/png'});
-                  file.name = 'image_paste'+ Math.floor((Math.random() * 10000000) + 1)+".png";
+               if (this.status !== 200) {
+                  console.error("paste error");
+                  return;
+               }
+
+               var imgData = new Uint8Array(this.response);
+               // fileType.fromBuffer() returns a promise (async method)
+               fileType.fromBuffer(imgData).then(function(imgType) {
+                  if (!imgType || !imgType.ext || !imgType.mime) {
+                     // Unable to retrieve file ext
+                     console.error("paste error");
+                     return;
+                  }
+
+                  var file  = new Blob([imgData.buffer], {type: imgType.mime});
+                  file.name = 'image_paste' + Math.floor((Math.random() * 10000000) + 1) + '.' + imgType.ext;
 
                   insertImageInTinyMCE(editor, file);
-               } else {
-                  console.error("paste error");
-               }
+               });
             };
             xhr.send();
          }

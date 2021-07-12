@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,8 +34,14 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
+use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
+use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use Sabre\VObject\Component\VCalendar;
+
 /// TODO extends it from CommonDBChild
-abstract class CommonITILTask  extends CommonDBTM {
+abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItemInterface {
+   use Glpi\Features\PlanningEvent;
+   use VobjectConverterTrait;
 
    // From CommonDBTM
    public $auto_message_on_action = false;
@@ -49,8 +55,12 @@ abstract class CommonITILTask  extends CommonDBTM {
 
 
 
-   function getItilObjectItemType() {
+   public function getItilObjectItemType() {
       return str_replace('Task', '', $this->getType());
+   }
+
+   public static function getNameField() {
+      return 'id';
    }
 
 
@@ -229,6 +239,12 @@ abstract class CommonITILTask  extends CommonDBTM {
 
    function prepareInputForUpdate($input) {
 
+      if (array_key_exists('content', $input) && empty($input['content'])) {
+         Session::addMessageAfterRedirect(__("You can't remove description of a task."),
+                                          false, ERROR);
+         return false;
+      }
+
       Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
       if (isset($input['_planningrecall'])) {
@@ -284,14 +300,17 @@ abstract class CommonITILTask  extends CommonDBTM {
          }
       }
 
-      $input = $this->addFiles($input);
-
       return $input;
    }
 
 
    function post_updateItem($history = 1) {
       global $CFG_GLPI;
+
+      // Add document if needed, without notification for file input
+      $this->input = $this->addFiles($this->input, ['force_update' => true]);
+      // Add document if needed, without notification for textarea
+      $this->input = $this->addFiles($this->input, ['name' => 'content', 'force_update' => true]);
 
       if (in_array("begin", $this->updates)) {
          PlanningRecall::managePlanningUpdates($this->getType(), $this->getID(),
@@ -315,7 +334,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          //Also check if item status has changed
          if (!$proceed) {
             if (isset($this->input['_status'])
-               && $this->input['status'] != $item->getField('status')
+               && $this->input['_status'] != $item->getField('status')
             ) {
                $proceed = true;
             }
@@ -331,7 +350,7 @@ abstract class CommonITILTask  extends CommonDBTM {
             // change ticket status (from splitted button)
             $itemtype = $this->getItilObjectItemType();
             $this->input['_job'] = new $itemtype();
-            if (!$this->input['_job']->getFromDB($this->input[$this->input['_job']->getForeignKeyField()])) {
+            if (!$this->input['_job']->getFromDB($this->fields[$this->input['_job']->getForeignKeyField()])) {
                return false;
             }
             if (isset($this->input['_status'])
@@ -380,7 +399,18 @@ abstract class CommonITILTask  extends CommonDBTM {
 
 
    function prepareInputForAdd($input) {
+
       $itemtype = $this->getItilObjectItemType();
+
+      if (empty($input['content'])) {
+         Session::addMessageAfterRedirect(__("You can't add a task without description."),
+                                          false, ERROR);
+         return false;
+      }
+
+      if (!isset($input['uuid'])) {
+         $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+      }
 
       Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
@@ -435,8 +465,10 @@ abstract class CommonITILTask  extends CommonDBTM {
    function post_addItem() {
       global $CFG_GLPI;
 
-      // Add document if needed, without notification
+      // Add document if needed, without notification for file input
       $this->input = $this->addFiles($this->input, ['force_update' => true]);
+      // Add document if needed, without notification for textarea
+      $this->input = $this->addFiles($this->input, ['name' => 'content', 'force_update' => true]);
 
       if (isset($this->input['_planningrecall'])) {
          $this->input['_planningrecall']['items_id'] = $this->fields['id'];
@@ -541,19 +573,14 @@ abstract class CommonITILTask  extends CommonDBTM {
       $this->deleteChildrenAndRelationsFromDb(
          [
             PlanningRecall::class,
+            VObject::class,
          ]
       );
    }
 
 
    // SPECIFIC FUNCTIONS
-
-   /**
-    * @see CommonDBTM::getRawName()
-    *
-    * @since 0.85
-   **/
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       if (isset($this->fields['taskcategories_id'])) {
          if ($this->fields['taskcategories_id']) {
@@ -595,7 +622,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'id'                 => '3',
          'table'              => $this->getTable(),
          'field'              => 'date',
-         'name'               => __('Date'),
+         'name'               => _n('Date', 'Dates', 1),
          'datatype'           => 'datetime'
       ];
 
@@ -633,15 +660,6 @@ abstract class CommonITILTask  extends CommonDBTM {
          'field'              => 'state',
          'name'               => __('Status'),
          'datatype'           => 'specific'
-      ];
-
-      $tab[] = [
-         'id'                 => '8',
-         'table'              => 'glpi_groups',
-         'field'              => 'completename',
-         'name'               => __('Group in charge of the task'),
-         'datatype'           => 'dropdown',
-         'condition'          => 'is_task'
       ];
 
       return $tab;
@@ -785,7 +803,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'linkfield'          => 'groups_id_tech',
          'name'               => __('Group in charge'),
          'datatype'           => 'itemlink',
-         'condition'          => 'is_task',
+         'condition'          => ['is_task' => 1],
          'forcegroupby'       => true,
          'massiveaction'      => false,
          'joinparams'         => [
@@ -817,7 +835,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'id'                 => '97',
          'table'              => static::getTable(),
          'field'              => 'date',
-         'name'               => __('Date'),
+         'name'               => _n('Date', 'Dates', 1),
          'datatype'           => 'datetime',
          'massiveaction'      => false,
          'forcegroupby'       => true,
@@ -849,6 +867,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'field'              => 'begin',
          'name'               => __('Begin date'),
          'datatype'           => 'datetime',
+         'maybefuture'        => true,
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
@@ -863,6 +882,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'field'              => 'end',
          'name'               => __('End date'),
          'datatype'           => 'datetime',
+         'maybefuture'        => true,
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
@@ -876,7 +896,7 @@ abstract class CommonITILTask  extends CommonDBTM {
          'table'              => TaskTemplate::getTable(),
          'field'              => 'name',
          'linkfield'          => 'tasktemplates_id',
-         'name'               => __('Task template'),
+         'name'               => TaskTemplate::getTypeName(1),
          'datatype'           => 'dropdown',
          'massiveaction'      => false,
          'joinparams'         => [
@@ -914,10 +934,10 @@ abstract class CommonITILTask  extends CommonDBTM {
     *
     * @param string $itemtype itemtype
     * @param array $options   options must contains :
-    *    - who ID of the user (0 = undefined)
-    *    - who_group ID of the group of users (0 = undefined)
-    *    - begin Date
-    *    - end Date
+    *    - who                ID of the user (0 = undefined)
+    *    - whogroup           ID of the group of users (0 = undefined)
+    *    - begin              Date
+    *    - end                Date
     *    - color
     *    - event_type_color
     *    - display_done_events (boolean)
@@ -950,101 +970,144 @@ abstract class CommonITILTask  extends CommonDBTM {
       ];
       $options = array_merge($default_options, $options);
 
-      $who       = $options['who'];
-      $who_group = $options['who_group'];
-      $whogroup  = $options['whogroup'];
-      $begin     = $options['begin'];
-      $end       = $options['end'];
+      $who      = $options['who'];
+      $whogroup = $options['whogroup']; // direct group
+      $begin    = $options['begin'];
+      $end      = $options['end'];
+
+      $SELECT = [$item->getTable() . '.*'];
 
       // Get items to print
-      $ASSIGN = "";
-
-      if ($who_group === "mine") {
-         if (!$options['genical']
-             && count($_SESSION["glpigroups"])) {
-            $groups = implode("','", $_SESSION['glpigroups']);
-            $ASSIGN = "`".$item->getTable()."`.`users_id_tech`
-                           IN (SELECT DISTINCT `users_id`
-                               FROM `glpi_groups_users`
-                               INNER JOIN `glpi_groups`
-                                  ON (`glpi_groups_users`.`groups_id` = `glpi_groups`.`id`)
-                               WHERE `glpi_groups_users`.`groups_id` IN ('$groups')
-                                     AND `glpi_groups`.`is_assign`)
-                                     AND ";
-         } else { // Only personal ones
-            $ASSIGN = "`".$item->getTable()."`.`users_id_tech` = '$who'
-                       AND ";
-         }
-
+      if (isset($options['not_planned'])) {
+         //not planned case
+         // as we consider that people often create tasks after their execution
+         // begin date is task date minus duration
+         // and end date is task date
+         $bdate = "DATE_SUB(".$DB->quoteName($item->getTable() . '.date') .
+            ", INTERVAL ".$DB->quoteName($item->getTable() . '.actiontime')." SECOND)";
+         $SELECT[] = new QueryExpression($bdate . ' AS ' . $DB->quoteName('notp_date'));
+         $edate = $DB->quoteName($item->getTable() . '.date');
+         $SELECT[] = new QueryExpression($edate . ' AS ' . $DB->quoteName('notp_edate'));
+         $WHERE = [
+            $item->getTable() . '.end'     => null,
+            $item->getTable() . '.begin'   => null,
+            $item->getTable() . '.actiontime' => ['>', 0],
+            //begin is replaced with creation tim minus duration
+            new QueryExpression($edate . " >= '" . $begin . "'"),
+            new QueryExpression($bdate . " <= '" . $end . "'")
+         ];
       } else {
-         if ($who > 0) {
-            $ASSIGN = "`".$item->getTable()."`.`users_id_tech` = '$who'
-                       AND ";
-         }
-         if ($who_group > 0) {
-            $ASSIGN = "`".$item->getTable()."`.`users_id_tech` IN (SELECT `users_id`
-                                                                   FROM `glpi_groups_users`
-                                                                   WHERE `groups_id` = '$who_group')
-                                                                         AND ";
-         }
-         if ($whogroup > 0) {
-            $ASSIGN = "`".$item->getTable()."`.`groups_id_tech` = '$whogroup'
-                       AND ";
-         }
-
+         //std case: get tasks for current view dates
+         $WHERE = [
+            $item->getTable() . '.end'     => ['>=', $begin],
+            $item->getTable() . '.begin'   => ['<=', $end]
+         ];
       }
-      if (empty($ASSIGN)) {
-         $ASSIGN = "`".$item->getTable()."`.`users_id_tech`
-                        IN (SELECT DISTINCT `glpi_profiles_users`.`users_id`
-                            FROM `glpi_profiles`
-                            LEFT JOIN `glpi_profiles_users`
-                                 ON (`glpi_profiles`.`id` = `glpi_profiles_users`.`profiles_id`)
-                            WHERE `glpi_profiles`.`interface` = 'central' ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $_SESSION["glpiactive_entity"], 1).")
-                     AND ";
+      $ADDWHERE = [];
+
+      if ($whogroup === "mine") {
+         if (isset($_SESSION['glpigroups'])) {
+            $whogroup = $_SESSION['glpigroups'];
+         } else if ($who > 0) {
+            $whogroup = array_column(Group_User::getUserGroups($who), 'id');
+         }
       }
 
-      $DONE_EVENTS = '';
+      if ($who > 0) {
+         $ADDWHERE[$item->getTable() . '.users_id_tech'] = $who;
+      }
+
+      //This means we can pass 2 groups here, not sure this is expected. Not documented :/
+      if ($whogroup > 0) {
+         $ADDWHERE[$item->getTable() . '.groups_id_tech'] = $whogroup;
+      }
+
+      if (!count($ADDWHERE)) {
+         $ADDWHERE = [
+            $item->getTable() . '.users_id_tech' => new \QuerySubQuery([
+               'SELECT'          => 'glpi_profiles_users.users_id',
+               'DISTINCT'        => true,
+               'FROM'            => 'glpi_profiles',
+               'LEFT JOIN'       => [
+                  'glpi_profiles_users'   => [
+                     'ON' => [
+                        'glpi_profiles_users' => 'profiles_id',
+                        'glpi_profiles'       => 'id'
+                     ]
+                  ]
+               ],
+               'WHERE'           => [
+                  'glpi_profiles.interface'  => 'central'
+               ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], 1)
+            ])
+         ];
+      }
+
+      if (count($ADDWHERE) > 0) {
+         $WHERE[] = ['OR' => $ADDWHERE];
+      }
+
       if (!$options['display_done_events']) {
-         $DONE_EVENTS = "(`".$item->getTable()."`.`state` = ".Planning::TODO."
-                          OR (`".$item->getTable()."`.`state` = ".Planning::INFO."
-                              AND `".$item->getTable()."`.`end` > NOW()))
-                         AND ";
+         $WHERE[] = ['OR' => [
+            $item->getTable() . ".state"  => Planning::TODO,
+            [
+               'AND' => [
+                  $item->getTable() . '.state'  => Planning::INFO,
+                  $item->getTable() . '.end'    => ['>', new \QueryExpression('NOW()')]
+               ]
+            ]
+         ]];
       }
 
-      $addrestrict = '';
       if ($parentitem->maybeDeleted()) {
-         $addrestrict = 'AND `'.$parentitem->getTable().'`.`is_deleted` = 0 ';
+         $WHERE[$parentitem->getTable() . '.is_deleted'] = 0;
       }
 
       if (!$options['display_done_events']) {
-         $addrestrict .= "AND NOT `" . $parentitem->getTable() . "`.`status` IN
-                        ('" . implode("', '", array_merge($parentitem->getSolvedStatusArray(),
-                                                          $parentitem->getClosedStatusArray())) . "')";
+         $WHERE[] = ['NOT' => [
+            $parentitem->getTable() . '.status' => array_merge(
+               $parentitem->getSolvedStatusArray(),
+               $parentitem->getClosedStatusArray()
+            )
+         ]];
       }
 
-      $query = "SELECT `".$item->getTable()."`.*
-                FROM `".$item->getTable()."`
-                INNER JOIN `".$parentitem->getTable()."`
-                  ON (`".$parentitem->getTable()."`.`id` = `".$item->getTable()."`.`".$parentitem->getForeignKeyField()."`)
-                WHERE $ASSIGN
-                      $DONE_EVENTS
-                      '$begin' < `".$item->getTable()."`.`end`
-                      AND '$end' > `".$item->getTable()."`.`begin`
-                      $addrestrict
-                ORDER BY `".$item->getTable()."`.`begin`";
-
-      $result = $DB->query($query);
+      $iterator = $DB->request([
+         'SELECT'       => $SELECT,
+         'FROM'         => $item->getTable(),
+         'INNER JOIN'   => [
+            $parentitem->getTable() => [
+               'ON' => [
+                  $parentitem->getTable() => 'id',
+                  $item->getTable()       => $parentitem->getForeignKeyField()
+               ]
+            ]
+         ],
+         'WHERE'        => $WHERE,
+         'ORDERBY'      => $item->getTable() . '.begin'
+      ]);
 
       $interv = [];
 
-      if ($DB->numrows($result) > 0) {
-         for ($i=0; $data=$DB->fetchAssoc($result); $i++) {
+      if (count($iterator)) {
+         while ($data = $iterator->next()) {
             if ($item->getFromDB($data["id"])
                 && $item->canViewItem()) {
                if ($parentitem->getFromDBwithData($item->fields[$parentitem->getForeignKeyField()], 0)) {
-                  $key = $data["begin"]."$$$".$itemtype."$$$".$data["id"];
+                  //not planned
+                  if (isset($data['notp_date'])) {
+                     $data['begin'] = $data['notp_date'];
+                     $data['end'] = $data['notp_edate'];
+                  }
+                  $key = $data["begin"].
+                         "$$$".$itemtype.
+                         "$$$".$data["id"].
+                         "$$$".$who."$$$".$whogroup;
+
+                  if (isset($options['from_group_users'])) {
+                     $key.= "_gu";
+                  }
+
                   $interv[$key]['color']            = $options['color'];
                   $interv[$key]['event_type_color'] = $options['event_type_color'];
                   $interv[$key]['itemtype']         = $itemtype;
@@ -1086,7 +1149,7 @@ abstract class CommonITILTask  extends CommonDBTM {
                      $interv[$key]["end"] = $data["end"];
                   }
 
-                  $interv[$key]["name"]     = $parentitem->fields["name"];
+                  $interv[$key]["name"]     = Html::entity_decode_deep($parentitem->fields["name"]);
                   $interv[$key]["content"]  = Html::resume_text($item->fields["content"],
                                                                 $CFG_GLPI["cut"]);
                   $interv[$key]["status"]   = $parentitem->fields["status"];
@@ -1112,31 +1175,25 @@ abstract class CommonITILTask  extends CommonDBTM {
       return $interv;
    }
 
-
    /**
-    * Display a Planning Item
+    * Populate the planning with not planned tasks
     *
-    * @param string $itemtype  itemtype
-    * @param array  $val       the item to display
+    * @param string $itemtype itemtype
+    * @param array $options   options must contains :
+    *    - who                ID of the user (0 = undefined)
+    *    - whogroup           ID of the group of users (0 = undefined)
+    *    - begin              Date
+    *    - end                Date
+    *    - color
+    *    - event_type_color
+    *    - display_done_events (boolean)
     *
-    * @return string Output
+    * @return array of planning item
    **/
-   static function genericGetAlreadyPlannedInformation($itemtype, array $val) {
-
-      if ($item = getItemForItemtype($itemtype)) {
-         $objectitemtype = $item->getItilObjectItemType();
-
-         //TRANS: %1$s is a type, %2$$ is a date, %3$s is a date
-         $out  = sprintf(__('%1$s: from %2$s to %3$s:'), $item->getTypeName(1),
-                         Html::convDateTime($val["begin"]), Html::convDateTime($val["end"]));
-         $out .= "<br><a href='".$objectitemtype::getFormURLWithID($val[getForeignKeyFieldForItemType($objectitemtype)])
-                       ."&amp;forcetab=".$itemtype."$1'>";
-         $out .= Html::resume_text($val["name"], 80).'</a>';
-
-         return $out;
-      }
+   static function genericPopulateNotPlanned($itemtype, $options = []) {
+      $options['not_planned'] = true;
+      return self::genericPopulatePlanning($itemtype, $options);
    }
-
 
    /**
     * Display a Planning Item
@@ -1221,8 +1278,12 @@ abstract class CommonITILTask  extends CommonDBTM {
     * @param $item         CommonITILObject
     * @param $rand
     * @param $showprivate  (false by default)
+    *
+    * @deprecated 9.5.6
    **/
    function showInObjectSumnary(CommonITILObject $item, $rand, $showprivate = false) {
+      Toolbox::deprecated();
+
       global $CFG_GLPI;
 
       $canedit = (isset($this->fields['can_edit']) && !$this->fields['can_edit']) ? false : $this->canEdit($this->fields['id']);
@@ -1380,6 +1441,7 @@ abstract class CommonITILTask  extends CommonDBTM {
       if (isset($options['parent']) && !empty($options['parent'])) {
          $item = $options['parent'];
       }
+      $options['formoptions'] = ($options['formoptions'] ?? '') . ' data-track-changes=true';
 
       $fkfield = $item->getForeignKeyField();
 
@@ -1432,7 +1494,7 @@ abstract class CommonITILTask  extends CommonDBTM {
       echo "<td style='vertical-align: middle'>";
       echo "<div class='fa-label'>
             <i class='fas fa-reply fa-fw'
-               title='"._n('Task template', 'Task templates', 2)."'></i>";
+               title='".TaskTemplate::getTypeName(Session::getPluralNumber())."'></i>";
       TaskTemplate::dropdown(['value'     => $this->fields['tasktemplates_id'],
                                    'entity'    => $this->getEntityID(),
                                    'rand'      => $rand_template,
@@ -1461,10 +1523,8 @@ abstract class CommonITILTask  extends CommonDBTM {
                   : parseInt(data.groups_id_tech);
 
                // set textarea content
-               $("#content'.$rand_text.'").html(data.content);
-               // set also tinmyce (if enabled)
                if (tasktinymce = tinymce.get("content'.$rand_text.'")) {
-                  tasktinymce.setContent(data.content.replace(/\r?\n/g, "<br />"));
+                  tasktinymce.setContent(data.content);
                }
                // set category
                $("#dropdown_taskcategories_id'.$rand_type.'").trigger("setValue", taskcategories_id);
@@ -1488,10 +1548,11 @@ abstract class CommonITILTask  extends CommonDBTM {
       if ($ID > 0) {
          echo "<div class='fa-label'>
          <i class='far fa-calendar fa-fw'
-            title='".__('Date')."'></i>";
-         Html::showDateTimeField("date", ['value'      => $this->fields["date"],
-                                               'timestep'   => 1,
-                                               'maybeempty' => false]);
+            title='"._n('Date', 'Dates', 1)."'></i>";
+         Html::showDateTimeField("date", [
+            'value'      => $this->fields["date"],
+            'maybeempty' => false
+         ]);
          echo "</div>";
       }
 
@@ -1552,7 +1613,7 @@ abstract class CommonITILTask  extends CommonDBTM {
       echo "</div>";
 
       echo "<div class='fa-label'>";
-      echo "<i class='fas fa-user fa-fw' title='"._n('User', 'Users', 1)."'></i>";
+      echo "<i class='fas fa-user fa-fw' title='".User::getTypeName(1)."'></i>";
       $params             = ['name'   => "users_id_tech",
                                   'value'  => (($ID > -1)
                                                 ?$this->fields["users_id_tech"]
@@ -1580,7 +1641,7 @@ abstract class CommonITILTask  extends CommonDBTM {
       echo "</div>";
 
       echo "<div class='fa-label'>";
-      echo "<i class='fas fa-users fa-fw' title='"._n('Group', 'Groups', 1)."'></i>";
+      echo "<i class='fas fa-users fa-fw' title='".Group::getTypeName(1)."'></i>";
       $params     = [
          'name'      => "groups_id_tech",
          'value'     => (($ID > -1)
@@ -1720,6 +1781,13 @@ abstract class CommonITILTask  extends CommonDBTM {
       echo "</tr>";
 
       echo "<tr class='tab_bg_2'>";
+      echo "<td>".__('Status')."</td>";
+      echo "<td>";
+      Planning::dropdownState("state", $_SESSION['glpitask_state']);
+      echo "</td>";
+      echo "</tr>";
+
+      echo "<tr class='tab_bg_2'>";
       echo "<td class='center' colspan='2'>";
       if ($this->maybePrivate()) {
          echo "<input type='hidden' name='is_private' value='".$_SESSION['glpitask_private']."'>";
@@ -1767,7 +1835,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          if (isset($_SESSION['glpigroups']) && count($_SESSION['glpigroups'])) {
             $prep_req['WHERE'][self::getTable() . '.groups_id_tech'] = $_SESSION['glpigroups'];
          } else {
-            return false;
+            // Return empty iterator result
+            $prep_req['WHERE'][] = 0;
          }
       } else {
          $prep_req['WHERE'][self::getTable() . '.users_id_tech'] = $_SESSION['glpiID'];
@@ -1803,21 +1872,14 @@ abstract class CommonITILTask  extends CommonDBTM {
    static function showCentralList($start, $status = 'todo', $showgrouptickets = true) {
       global $CFG_GLPI;
 
-      $req = self::getTaskList($status, $showgrouptickets);
-      $numrows = 0;
-      if ($req !== false) {
-         $numrows = $req->numrows();
-      }
+      $iterator = self::getTaskList($status, $showgrouptickets);
 
-      $number = 0;
-      if ($_SESSION['glpidisplay_count_on_home'] > 0 && $req !== false) {
-         $start = (int)$start;
-         $limit = (int)$_SESSION['glpidisplay_count_on_home'];
-         $req = self::getTaskList($status, $showgrouptickets, $start, $limit);
-         $number = $req->numrows();
-      }
+      $total_row_count = count($iterator);
+      $displayed_row_count = (int)$_SESSION['glpidisplay_count_on_home'] > 0
+         ? min((int)$_SESSION['glpidisplay_count_on_home'], $total_row_count)
+         : $total_row_count;
 
-      if ($numrows > 0) {
+      if ($displayed_row_count > 0) {
          echo "<table class='tab_cadrehov'>";
          echo "<tr class='noHover'><th colspan='4'>";
 
@@ -1864,26 +1926,26 @@ abstract class CommonITILTask  extends CommonDBTM {
                }
                echo "<a href=\"".$CFG_GLPI["root_doc"]."/front/ticket.php?".
                       Toolbox::append_params($options, '&amp;')."\">".
-                      Html::makeTitle($title, $number, $numrows)."</a>";
+                      Html::makeTitle($title, $displayed_row_count, $total_row_count)."</a>";
                break;
          }
 
          echo "</th></tr>";
-         if ($number) {
-            echo "<tr>";
-            echo "<th>".__('ID')." </th>";
-            $type = "";
-            if ($itemtype == "TicketTask") {
-               $type = Ticket::getTypeName();
-            } else if ($itemtype == "ProblemTask") {
-               $type = Problem::getTypeName();
-            }
-            echo "<th>".__('Title')." (".strtolower($type).")</th>";
-            echo "<th>".__('Description')."</th>";
-            echo "</tr>";
-            foreach ($req as $row) {
-               self::showVeryShort($row['id'], $itemtype);
-            }
+         echo "<tr>";
+         echo "<th style='width: 75px;'>".__('ID')." </th>";
+         $type = "";
+         if ($itemtype == "TicketTask") {
+            $type = Ticket::getTypeName();
+         } else if ($itemtype == "ProblemTask") {
+            $type = Problem::getTypeName();
+         }
+         echo "<th style='width: 20%;'>".__('Title')." (".strtolower($type).")</th>";
+         echo "<th>".__('Description')."</th>";
+         echo "</tr>";
+         $i = 0;
+         while ($i < $displayed_row_count && ($data = $iterator->next())) {
+            self::showVeryShort($data['id'], $itemtype);
+            $i++;
          }
          echo "</table>";
       }
@@ -1926,7 +1988,7 @@ abstract class CommonITILTask  extends CommonDBTM {
             </div>
          </td>";
 
-         echo "<td class='center'>";
+         echo "<td>";
          echo $item_link->fields['name'];
          echo "</td>";
 
@@ -1952,4 +2014,127 @@ abstract class CommonITILTask  extends CommonDBTM {
       }
    }
 
+   public static function getGroupItemsAsVCalendars($groups_id) {
+
+      return self::getItemsAsVCalendars([static::getTableField('groups_id_tech') => $groups_id]);
+   }
+
+   public static function getUserItemsAsVCalendars($users_id) {
+
+      return self::getItemsAsVCalendars([static::getTableField('users_id_tech') => $users_id]);
+   }
+
+   /**
+    * Returns items as VCalendar objects.
+    *
+    * @param array $criteria
+    *
+    * @return \Sabre\VObject\Component\VCalendar[]
+    */
+   private static function getItemsAsVCalendars(array $criteria) {
+
+      global $DB;
+
+      $item = new static();
+      $parent_item = getItemForItemtype($item->getItilObjectItemType());
+      if (!$parent_item) {
+         return;
+      }
+
+      $query = [
+         'SELECT'     => [$item->getTableField('*')],
+         'FROM'       => $item->getTable(),
+         'INNER JOIN' => [],
+         'WHERE'      => $criteria,
+      ];
+      if ($parent_item->maybeDeleted()) {
+         $query['INNER JOIN'][$parent_item->getTable()] = [
+            'ON' => [
+               $parent_item->getTable() => 'id',
+               $item->getTable()        => $parent_item->getForeignKeyField(),
+            ]
+         ];
+         $query['WHERE'][$parent_item->getTableField('is_deleted')] = 0;
+      }
+
+      $tasks_iterator = $DB->request($query);
+
+      $vcalendars = [];
+      foreach ($tasks_iterator as $task) {
+         $item->getFromResultSet($task);
+         $vcalendar = $item->getAsVCalendar();
+         if (null !== $vcalendar) {
+            $vcalendars[] = $vcalendar;
+         }
+      }
+
+      return $vcalendars;
+   }
+
+   public function getAsVCalendar() {
+
+      global $CFG_GLPI;
+
+      if (!$this->canViewItem()) {
+         return null;
+      }
+
+      $parent_item = getItemForItemtype($this->getItilObjectItemType());
+      if (!$parent_item) {
+         return null;
+      }
+      $parent_id = $this->fields[$parent_item->getForeignKeyField()];
+      if (!$parent_item->getFromDB($parent_id)) {
+         return null;
+      }
+
+      // Transform HTML text to plain text
+      $this->fields['content'] = Html::clean(
+         Toolbox::unclean_cross_side_scripting_deep(
+            $this->fields['content']
+         )
+      );
+
+      $is_task =true;
+      $is_planned = !empty($this->fields['begin']) && !empty($this->fields['end']);
+      $target_component = $this->getTargetCaldavComponent($is_planned, $is_task);
+      if (null === $target_component) {
+         return null;
+      }
+
+      $vcalendar = $this->getVCalendarForItem($this, $target_component);
+
+      $parent_fields = Html::entity_decode_deep($parent_item->fields);
+      $utc_tz = new \DateTimeZone('UTC');
+
+      $vcomp = $vcalendar->getBaseComponent();
+      $vcomp->SUMMARY           = $parent_fields['name'];
+      $vcomp->DTSTAMP           = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+      $vcomp->{'LAST-MODIFIED'} = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+      $vcomp->URL               = $CFG_GLPI['url_base'] . $parent_item->getFormURLWithID($parent_id, false);
+
+      return $vcalendar;
+   }
+
+   public function getInputFromVCalendar(VCalendar $vcalendar) {
+
+      $vtodo = $vcalendar->getBaseComponent();
+
+      if (null !== $vtodo->RRULE) {
+         throw new UnexpectedValueException('RRULE not yet implemented for ITIL tasks');
+      }
+
+      $input = $this->getCommonInputFromVcomponent($vtodo, $this->isNewItem());
+
+      if (!$this->isNewItem()) {
+         // self::prepareInputForUpdate() expect these fields to be set in input.
+         // We should be able to not pass these fields in input
+         // but fixing self::prepareInputForUpdate() seems complex right now.
+         $itil_fkey = getForeignKeyFieldForItemType($this->getItilObjectItemType());
+         $input[$itil_fkey] = $this->fields[$itil_fkey];
+         $input['users_id_tech'] = $this->fields['users_id_tech'];
+      }
+
+      return $input;
+   }
 }

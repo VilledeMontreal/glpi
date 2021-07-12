@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -77,7 +77,7 @@ class ChangeTask extends CommonITILTask {
     * @return boolean
    **/
    function canViewItem() {
-      return parent::canReadITILItem();
+      return $this->canReadITILItem();
    }
 
 
@@ -88,7 +88,7 @@ class ChangeTask extends CommonITILTask {
    **/
    function canCreateItem() {
 
-      if (!parent::canReadITILItem()) {
+      if (!$this->canReadITILItem()) {
          return false;
       }
 
@@ -114,7 +114,7 @@ class ChangeTask extends CommonITILTask {
    **/
    function canUpdateItem() {
 
-      if (!parent::canReadITILItem()) {
+      if (!$this->canReadITILItem()) {
          return false;
       }
 
@@ -143,26 +143,14 @@ class ChangeTask extends CommonITILTask {
     *
     * @param $options array of possible options:
     *    - who ID of the user (0 = undefined)
-    *    - who_group ID of the group of users (0 = undefined)
+    *    - whogroup ID of the group of users (0 = undefined)
     *    - begin Date
     *    - end Date
     *
     * @return array of planning item
    **/
-   static function populatePlanning($options = []) {
+   static function populatePlanning($options = []) :array {
       return parent::genericPopulatePlanning(__CLASS__, $options);
-   }
-
-
-   /**
-    * Display a Planning Item
-    *
-    * @param array $val Array of the item to display
-    *
-    * @return string Already planned information
-   **/
-   static function getAlreadyPlannedInformation($val) {
-      return parent::genericGetAlreadyPlannedInformation(__CLASS__, $val);
    }
 
 
@@ -180,5 +168,18 @@ class ChangeTask extends CommonITILTask {
       return parent::genericDisplayPlanningItem(__CLASS__, $val, $who, $type, $complete);
    }
 
-
+   /**
+    * Populate the planning with not planned ticket tasks
+    *
+    * @param $options array of possible options:
+    *    - who ID of the user (0 = undefined)
+    *    - whogroup ID of the group of users (0 = undefined)
+    *    - begin Date
+    *    - end Date
+    *
+    * @return array of planning item
+   **/
+   static function populateNotPlanned($options = []) :array {
+      return parent::genericPopulateNotPlanned(__CLASS__, $options);
+   }
 }

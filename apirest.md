@@ -114,7 +114,8 @@ App(lication) token
      You should pass this parameter in 'Authorization' HTTP header.
      A valid Authorization header is:
         * "Authorization: user_token q56hqkniwot8wntb3z1qarka5atf365taaa2uyjrn"
-
+* **Parameters**: (query string)
+  * *get_full_session* (default: false): Get the full session, useful if you want to login and access session data in one request.
 * **Returns**:
   * 200 (OK) with the *session_token* string.
   * 400 (Bad Request) with a message indicating an error in input parameter.
@@ -138,11 +139,17 @@ $ curl -X GET \
 -H 'Content-Type: application/json' \
 -H "Authorization: user_token q56hqkniwot8wntb3z1qarka5atf365taaa2uyjrn" \
 -H "App-Token: f7g3csp8mgatg5ebc5elnazakw20i9fyev1qopya7" \
-'http://path/to/glpi/apirest.php/initSession'
+'http://path/to/glpi/apirest.php/initSession?get_full_session=true'
 
 < 200 OK
 < {
-   "session_token": "83af7e620c83a50a18d3eac2f6ed05a3ca0bea62"
+   "session_token": "83af7e620c83a50a18d3eac2f6ed05a3ca0bea62",
+   "session": {
+      'glpi_plugins': ...,
+      'glpicookietest': ...,
+      'glpicsrftokens': ...,
+      ...
+   }
 }
 ```
 
@@ -506,6 +513,7 @@ $ curl -X GET \
   * *with_changes*: Retrieve associated ITIL changes. Optional.
   * *with_notes*: Retrieve Notes. Optional.
   * *with_logs*: Retrieve historical. Optional.
+  * *add_keys_names*: Retrieve friendly names. Array containing fkey(s) and/or "id". Optional.
 * **Returns**:
   * 200 (OK) with item data (Last-Modified header should contain the date of last modification of the item).
   * 401 (UNAUTHORIZED).
@@ -535,7 +543,6 @@ $ curl -X GET \
     "date_mod": "2015-09-25 09:33:41",
     "autoupdatesystems_id": " ",
     "locations_id": "00:0e:08:3b:7d:04",
-    "domains_id": "",
     "networks_id": " ",
     "computermodels_id": "1298A8G",
     "computertypes_id": "Notebook",
@@ -593,10 +600,11 @@ Note: To download a document see [Download a document file](#download-a-document
   * *get_hateoas* (default: true): Show relation of item in a links attribute. Optional.
   * *only_id* (default: false): keep only id keys in returned data. Optional.
   * *range* (default: 0-50):  a string with a couple of number for start and end of pagination separated by a '-'. Ex: 150-200. Optional.
-  * *sort* (default 1): id of the searchoption to sort by. Optional.
+  * *sort* (default 1): name of the field to sort by. Optional.
   * *order* (default ASC): ASC - Ascending sort / DESC Descending sort. Optional.
   * *searchText* (default NULL): array of filters to pass on the query (with key = field and value the text to search)
   * *is_deleted* (default: false): Return deleted element. Optional.
+  * *add_keys_names*: Retrieve friendly names. Array containing fkey(s) and/or "id". Optional.
 * **Returns**:
   * 200 (OK) with items data.
   * 206 (PARTIAL CONTENT) with items data defined by range.
@@ -633,7 +641,6 @@ $ curl -X GET \
       "date_mod": "2011-12-16 17:52:55",
       "autoupdatesystems_id": "FusionInventory",
       "locations_id": "&nbsp;",
-      "domains_id": "teclib.infra",
       "networks_id": "&nbsp;",
       "computermodels_id": "VMware Virtual Platform",
       "computertypes_id": "Other",
@@ -703,6 +710,7 @@ $ curl -X GET \
   * *range* (default: 0-50): a string with a couple of number for start and end of pagination separated by a '-' char. Ex: 150-200. Optional.
   * *sort* (default 1): id of the "searchoption" to sort by. Optional.
   * *order* (default ASC): ASC - Ascending sort / DESC Descending sort. Optional.
+  * *add_keys_names*: Retrieve friendly names. Array containing fkey(s) and/or "id". Optional.
 * **Returns**:
   * 200 (OK) with the items data.
   * 401 (UNAUTHORIZED).
@@ -781,6 +789,7 @@ $ curl -X GET \
   * *with_changes*: Retrieve associated ITIL changes. Optional.
   * *with_notes*: Retrieve Notes. Optional.
   * *with_logs*: Retrieve historical. Optional.
+  * *add_keys_names*: Retrieve friendly names. Array containing fkey(s) and/or "id". Optional.
 * **Returns**:
   * 200 (OK) with item data (Last-Modified header should contain the date of last modification of the item).
   * 401 (UNAUTHORIZED).
@@ -990,18 +999,18 @@ $ curl -X GET \
         {
             "totalcount": ":numberofresults_without_pagination",
             "range": ":start-:end",
-            "data": {
-                ":items_id": {
+            "data": [
+                {
                     ":searchoptions_id": "value",
                     ...
                 },
-                ":items_id": {
+                {
                  ...
-               }
-           },
-           "rawdata": {
+                }
+            ],
+            "rawdata": {
               ...
-           }
+            }
         }
      ```
 
@@ -1284,6 +1293,33 @@ $ curl -X GET \
 
 The body of the answer contains the raw file attached to the document.
 
+### Get a user's profile picture
+
+* **URL**: apirest.php/User/:id/Picture
+* **Description**: Get a user's profile picture.
+* **Method**: GET
+* **Parameters**: (Headers)
+  * *Session-Token*: session var provided by [initSession](#init-session) endpoint. Mandatory.
+  * *App-Token*: authorization string provided by the GLPI API configuration. Optional.
+* **Returns**:
+  * 200 (OK) with the raw image in the request body.
+  * 204 (No content) if the request is correct but the specified user doesn't have a profile picture.
+  * 400 (Bad Request) with a message indicating an error in input parameter.
+
+Example usage (CURL):
+
+```bash
+$ curl -X GET \
+-H 'Content-Type: application/json' \
+-H "Session-Token: 83af7e620c83a50a18d3eac2f6ed05a3ca0bea62" \
+-H "App-Token: f7g3csp8mgatg5ebc5elnazakw20i9fyev1qopya7" \
+'http://path/to/glpi/apirest.php/User/2/Picture/'
+
+< 200 OK
+```
+
+The body of the answer contains the raw image.
+
 ## Errors
 
 ### ERROR_ITEM_NOT_FOUND
@@ -1422,6 +1458,14 @@ You need to uncomment (removing #) theses lines:
 
 By enabling URL rewriting, you could use API with this URL : <http://path/to/glpi/api/>.
 You need also to enable rewrite module in apache httpd and permit GLPI's .htaccess to override server configuration (see AllowOverride directive).
+
+**Note for apache+fpm users:**  
+
+You may have difficulties to pass Authorization header in this configuration.
+You have two options :
+
+- pass the `user_token` or credentials (login/password) in the http query (as GET parameters).
+- add env to your virtualhost: `SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1`.
 
 ### Nginx
 

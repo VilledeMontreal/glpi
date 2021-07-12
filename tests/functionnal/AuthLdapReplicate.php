@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@ use \DbTestCase;
 
 /* Test for inc/authldapreplicate.class.php */
 
-class AuthLDAPReplicate extends DbTestCase {
+class AuthLdapReplicate extends DbTestCase {
 
    public function testCanCreate() {
       $this->login();

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -121,7 +121,6 @@ class SavedSearch_Alert extends CommonDBChild {
          }
       } catch (\RuntimeException $e) {
          Toolbox::logError($e);
-         $pass = true;
       }
 
       $this->showFormHeader($options);
@@ -131,7 +130,7 @@ class SavedSearch_Alert extends CommonDBChild {
       }
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>" . __('Saved search') ."</td>";
+      echo "<td>" . SavedSearch::getTypeName(1) ."</td>";
       echo "<td>";
       echo $search->getLink();
       if ($count !== null) {
@@ -338,7 +337,7 @@ class SavedSearch_Alert extends CommonDBChild {
    /**
     * Send saved searches alerts
     *
-    * @param Crontask $task Crontask instance
+    * @param CronTask $task CronTask instance
     *
     * @return int : <0 : need to run again, 0:nothing to do, >0:ok
     */

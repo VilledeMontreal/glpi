@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -163,7 +163,8 @@ class Update extends CommonGLPI {
       $updir = __DIR__ . "/../install/";
 
       if (isCommandLine() && version_compare($current_version, '0.72.3', 'lt')) {
-         die('Upgrade from command line is not supported before 0.72.3!');
+         echo 'Upgrade from command line is not supported before 0.72.3!';
+         die(1);
       }
 
       // Update process desactivate all plugins
@@ -452,15 +453,52 @@ class Update extends CommonGLPI {
          case "9.4.2":
             include_once "{$updir}update_942_943.php";
             update942to943();
+
          case "9.4.3":
+         case "9.4.4":
+            include_once "{$updir}update_943_945.php";
+            update943to945();
+
          case "9.4.5":
+            include_once "{$updir}update_945_946.php";
+            update945to946();
+
          case "9.4.6":
+            include_once "{$updir}update_946_947.php";
+            update946to947();
+
          case "9.4.7":
          case "9.4.8":
          case "9.4.9":
          case "9.5.0-dev":
             include_once "{$updir}update_94_95.php";
             update94to95();
+
+         case "9.5.0":
+         case "9.5.1":
+            include_once "{$updir}update_951_952.php";
+            update951to952();
+
+         case "9.5.2":
+            include_once "{$updir}update_952_953.php";
+            update952to953();
+
+         case "9.5.3":
+            include_once "{$updir}update_953_954.php";
+            update953to954();
+
+         case "9.5.4":
+            include_once "{$updir}update_954_955.php";
+            update954to955();
+
+         case "9.5.5":
+            include_once "{$updir}update_955_956.php";
+            update955to956();
+            break;
+
+         case "9.5.5":
+            include_once "{$updir}update_955_956.php";
+            update955to956();
             break;
 
          case GLPI_VERSION:
@@ -504,6 +542,12 @@ class Update extends CommonGLPI {
       $crontask_telemetry->getFromDBbyName("Telemetry", "telemetry");
       $crontask_telemetry->resetDate();
       $crontask_telemetry->resetState();
+
+      //generate security key if missing, and update db
+      $glpikey = new GLPIKey();
+      if (!$glpikey->keyExists() && !$glpikey->generate()) {
+         $this->migration->displayWarning(__('Unable to create security key file! You have to run "php bin/console glpi:security:change_key" command to manually create this file.'), true);
+      }
    }
 
    /**
@@ -584,5 +628,31 @@ class Update extends CommonGLPI {
    public function setMigration(Migration $migration) {
       $this->migration = $migration;
       return $this;
+   }
+
+   /**
+    * Check if expected security key file is missing.
+    *
+    * @return bool
+    */
+   public function isExpectedSecurityKeyFileMissing(): bool {
+      $expected_key_path = $this->getExpectedSecurityKeyFilePath();
+
+      if ($expected_key_path === null) {
+         return false;
+      }
+
+      return !file_exists($expected_key_path);
+   }
+
+   /**
+    * Returns expected security key file path.
+    * Will return null for GLPI versions that was not yet handling a custom security key.
+    *
+    * @return string|null
+    */
+   public function getExpectedSecurityKeyFilePath(): ?string {
+      $glpikey = new GLPIKey();
+      return $glpikey->getExpectedKeyPath($this->getCurrents()['version']);
    }
 }

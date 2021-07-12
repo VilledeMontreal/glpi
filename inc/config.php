@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,14 +38,22 @@ if (!defined('GLPI_ROOT')) {
 global $CFG_GLPI, $GLPI, $GLPI_CACHE;
 
 include_once (GLPI_ROOT."/inc/based_config.php");
-include_once (GLPI_ROOT."/inc/define.php");
 include_once (GLPI_ROOT."/inc/dbconnection.class.php");
-
-//init cache
-$GLPI_CACHE = Config::getCache('cache_db');
 
 Session::setPath();
 Session::start();
+
+// Default Use mode
+if (!isset($_SESSION['glpi_use_mode'])) {
+   $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
+}
+
+$GLPI = new GLPI();
+$GLPI->initLogger();
+$GLPI->initErrorHandler();
+
+//init cache
+$GLPI_CACHE = Config::getCache('cache_db');
 
 Config::detectRootDoc();
 
@@ -71,14 +79,6 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
 
 } else {
    include_once(GLPI_CONFIG_DIR . "/config_db.php");
-
-   // Default Use mode
-   if (!isset($_SESSION['glpi_use_mode'])) {
-      $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
-   }
-
-   $GLPI = new GLPI();
-   $GLPI->initLogger();
 
    //Database connection
    DBConnection::establishDBConnection((isset($USEDBREPLICATE) ? $USEDBREPLICATE : 0),
@@ -116,21 +116,12 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
    }
    Toolbox::setDebugMode();
 
-   //deprecated configuration options
-   //@deprecated 9.4
-   if ($_SESSION['glpi_use_mode'] != Session::DEBUG_MODE) {
-      $_SESSION['glpiticket_timeline'] = 1;
-      $_SESSION['glpiticket_timeline_keep_replaced_tabs'] = 0;
-   } else {
-      unset($_SESSION['glpiticket_timeline']);
-      unset($_SESSION['glpiticket_timeline_keep_replaced_tabs']);
-      unset($CFG_GLPI['use_rich_text']);
-      unset($CFG_GLPI['ticket_timeline']);
-      unset($CFG_GLPI['ticket_timeline_keep_replaced_tabs']);
-   }
-
    if (isset($_SESSION["glpiroot"]) && $CFG_GLPI["root_doc"]!=$_SESSION["glpiroot"]) {
       Html::redirect($_SESSION["glpiroot"]);
+   }
+
+   if (!isset($_SESSION["glpilanguage"])) {
+      $_SESSION["glpilanguage"] = Session::getPreferredLanguage();
    }
 
    // Override cfg_features by session value
@@ -183,7 +174,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
       } else {
          Html::nullHeader("UPDATE NEEDED", $CFG_GLPI["root_doc"]);
          echo "<div class='center'>";
-         echo "<table class='tab_cadre'>";
+         echo "<table class='tab_cadre tab_check'>";
          $error = Toolbox::commonCheckForUseGLPI();
          echo "</table><br>";
 

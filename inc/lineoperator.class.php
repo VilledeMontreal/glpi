@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -68,7 +68,8 @@ class LineOperator extends CommonDropdown {
             'table'              => $this->getTable(),
             'field'              => 'mcc',
             'name'               => __('Mobile Country Code'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
+            'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -76,7 +77,8 @@ class LineOperator extends CommonDropdown {
             'table'              => $this->getTable(),
             'field'              => 'mnc',
             'name'               => __('Mobile Network Code'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
+            'autocomplete'       => true,
       ];
 
       return $tab;

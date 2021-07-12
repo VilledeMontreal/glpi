@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -153,6 +153,53 @@ abstract class CommonDBConnexity extends CommonDBTM {
                                       $getEmpty, $getFromDBOrEmpty);
    }
 
+   /**
+    * get items associated to the given one (defined by $itemtype and $items_id)
+    *
+    * @see CommonDBConnexity::getItemsAssociationRequest()
+    * @since 9.5
+    *
+    * @param string  $itemtype          the type of the item we want the resulting items to be associated to
+    * @param string  $items_id          the name of the item we want the resulting items to be associated to
+    *
+    * @return array the items associated to the given one (empty if none was found)
+   **/
+   static function getItemsAssociatedTo($itemtype, $items_id) {
+      $res = [];
+      $iterator = static::getItemsAssociationRequest($itemtype, $items_id);
+
+      while ($row = $iterator->next()) {
+         $input = Toolbox::addslashes_deep($row);
+         $item = new static();
+         $item->getFromDB($input['id']);
+         $res[] = $item;
+      }
+      return $res;
+   }
+
+   /**
+    * get the request results to get items associated to the given one (defined by $itemtype and $items_id)
+    *
+    * @since 9.5
+    *
+    * @param string  $itemtype          the type of the item we want the resulting items to be associated to
+    * @param string  $items_id          the name of the item we want the resulting items to be associated to
+    *
+    * @return array the items associated to the given one (empty if none was found)
+    */
+   static function getItemsAssociationRequest($itemtype, $items_id) {
+      global $DB;
+      return $DB->request(static::getSQLCriteriaToSearchForItem($itemtype, $items_id));
+   }
+
+   /**
+    * Get item field name for cloning
+    *
+    * @param string $itemtype Item type
+    *
+    * @return string
+    */
+   abstract public static function getItemField($itemtype): string;
 
    /**
     * get associated item (defined by $itemtype and $items_id)

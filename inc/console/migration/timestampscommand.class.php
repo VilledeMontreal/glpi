@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,6 +37,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use QueryExpression;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -54,24 +55,32 @@ class TimestampsCommand extends AbstractCommand {
    protected function execute(InputInterface $input, OutputInterface $output) {
       //convert db
 
-      // we are going to update datetime, date and time (?) types to timestamp type
+      // we are going to update datetime types to timestamp type
       $tbl_iterator = $this->db->request([
          'SELECT'       => ['information_schema.columns.table_name as TABLE_NAME'],
          'DISTINCT'     => true,
          'FROM'         => 'information_schema.columns',
          'INNER JOIN'   => [
             'information_schema.tables' => [
-               'ON' => [
-                  'information_schema.tables.table_name',
-                  'information_schema.columns.table_name', [
-                     'AND' => ['information_schema.tables.table_type' => 'BASE TABLE']
-                  ]
+               'FKEY' => [
+                  'information_schema.tables'  => 'table_name',
+                  'information_schema.columns' => 'table_name',
+                  [
+                     'AND' => [
+                        'information_schema.tables.table_schema' => new QueryExpression(
+                           $this->db->quoteName('information_schema.columns.table_schema')
+                        ),
+                     ]
+                  ],
                ]
             ]
          ],
          'WHERE'       => [
             'information_schema.columns.table_schema' => $this->db->dbdefault,
-            'information_schema.columns.data_type'    => 'datetime'
+            'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
+            'information_schema.columns.data_type'    => 'datetime',
+            'information_schema.tables.table_type'    => 'BASE TABLE',
+
          ],
          'ORDER'       => [
             'information_schema.columns.table_name'
@@ -92,7 +101,7 @@ class TimestampsCommand extends AbstractCommand {
 
       if (!$input->getOption('no-interaction')) {
          // Ask for confirmation (unless --no-interaction)
-         /** @var QuestionHelper $question_helper */
+         /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
          $question_helper = $this->getHelper('question');
          $run = $question_helper->ask(
             $input,
@@ -143,22 +152,26 @@ class TimestampsCommand extends AbstractCommand {
 
             //guess default value
             if (is_null($column['COLUMN_DEFAULT']) && !$nullable) { // no default
-               $default = null;
+               // Prevent MySQL/MariaDB to force "default current_timestamp on update current_timestamp"
+               // as "on update current_timestamp" could be a real problem on fields like "date_creation".
+               $default = "CURRENT_TIMESTAMP";
             } else if ((is_null($column['COLUMN_DEFAULT']) || strtoupper($column['COLUMN_DEFAULT']) == 'NULL') && $nullable) {
                $default = "NULL";
             } else if (!is_null($column['COLUMN_DEFAULT']) && strtoupper($column['COLUMN_DEFAULT']) != 'NULL') {
-               if ($column['COLUMN_DEFAULT'] < '1970-01-01 00:00:01') {
+               if (preg_match('/^current_timestamp(\(\))?$/i', $column['COLUMN_DEFAULT']) === 1) {
+                  $default = $column['COLUMN_DEFAULT'];
+               } else if ($column['COLUMN_DEFAULT'] < '1970-01-01 00:00:01') {
                   // Prevent default value to be out of range (lower to min possible value)
                   $defaultDate = new \DateTime('1970-01-01 00:00:01', new \DateTimeZone('UTC'));
                   $defaultDate->setTimezone(new \DateTimeZone(date_default_timezone_get()));
-                  $default = $defaultDate->format("Y-m-d H:i:s");
+                  $default = $this->db->quoteValue($defaultDate->format("Y-m-d H:i:s"));
                } else if ($column['COLUMN_DEFAULT'] > '2038-01-19 03:14:07') {
                   // Prevent default value to be out of range (greater to max possible value)
                   $defaultDate = new \DateTime('2038-01-19 03:14:07', new \DateTimeZone('UTC'));
                   $defaultDate->setTimezone(new \DateTimeZone(date_default_timezone_get()));
-                  $default = $defaultDate->format("Y-m-d H:i:s");
+                  $default = $this->db->quoteValue($defaultDate->format("Y-m-d H:i:s"));
                } else {
-                  $default = $column['COLUMN_DEFAULT'];
+                  $default = $this->db->quoteValue($column['COLUMN_DEFAULT']);
                }
             }
 
@@ -170,9 +183,6 @@ class TimestampsCommand extends AbstractCommand {
                $tablealter .= " NOT NULL";
             }
             if ($default !== null) {
-               if ($default !== 'NULL') {
-                  $default = "'" . $this->db->escape($default) . "'";
-               }
                $tablealter .= " DEFAULT $default";
             }
             if ($column['COLUMN_COMMENT'] != '') {

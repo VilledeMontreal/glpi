@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,8 +45,7 @@ class Vlan extends CommonDropdown {
 
 
    static function getTypeName($nb = 0) {
-      // Acronymous, no plural
-      return __('VLAN');
+      return _n('VLAN', 'VLANs', $nb);
    }
 
 
@@ -132,8 +131,6 @@ class Vlan extends CommonDropdown {
    **/
    static function getHTMLTableCellsForItem(HTMLTableRow $row = null, CommonDBTM $item = null,
                                             HTMLTableCell $father = null, array $options = []) {
-      global $DB, $CFG_GLPI;
-
       $column_name = __CLASS__;
 
       if (isset($options['dont_display'][$column_name])) {
@@ -170,4 +167,12 @@ class Vlan extends CommonDropdown {
       }
    }
 
+   function defineTabs($options = []) {
+
+      $ong = [];
+      $this->addDefaultFormTab($ong)
+         ->addStandardTab('NetworkPort_Vlan', $ong, $options);
+
+      return $ong;
+   }
 }

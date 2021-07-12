@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -52,7 +52,7 @@ if (isset($_POST["add"])) {
    Html::back();
 } else if (isset($_POST["purge"])) {
    // delete a saved search
-   $savedsearch->check($_POST['id'], DELETE);
+   $savedsearch->check($_POST['id'], PURGE);
    $savedsearch->delete($_POST, 1);
    $savedsearch->redirectToList();
 } else if (isset($_POST["update"])) {

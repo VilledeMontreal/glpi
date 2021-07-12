@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -65,13 +65,12 @@ class Stat extends CommonGLPI {
     * @param $parent    (default 0)
    **/
    static function getItems($itemtype, $date1, $date2, $type, $parent = 0) {
-      global $CFG_GLPI, $DB;
+      global $DB;
 
       if (!$item = getItemForItemtype($itemtype)) {
          return;
       }
       $val  = [];
-      $cond = '';
 
       switch ($type) {
          case "technicien" :
@@ -97,71 +96,92 @@ class Stat extends CommonGLPI {
          case 'group_tree' :
          case 'groups_tree_assign' :
             // Get all groups
-            $query = "SELECT `id`, `name`
-                      FROM `glpi_groups`".
-                      getEntitiesRestrictRequest(" WHERE", "glpi_groups", '', '', true)."
-                            AND (`id` = $parent OR `groups_id` = '$parent')
-                            AND ".(($type == 'group_tree') ? '`is_requester`' : '`is_assign`')."
-                      ORDER BY `completename`";
+            $is_field = ($type == 'group_tree') ? 'is_requester' : 'is_assign';
+            $iterator = $DB->request([
+               'SELECT' => ['id', 'name'],
+               'FROM'   => 'glpi_groups',
+               'WHERE'  => [
+                  'OR'  => [
+                     'id'        => $parent,
+                     'groups_id' => $parent
+                  ],
+                  $is_field   => 1
+               ] + getEntitiesRestrictCriteria("glpi_groups", '', '', true),
+               'ORDER'  => 'completename'
+            ]);
 
-            $result = $DB->query($query);
             $val    = [];
-            if ($DB->numrows($result) >= 1) {
-               while ($line = $DB->fetchAssoc($result)) {
-                  $tmp['id']   = $line["id"];
-                  $tmp['link'] = $line["name"];
-                  $val[]       = $tmp;
-               }
+            while ($line = $iterator->next()) {
+               $val[] = [
+                  'id'     => $line['id'],
+                  'link'   => $line['name']
+               ];
             }
             break;
 
          case "itilcategories_tree" :
-            $cond = "AND (`id` = '$parent'
-                          OR `itilcategories_id` = '$parent')";
-            // nobreak
-
          case "itilcategories_id" :
+            $is_tree = $type == 'itilcategories_tree';
             // Get all ticket categories for tree merge management
-            $query = "SELECT DISTINCT `glpi_itilcategories`.`id`,
-                             `glpi_itilcategories`.`".($cond?'name':'completename')."` AS category
-                      FROM `glpi_itilcategories`".
-                      getEntitiesRestrictRequest(" WHERE", "glpi_itilcategories", '', '', true)."
-                            $cond
-                      ORDER BY `completename`";
+            $criteria = [
+               'SELECT'    => [
+                  'glpi_itilcategories.id',
+                  'glpi_itilcategories.' . ($is_tree ? 'name' : 'completename') . ' AS category'
+               ],
+               'DISTINCT'  => true,
+               'FROM'      => 'glpi_itilcategories',
+               'WHERE'     => getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true),
+               'ORDERBY'   => 'completename'
+            ];
 
-            $result = $DB->query($query);
+            if ($is_tree) {
+               $criteria['WHERE']['OR'] = [
+                  'id'                 => $parent,
+                  'itilcategories_id'  => $parent
+               ];
+            }
+
+            $iterator = $DB->request($criteria);
+
             $val    = [];
-            if ($DB->numrows($result) >= 1) {
-               while ($line = $DB->fetchAssoc($result)) {
-                  $tmp['id']   = $line["id"];
-                  $tmp['link'] = $line["category"];
-                  $val[]       = $tmp;
-               }
+            while ($line = $iterator->next()) {
+               $val[] = [
+                  'id'     => $line['id'],
+                  'link'   => $line['category']
+               ];
             }
             break;
 
          case 'locations_tree' :
-            $cond = "AND (`id` = '$parent'
-                          OR `locations_id` = '$parent')";
-            // nobreak
-
          case 'locations_id' :
+            $is_tree = $type == 'locations_tree';
             // Get all locations for tree merge management
-            $query = "SELECT DISTINCT `glpi_locations`.`id`,
-                             `glpi_locations`.`".($cond?'name':'completename')."` AS location
-                      FROM `glpi_locations`".
-                      getEntitiesRestrictRequest(' WHERE', 'glpi_locations', '', '', true)."
-                            $cond
-                      ORDER BY `completename`";
+            $criteria = [
+               'SELECT'    => [
+                  'glpi_locations.id',
+                  'glpi_locations.' . ($is_tree ? 'name' : 'completename') . ' AS location'
+               ],
+               'DISTINCT'  => true,
+               'FROM'      => 'glpi_locations',
+               'WHERE'     => getEntitiesRestrictCriteria('glpi_locations', '', '', true),
+               'ORDERBY'   => 'completename'
+            ];
 
-            $result = $DB->query($query);
+            if ($is_tree) {
+               $criteria['WHERE']['OR'] = [
+                  'id'           => $parent,
+                  'locations_id' => $parent
+               ];
+            }
+
+            $iterator = $DB->request($criteria);
+
             $val    = [];
-            if ($DB->numrows($result) >= 1) {
-               while ($line = $DB->fetchAssoc($result)) {
-                  $tmp['id']   = $line['id'];
-                  $tmp['link'] = $line['location'];
-                  $val[]       = $tmp;
-               }
+            while ($line = $iterator->next()) {
+               $val[] = [
+                  'id'     => $line['id'],
+                  'link'   => $line['location']
+               ];
             }
             break;
 
@@ -218,48 +238,48 @@ class Stat extends CommonGLPI {
                $device_table = $item->getTable();
 
                //select devices IDs (table row)
-               $query = "SELECT `id`, `designation`
-                         FROM `".$device_table."`
-                         ORDER BY `designation`";
-               $result = $DB->query($query);
+               $iterator = $DB->request([
+                  'SELECT' => [
+                     'id',
+                     'designation'
+                  ],
+                  'FROM'   => $device_table,
+                  'ORDER'  => 'designation'
+               ]);
 
-               if ($DB->numrows($result) >= 1) {
-                  $i = 0;
-                  while ($line = $DB->fetchAssoc($result)) {
-                     $val[$i]['id']   = $line['id'];
-                     $val[$i]['link'] = $line['designation'];
-                     $i++;
-                  }
+               while ($line = $iterator->next()) {
+                  $val[] = [
+                     'id'     => $line['id'],
+                     'link'   => $line['designation']
+                  ];
                }
-
             } else {
                // Dropdown case for computers
                $field = "name";
-               $table = getTableFOrItemType($type);
+               $table = getTableForItemType($type);
                if (($item = getItemForItemtype($type))
                    && ($item instanceof CommonTreeDropdown)) {
                   $field = "completename";
                }
-               $where = '';
-               $order = " ORDER BY `$field`";
+
+               $criteria = [
+                  'FROM'   => $table,
+                  'ORDER'  => $field
+               ];
+
                if ($item->isEntityAssign()) {
-                  $where = getEntitiesRestrictRequest(" WHERE", $table);
-                  $order = " ORDER BY `entities_id`, `$field`";
+                  $criteria['ORDER'] = ['entities_id', $field];
+                  $criteria['WHERE'] = getEntitiesRestrictCriteria($table);
                }
 
-               $query = "SELECT *
-                         FROM `$table`
-                         $where
-                         $order";
+               $iterator = $DB->request($criteria);
 
                $val    = [];
-               $result = $DB->query($query);
-               if ($DB->numrows($result) > 0) {
-                  while ($line = $DB->fetchAssoc($result)) {
-                     $tmp['id']   = $line["id"];
-                     $tmp['link'] = $line[$field];
-                     $val[]       = $tmp;
-                  }
+               while ($line = $iterator->next()) {
+                  $val[] = [
+                     'id'     => $line['id'],
+                     'link'   => $line[$field]
+                  ];
                }
             }
       }
@@ -630,20 +650,25 @@ class Stat extends CommonGLPI {
             }
             echo Search::showItem($output_type, $timedisplay, $item_num, $row_num);
 
+            //the number of solved interventions with a duration time
+            $solved_with_actiontime = self::constructEntryValues($itemtype, "inter_solved_with_actiontime",
+                                                                 $date1, $date2, $type, $value[$i]["id"], $value2);
+            $nb_solved_with_actiontime = array_sum($solved_with_actiontime);
+
             //Le temps moyen de l'intervention reelle - The average actiontime to resolv
             $data = self::constructEntryValues($itemtype, "inter_avgactiontime", $date1, $date2,
                                                $type, $value[$i]["id"], $value2);
             foreach ($data as $key2 => $val2) {
-               if (isset($solved[$key2])) {
-                  $data[$key2] *= $solved[$key2];
+               if (isset($solved_with_actiontime[$key2])) {
+                  $data[$key2] *= $solved_with_actiontime[$key2];
                } else {
                   $data[$key2] *= 0;
                }
             }
             $total_actiontime = array_sum($data);
 
-            if ($nb_solved > 0) {
-               $timedisplay = $total_actiontime/$nb_solved;
+            if ($nb_solved_with_actiontime > 0) {
+               $timedisplay = $total_actiontime/$nb_solved_with_actiontime;
             } else {
                $timedisplay = 0;
             }
@@ -691,10 +716,11 @@ class Stat extends CommonGLPI {
     * @param $param              (default '')
     * @param $value              (default '')
     * @param $value2             (default '')
+    * @param $add_criteria          (default [''])
     */
    static function constructEntryValues($itemtype, $type, $begin = "", $end = "", $param = "", $value = "",
-                                        $value2 = "") {
-      global $DB;
+                                        $value2 = "", array $add_criteria = []) {
+      $DB = \DBConnection::getReadConnection();
 
       if (!$item = getItemForItemtype($itemtype)) {
          return;
@@ -722,9 +748,11 @@ class Stat extends CommonGLPI {
       $solved_status  = array_merge($closed_status, $item->getSolvedStatusArray());
 
       $criteria = [];
-      $WHERE           = [
-         "$table.is_deleted" => 0
-      ] + getEntitiesRestrictCriteria($table);
+      $WHERE = [];
+      if ($item->maybeDeleted()) {
+         $WHERE["$table.is_deleted"] = 0;
+      }
+      $WHERE += getEntitiesRestrictCriteria($table);
       $LEFTJOIN          = [];
       $INNERJOIN         = [];
       $LEFTJOINUSER      = [
@@ -974,13 +1002,13 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.date", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`date`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.date")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT' => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
@@ -995,13 +1023,13 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
@@ -1022,13 +1050,13 @@ class Stat extends CommonGLPI {
             $WHERE[] = new QueryExpression("$table.solvedate > $table.time_to_resolve");
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
@@ -1043,18 +1071,40 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
                'GROUPBY'   => 'date_unix',
                'ORDERBY'   => "$table.closedate"
+            ];
+            break;
+
+         case "inter_solved_with_actiontime" :
+            $WHERE["$table.status"] = $solved_status;
+            $WHERE["$table.actiontime"] = ['>', 0];
+            $WHERE[] = ['NOT' => ["$table.solvedate" => null]];
+            $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
+
+            $date_unix = new QueryExpression(
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS ".$DB->quoteName('date_unix')
+            );
+
+            $criteria = [
+               'SELECT'    => [
+                  $date_unix,
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
+               ],
+               'FROM'      => $table,
+               'WHERE'     => $WHERE,
+               'GROUPBY'   => 'date_unix',
+               'ORDERBY'   => "$table.solvedate"
             ];
             break;
 
@@ -1064,7 +1114,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1085,7 +1135,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1110,7 +1160,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1131,7 +1181,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`solvedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.solvedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $criteria = [
@@ -1152,7 +1202,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1165,7 +1215,7 @@ class Stat extends CommonGLPI {
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
@@ -1177,15 +1227,14 @@ class Stat extends CommonGLPI {
          case "inter_answersatisfaction" :
             $WHERE["$table.status"] = $closed_status;
             $WHERE[] = [
-               'NOT' => [
-                  "$table.closedate"                        => null,
-                  "glpi_ticketsatisfactions.date_answered"  => null
-               ]
+               ['NOT' => ["$table.closedate" => null]],
+               ['NOT' => ["glpi_ticketsatisfactions.date_answered"  => null]],
             ];
+
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1198,7 +1247,7 @@ class Stat extends CommonGLPI {
             $criteria = [
                'SELECT'    => [
                   $date_unix,
-                  'COUNT'  => "$table.id AS total_visites"
+                  'COUNT DISTINCT'  => "$table.id AS total_visites"
                ],
                'FROM'      => $table,
                'WHERE'     => $WHERE,
@@ -1218,7 +1267,7 @@ class Stat extends CommonGLPI {
             $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
             $date_unix = new QueryExpression(
-               "FROM_UNIXTIME(UNIX_TIMESTAMP(`$table`.`closedate`),'%Y-%m') AS date_unix"
+               "FROM_UNIXTIME(UNIX_TIMESTAMP(".$DB->quoteName("$table.closedate")."),'%Y-%m') AS ".$DB->quoteName('date_unix')
             );
 
             $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1250,9 +1299,12 @@ class Stat extends CommonGLPI {
       }
 
       $entrees = [];
-      $count   = [];
       if (!count($criteria)) {
          return [];
+      }
+
+      if (count($add_criteria)) {
+         $criteria = array_merge_recursive($criteria, $add_criteria);
       }
 
       $iterator = $DB->request($criteria);
@@ -1288,7 +1340,7 @@ class Stat extends CommonGLPI {
     * @param $start
    **/
    static function showItems($target, $date1, $date2, $start) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $view_entities = Session::isMultiEntitiesMode();
 
@@ -1311,22 +1363,34 @@ class Stat extends CommonGLPI {
       }
       $date1 .= " 00:00:00";
 
-      $query = "SELECT `glpi_items_tickets`.`itemtype`,
-                       `glpi_items_tickets`.`items_id`,
-                       COUNT(*) AS NB
-                FROM `glpi_tickets`
-                LEFT JOIN `glpi_items_tickets`
-                   ON (`glpi_tickets`.`id` = `glpi_items_tickets`.`tickets_id`)
-                WHERE `date` <= '$date2'
-                      AND `glpi_tickets`.`date` >= '$date1' ".
-                      getEntitiesRestrictRequest("AND", "glpi_tickets")."
-                      AND `glpi_items_tickets`.`itemtype` <> ''
-                      AND `glpi_items_tickets`.`items_id` > 0
-                GROUP BY `glpi_items_tickets`.`itemtype`, `glpi_items_tickets`.`items_id`
-                ORDER BY NB DESC";
-
-      $result  = $DB->query($query);
-      $numrows = $DB->numrows($result);
+      $iterator = $DB->request([
+         'SELECT' => [
+            'glpi_items_tickets.itemtype',
+            'glpi_items_tickets.items_id',
+            'COUNT'  => '* AS NB'
+         ],
+         'FROM'   => 'glpi_tickets',
+         'LEFT JOIN' => [
+            'glpi_items_tickets' => [
+               'ON' => [
+                  'glpi_items_tickets' => 'tickets_id',
+                  'glpi_tickets'       => 'id'
+               ]
+            ]
+         ],
+         'WHERE'  => [
+            'date'                        => ['<=', $date2],
+            'glpi_tickets.date'           => ['>=', $date1],
+            'glpi_items_tickets.itemtype' => ['<>', ''],
+            'glpi_items_tickets.items_id' => ['>', 0]
+         ] + getEntitiesRestrictCriteria('glpi_tickets'),
+         'GROUP'  => [
+            'glpi_items_tickets.itemtype',
+            'glpi_items_tickets.items_id'
+         ],
+         'ORDER'  => 'NB DESC'
+      ]);
+      $numrows = count($iterator);
 
       if ($numrows > 0) {
          if ($output_type == Search::HTML_OUTPUT) {
@@ -1344,14 +1408,12 @@ class Stat extends CommonGLPI {
          echo Search::showHeader($output_type, $end_display-$start+1, 2, 1);
          $header_num = 1;
          echo Search::showNewLine($output_type);
-         echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', 2), $header_num);
+         echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', Session::getPluralNumber()), $header_num);
          if ($view_entities) {
-            echo Search::showHeaderItem($output_type, __('Entity'), $header_num);
+            echo Search::showHeaderItem($output_type, Entity::getTypeName(1), $header_num);
          }
          echo Search::showHeaderItem($output_type, __('Number of tickets'), $header_num);
          echo Search::showEndLine($output_type);
-
-         $DB->dataSeek($result, $start);
 
          $i = $start;
          if (isset($_GET['export_all'])) {
@@ -1361,7 +1423,7 @@ class Stat extends CommonGLPI {
          for ($i=$start; ($i<$numrows) && ($i<$end_display); $i++) {
             $item_num = 1;
             // Get data and increment loop variables
-            $data = $DB->fetchAssoc($result);
+            $data = $iterator->next();
             if (!($item = getItemForItemtype($data["itemtype"]))) {
                continue;
             }
@@ -1411,7 +1473,7 @@ class Stat extends CommonGLPI {
       $stat_list["Ticket"]["Ticket_Item"]["file"]     = "stat.item.php";
 
       if (Problem::canView()) {
-         $opt_list["Problem"]                               = _n('Problem', 'Problems', Session::getPluralNumber());
+         $opt_list["Problem"]                               = Problem::getTypeName(Session::getPluralNumber());
 
          $stat_list["Problem"]["Problem_Global"]["name"]    = __('Global');
          $stat_list["Problem"]["Problem_Global"]["file"]    = "stat.global.php?itemtype=Problem";
@@ -1459,12 +1521,12 @@ class Stat extends CommonGLPI {
       $optgroup = [];
       if (isset($PLUGIN_HOOKS["stats"]) && is_array($PLUGIN_HOOKS["stats"])) {
          foreach ($PLUGIN_HOOKS["stats"] as $plug => $pages) {
-            if (!Plugin::isPluginLoaded($plug)) {
+            if (!Plugin::isPluginActive($plug)) {
                continue;
             }
             if (is_array($pages) && count($pages)) {
                foreach ($pages as $page => $name) {
-                  $names[$plug.'/'.$page] = ["name" => $name,
+                  $names[Plugin::getWebDir($plug, false).'/'.$page] = ["name" => $name,
                                                   "plug" => $plug];
                   $optgroup[$plug] = Plugin::getInfo($plug, 'name');
                }
@@ -1477,7 +1539,7 @@ class Stat extends CommonGLPI {
          $group = $title;
          foreach ($names as $key => $val) {
             if ($opt == $val["plug"]) {
-               $file                  = $CFG_GLPI["root_doc"]."/plugins/".$key;
+               $file                  = $CFG_GLPI["root_doc"]."/".$key;
                $values[$group][$file] = $val["name"];
                if (stripos($_SERVER['REQUEST_URI'], $file) !== false) {
                   $selected = $file;
@@ -1871,5 +1933,8 @@ class Stat extends CommonGLPI {
       }
       return false;
    }
-}
 
+   static function getIcon() {
+      return "fas fa-chart-bar";
+   }
+}

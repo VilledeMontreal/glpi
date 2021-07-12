@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,10 +34,13 @@ namespace Glpi;
 
 use \Ajax;
 use \CommonDBTM;
+use CronTask;
+use Document;
 use \Html;
 use \Session;
 use \Toolbox;
 use \Infocom;
+use \DBConnection;
 
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
@@ -122,7 +125,6 @@ class Event extends CommonDBTM {
 
       $secs = $day * DAY_TIMESTAMP;
 
-      //TODO: migrate to DB::delete()
       $DB->delete(
          'glpi_events', [
             new \QueryExpression("UNIX_TIMESTAMP(date) < UNIX_TIMESTAMP()-$secs")
@@ -157,12 +159,12 @@ class Event extends CommonDBTM {
                           'planning'     => __('Planning'),
                           'tools'        => __('Tools'),
                           'financial'    => __('Management'),
-                          'login'        => __('Connection'),
+                          'login'        => _n('Connection', 'Connections', 1),
                           'setup'        => __('Setup'),
                           'security'     => __('Security'),
                           'reservation'  => _n('Reservation', 'Reservations', Session::getPluralNumber()),
-                          'cron'         => _n('Automatic action', 'Automatic actions', Session::getPluralNumber()),
-                          'document'     => _n('Document', 'Documents', Session::getPluralNumber()),
+                          'cron'         => CronTask::getTypeName(Session::getPluralNumber()),
+                          'document'     => Document::getTypeName(Session::getPluralNumber()),
                           'notification' => _n('Notification', 'Notifications', Session::getPluralNumber()),
                           'plugin'       => _n('Plugin', 'Plugins', Session::getPluralNumber())];
 
@@ -193,6 +195,7 @@ class Event extends CommonDBTM {
                Ajax::createIframeModalWindow('infocom'.$rand,
                                              Infocom::getFormURLWithID($items_id),
                                              ['height' => 600]);
+               break;
 
             case "devices" :
                echo $items_id;
@@ -207,10 +210,10 @@ class Event extends CommonDBTM {
                $type = getSingular($type);
                $url  = '';
                if ($item = getItemForItemtype($type)) {
-                  $url  =  $item->getFormURL();
+                  $url  =  $item->getFormURLWithID($items_id);
                }
                if (!empty($url)) {
-                  echo "<a href=\"".$url."?id=".$items_id."\">".$items_id."</a>";
+                  echo "<a href=\"".$url."\">".$items_id."</a>";
                } else {
                   echo $items_id;
                }
@@ -268,10 +271,11 @@ class Event extends CommonDBTM {
              sprintf(__('Last %d events'), $_SESSION['glpilist_limit'])."</a>";
       echo "</th></tr>";
 
-      echo "<tr><th colspan='2'>".__('Source')."</th>";
-      echo "<th>".__('Date')."</th>";
-      echo "<th width='8%'>".__('Service')."</th>";
-      echo "<th width='60%'>".__('Message')."</th></tr>";
+      echo "<tr><th>".__('Source')."</th>";
+      echo "<th>".__('Id')."</th>";
+      echo "<th>"._n('Date', 'Dates', 1)."</th>";
+      echo "<th width='10%'>".__('Service')."</th>";
+      echo "<th width='50%'>".__('Message')."</th></tr>";
 
       while ($data = $iterator->next()) {
          $ID       = $data['id'];
@@ -292,10 +296,10 @@ class Event extends CommonDBTM {
          }
 
          echo "<tr class='tab_bg_2'><td>".$itemtype."</td>";
-         echo "<td class='center'>";
+         echo "<td>";
          self::displayItemLogID($type, $items_id);
-         echo "</td><td class='center'>".Html::convDateTime($date)."</td>";
-         echo "<td class='center'>".(isset($logService[$service])?$logService[$service]:'');
+         echo "</td><td>".Html::convDateTime($date)."</td>";
+         echo "<td>".(isset($logService[$service])?$logService[$service]:'');
          echo "</td><td>".$message."</td></tr>";
 
          $i++;
@@ -310,13 +314,13 @@ class Event extends CommonDBTM {
     *
     * Print a great tab to present lasts events occured on glpi
     *
-    * @param $target    where to go when complete
-    * @param $order     order by clause occurences (eg: ) (default 'DESC')
-    * @param $sort      order by clause occurences (eg: date) (defaut 'date')
-    * @param $start     (default 0)
+    * @param string  $target  where to go when complete
+    * @param string  $order   order by clause occurences (eg: ) (default 'DESC')
+    * @param string  $sort    order by clause occurences (eg: date) (defaut 'date')
+    * @param integer $start   (default 0)
    **/
    static function showList($target, $order = 'DESC', $sort = 'date', $start = 0) {
-      global $DB, $CFG_GLPI;
+      $DBread = DBConnection::getReadConnection();
 
       // Show events from $result in table form
       list($logItemtype, $logService) = self::logArray();
@@ -324,7 +328,7 @@ class Event extends CommonDBTM {
       // Columns of the Table
       $items = ["type"     => [__('Source'), ""],
                      "items_id" => [__('ID'), ""],
-                     "date"     => [__('Date'), ""],
+                     "date"     => [_n('Date', 'Dates', 1), ""],
                      "service"  => [__('Service'), "width='8%'"],
                      "level"    => [__('Level'), "width='8%'"],
                      "message"  => [__('Message'), "width='50%'"]];
@@ -338,7 +342,7 @@ class Event extends CommonDBTM {
       }
 
       // Query Database
-      $iterator = $DB->request([
+      $iterator = $DBread->request([
          'FROM'   => 'glpi_events',
          'ORDER'  => "$sort $order",
          'START'  => (int)$start,
@@ -406,5 +410,10 @@ class Event extends CommonDBTM {
          $i++;
       }
       echo "</table></div><br>";
+   }
+
+
+   static function getIcon() {
+      return "fas fa-scroll";
    }
 }

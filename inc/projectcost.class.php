@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -125,7 +125,8 @@ class ProjectCost extends CommonDBChild {
          'name'               => __('Title'),
          'searchtype'         => 'contains',
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -165,7 +166,7 @@ class ProjectCost extends CommonDBChild {
          'id'                 => '14',
          'table'              => $this->getTable(),
          'field'              => 'cost',
-         'name'               => __('Cost'),
+         'name'               => _n('Cost', 'Costs', 1),
          'datatype'           => 'decimal'
       ];
 
@@ -173,7 +174,7 @@ class ProjectCost extends CommonDBChild {
          'id'                 => '18',
          'table'              => 'glpi_budgets',
          'field'              => 'name',
-         'name'               => _n('Budget', 'Budgets', 1),
+         'name'               => Budget::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -181,7 +182,7 @@ class ProjectCost extends CommonDBChild {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -193,6 +194,7 @@ class ProjectCost extends CommonDBChild {
    /**
     * Duplicate all costs from a project template to its clone
     *
+    * @deprecated 9.5
     * @since 0.84
     *
     * @param $oldid
@@ -201,6 +203,7 @@ class ProjectCost extends CommonDBChild {
    static function cloneProject ($oldid, $newid) {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       $iterator = $DB->request([
          'FROM'   => self::getTable(),
          'WHERE'  => ['projects_id'=> $oldid]
@@ -209,6 +212,7 @@ class ProjectCost extends CommonDBChild {
          $cd                   = new self();
          unset($data['id']);
          $data['projects_id'] = $newid;
+         $data = self::checkTemplateEntity($data, $data['projects_id'], Project::class);
          $data                 = Toolbox::addslashes_deep($data);
          $cd->add($data);
       }
@@ -287,7 +291,7 @@ class ProjectCost extends CommonDBChild {
       echo "<input type='hidden' name='projects_id' value='".$this->fields['projects_id']."'>";
       Html::autocompletionTextField($this, 'name');
       echo "</td>";
-      echo "<td>".__('Cost')."</td>";
+      echo "<td>"._n('Cost', 'Costs', 1)."</td>";
       echo "<td>";
       echo "<input type='text' name='cost' value='".Html::formatNumber($this->fields["cost"], true)."'
              size='14'>";
@@ -309,7 +313,7 @@ class ProjectCost extends CommonDBChild {
       Html::showDateField("end_date", ['value' => $this->fields['end_date']]);
       echo "</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Budget')."</td>";
+      echo "<tr class='tab_bg_1'><td>".Budget::getTypeName(1)."</td>";
       echo "<td>";
       Budget::dropdown(['value' => $this->fields["budgets_id"]]);
       echo "</td></tr>";
@@ -326,7 +330,7 @@ class ProjectCost extends CommonDBChild {
     * @param $project               Project object
     * @param $withtemplate  boolean  Template or basic item (default 0)
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForProject(Project $project, $withtemplate = 0) {
       global $DB, $CFG_GLPI;
@@ -374,8 +378,8 @@ class ProjectCost extends CommonDBChild {
          echo "<tr><th>".__('Name')."</th>";
          echo "<th>".__('Begin date')."</th>";
          echo "<th>".__('End date')."</th>";
-         echo "<th>".__('Budget')."</th>";
-         echo "<th>".__('Cost')."</th>";
+         echo "<th>".Budget::getTypeName(1)."</th>";
+         echo "<th>"._n('Cost', 'Costs', 1)."</th>";
          echo "</tr>";
 
          Session::initNavigateListItems(__CLASS__,

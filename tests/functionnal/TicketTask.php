@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,22 +39,35 @@ use \DbTestCase;
 class TicketTask extends DbTestCase {
 
    /**
-    * Create a new ticket and return its id
+    * Create a new ticket
     *
-    * @return integer
+    * @param boolean $as_object Return Ticket object or its id
+    *
+    * @return integer|Ticket
     */
-   private function getNewTicket() {
+   private function getNewTicket($as_object = false) {
       //create reference ticket
       $ticket = new \Ticket();
-      $this->integer((int)$ticket->add([
-            'name'         => 'ticket title',
-            'description'  => 'a description',
-            'content'      => '',
-            'entities_id'  => getItemByTypeName('Entity', '_test_root_entity', true)
-      ]))->isGreaterThan(0);
+      $this->integer(
+         (int)$ticket->add([
+            'name'               => 'ticket title',
+            'description'        => 'a description',
+            'content'            => '',
+            'entities_id'        => getItemByTypeName('Entity', '_test_root_entity', true),
+            '_users_id_assign'   => getItemByTypeName('User', 'tech', true)
+         ])
+      )->isGreaterThan(0);
 
       $this->boolean($ticket->isNewItem())->isFalse();
-      return (int)$ticket->getID();
+      $tid = (int)$ticket->fields['id'];
+
+      $this->hasSessionMessages(
+         INFO, [
+            "Your ticket has been registered. (Ticket: <a href='".\Ticket::getFormURLWithID($tid)."'>$tid</a>)"
+         ]
+      );
+
+      return ($as_object ? $ticket : $tid);
    }
 
    public function testSchedulingAndRecall() {
@@ -104,6 +117,12 @@ class TicketTask extends DbTestCase {
                                              ]))->isTrue();
 
       //create one task with schedule and without recall
+      $date_begin->add(new \DateInterval('P1M'));
+      $date_begin_string = $date_begin->format('Y-m-d H:i:s');
+
+      $date_end->add(new \DateInterval('P1M'));
+      $date_end_string = $date_end->format('Y-m-d H:i:s');
+
       $task = new \TicketTask();
       $task_id = $task->add([
          'state'              => \Planning::TODO,
@@ -167,7 +186,6 @@ class TicketTask extends DbTestCase {
                                                 'users_id'    => $uid,
                                                 'when'        => $when,
                                              ]))->isTrue();
-
    }
 
    public function testGetTaskList() {
@@ -186,6 +204,7 @@ class TicketTask extends DbTestCase {
       foreach ($tasksstates as $taskstate) {
          $this->integer(
             $task->add([
+               'content'      => sprintf('Task with "%s" state', $taskstate),
                'state'        => $taskstate,
                'tickets_id'   => $ticketId,
                'users_id_tech'=> $uid
@@ -198,7 +217,7 @@ class TicketTask extends DbTestCase {
       $this->integer(count($iterator))->isIdenticalTo(3);
 
       $iterator = $task::getTaskList('todo', true);
-      $this->boolean($iterator)->isFalse();
+      $this->integer(count($iterator))->isIdenticalTo(0);
 
       $_SESSION['glpigroups'] = [42, 1337];
       $iterator = $task::getTaskList('todo', true);
@@ -223,6 +242,7 @@ class TicketTask extends DbTestCase {
       foreach ($tasksstates as $taskstate) {
          $this->integer(
             $task->add([
+               'content'      => sprintf('Task with "%s" state', $taskstate),
                'state'        => $taskstate,
                'tickets_id'   => $ticketId,
                'users_id_tech'=> $uid
@@ -249,5 +269,93 @@ class TicketTask extends DbTestCase {
       )
          ->contains("Ticket tasks to do <span class='primary-bg primary-fg count'>2 on 4</span>")
          ->matches("/a id='[^']+' href='\/glpi\/front\/ticket.form.php\?id=\d+[^']+'>/");
+   }
+
+   public function testPlanningConflict() {
+      $this->login();
+
+      $user = getItemByTypeName('User', 'tech');
+      $users_id = (int)$user->fields['id'];
+
+      $ticket = $this->getNewTicket(true);
+      $tid = $ticket->fields['id'];
+
+      $ttask = new \TicketTask();
+      $this->integer(
+         (int)$ttask->add([
+            'name'               => 'first test, whole period',
+            'content'            => 'first test, whole period',
+            'tickets_id'         => $tid,
+            'plan'               => [
+               'begin'  => '2019-08-10',
+               'end'    => '2019-08-20'
+            ],
+            'users_id_tech'      => $users_id,
+            'tasktemplates_id'   => 0
+         ])
+      )->isGreaterThan(0);
+      $this->hasNoSessionMessages([ERROR, WARNING]);
+
+      $this->integer(
+         (int)$ttask->add([
+            'name'               => 'test, subperiod',
+            'content'            => 'test, subperiod',
+            'tickets_id'         => $tid,
+            'plan'               => [
+               'begin'   => '2019-08-13',
+               'end'     => '2019-08-14'
+            ],
+            'users_id_tech'      => $users_id,
+            'tasktemplates_id'   => 0
+         ])
+      )->isGreaterThan(0);
+
+      $usr_str = '<a href="' . $user->getFormURLWithID($users_id) . '">' . $user->getName() . '</a>';
+      $this->hasSessionMessages(
+         WARNING, [
+            "The user $usr_str is busy at the selected timeframe.<br/>- Ticket task: from 2019-08-13 00:00 to 2019-08-14 00:00:<br/><a href='".
+            $ticket->getFormURLWithID($tid)."&amp;forcetab=TicketTask$1'>ticket title</a><br/>"
+         ]
+      );
+      $this->integer($tid)->isGreaterThan(0);
+
+      //add another task to be updated
+      $this->integer(
+         (int)$ttask->add([
+            'name'               => 'first test, whole period',
+            'content'            => 'first test, whole period',
+            'tickets_id'         => $tid,
+            'plan'               => [
+               'begin'  => '2018-08-10',
+               'end'    => '2018-08-20'
+            ],
+            'users_id_tech'      => $users_id,
+            'tasktemplates_id'   => 0
+         ])
+      )->isGreaterThan(0);
+      $this->hasNoSessionMessages([ERROR, WARNING]);
+
+      $this->boolean($ttask->getFromDB($ttask->fields['id']))->isTrue();
+
+      $this->boolean(
+         $ttask->update([
+            'id'           => $ttask->fields['id'],
+            'tickets_id'   => $tid,
+            'plan'               => [
+               'begin'  => str_replace('2018', '2019', $ttask->fields['begin']),
+               'end'    => str_replace('2018', '2019', $ttask->fields['end'])
+            ],
+            'users_id_tech'      => $users_id,
+         ])
+      )->isTrue();
+
+      $usr_str = '<a href="' . $user->getFormURLWithID($users_id) . '">' . $user->getName() . '</a>';
+      $this->hasSessionMessages(
+         WARNING, [
+            "The user $usr_str is busy at the selected timeframe.<br/>- Ticket task: from 2019-08-10 00:00 to 2019-08-20 00:00:<br/><a href='".
+            $ticket->getFormURLWithID($tid)."&amp;forcetab=TicketTask$1'>ticket title</a><br/>- Ticket task: from 2019-08-13 00:00 to 2019-08-14 00:00:<br/><a href='".$ticket
+            ->getFormURLWithID($tid)."&amp;forcetab=TicketTask$1'>ticket title</a><br/>"
+         ]
+      );
    }
 }

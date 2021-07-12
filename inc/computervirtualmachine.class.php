@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -130,7 +130,7 @@ class ComputerVirtualMachine extends CommonDBChild {
       }
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Computer')."</td>";
+      echo "<td>".Computer::getTypeName(1)."</td>";
       echo "<td>".$comp->getLink()."</td>";
       if (Plugin::haveImport()) {
          echo "<td>".__('Automatic inventory')."</td>";
@@ -156,18 +156,18 @@ class ComputerVirtualMachine extends CommonDBChild {
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Virtualization system')."</td>";
+      echo "<td>".VirtualMachineType::getTypeName(1)."</td>";
       echo "<td>";
       VirtualMachineType::dropdown(['value' => $this->fields['virtualmachinetypes_id']]);
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Virtualization model')."</td>";
+      echo "<td>".VirtualMachineSystem::getTypeName(1)."</td>";
       echo "<td>";
       VirtualMachineSystem::dropdown(['value' => $this->fields['virtualmachinesystems_id']]);
       echo "</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('State of the virtual machine')."</td>";
+      echo "<tr class='tab_bg_1'><td>".VirtualMachineState::getTypeName(1)."</td>";
       echo "<td>";
       VirtualMachineState::dropdown(['value' => $this->fields['virtualmachinestates_id']]);
       echo "</td></tr>";
@@ -192,7 +192,7 @@ class ComputerVirtualMachine extends CommonDBChild {
       echo "</tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".sprintf(__('%1$s (%2$s)'), __('Memory'), __('Mio'))."</td>";
+      echo "<td>".sprintf(__('%1$s (%2$s)'), _n('Memory', 'Memories', 1), __('Mio'))."</td>";
       echo "<td>";
       Html::autocompletionTextField(
          $this,
@@ -257,7 +257,7 @@ class ComputerVirtualMachine extends CommonDBChild {
             echo  "<tr class='noHover'><th colspan='2' >".__('List of virtualized environments')."</th></tr>";
 
             $header = "<tr><th>".__('Name')."</th>";
-            $header .= "<th>".__('Entity')."</th>";
+            $header .= "<th>".Entity::getTypeName(1)."</th>";
             $header .= "</tr>";
             echo $header;
 
@@ -301,9 +301,9 @@ class ComputerVirtualMachine extends CommonDBChild {
    /**
     * Print the computers disks
     *
-    * @param $comp Computer object
+    * @param Computer $comp Computer object
     *
-    * @return void
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    static function showForComputer(Computer $comp) {
 
@@ -336,7 +336,7 @@ class ComputerVirtualMachine extends CommonDBChild {
       echo "<table class='tab_cadre_fixehov'>";
 
       Session::initNavigateListItems('ComputerVirtualMachine',
-                                     sprintf(__('%1$s = %2$s'), __('Computer'),
+                                     sprintf(__('%1$s = %2$s'), Computer::getTypeName(1),
                                              (empty($comp->fields['name'])
                                                 ? "($ID)" : $comp->fields['name'])));
 
@@ -346,15 +346,16 @@ class ComputerVirtualMachine extends CommonDBChild {
          echo "<tr class='noHover'><th colspan='10'>".__('List of virtualized environments')."</th></tr>";
 
          $header = "<tr><th>".__('Name')."</th>";
+         $header .= "<th>"._n('Comment', 'Comments', 1)."</th>";
          if (Plugin::haveImport()) {
             $header .= "<th>".__('Automatic inventory')."</th>";
          }
-         $header .= "<th>".__('Virtualization system')."</th>";
-         $header .= "<th>".__('Virtualization model')."</th>";
+         $header .= "<th>".VirtualMachineType::getTypeName(1)."</th>";
+         $header .= "<th>".VirtualMachineSystem::getTypeName(1)."</th>";
          $header .= "<th>".__('State')."</th>";
          $header .= "<th>".__('UUID')."</th>";
          $header .= "<th>"._x('quantity', 'Processors number')."</th>";
-         $header .= "<th>".sprintf(__('%1$s (%2$s)'), __('Memory'), __('Mio'))."</th>";
+         $header .= "<th>".sprintf(__('%1$s (%2$s)'), _n('Memory', 'Memories', 1), __('Mio'))."</th>";
          $header .= "<th>".__('Machine')."</th>";
          $header .= "</tr>";
          echo $header;
@@ -364,6 +365,7 @@ class ComputerVirtualMachine extends CommonDBChild {
             $vm->getFromDB($virtualmachine['id']);
             echo "<tr class='tab_bg_2'>";
             echo "<td>".$vm->getLink()."</td>";
+            echo "<td>".$virtualmachine['comment']."</td>";
             if (Plugin::haveImport()) {
                echo "<td>".Dropdown::getYesNo($vm->isDynamic())."</td>";
             }
@@ -462,7 +464,7 @@ class ComputerVirtualMachine extends CommonDBChild {
    /**
     * Find a virtual machine by uuid
     *
-    * @param fields array of virtualmachine fields
+    * @param array $fields  Array of virtualmachine fields
     *
     * @return integer|boolean ID of the computer that have this uuid or false otherwise
    **/
@@ -497,6 +499,58 @@ class ComputerVirtualMachine extends CommonDBChild {
       }
 
       return false;
+   }
+
+   function rawSearchOptions() {
+
+      $tab = [];
+
+      $tab[] = [
+         'id'                 => 'common',
+         'name'               => __('Characteristics')
+      ];
+
+      $tab[] = [
+         'id'                 => '1',
+         'table'              => $this->getTable(),
+         'field'              => 'name',
+         'name'               => __('Name'),
+         'datatype'           => 'itemlink',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '2',
+         'table'              => $this->getTable(),
+         'field'              => 'uuid',
+         'name'               => __('UUID'),
+         'datatype'           => 'string',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '3',
+         'table'              => $this->getTable(),
+         'field'              => 'ram',
+         'name'               => _n('Memory', 'Memories', 1),
+         'datatype'           => 'string',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '4',
+         'table'              => $this->getTable(),
+         'field'              => 'vcpu',
+         'name'               => __('processor number'),
+         'datatype'           => 'string',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      return $tab;
    }
 
    public static function rawSearchOptionsToAdd($itemtype) {
@@ -543,7 +597,7 @@ class ComputerVirtualMachine extends CommonDBChild {
          'id'                 => '162',
          'table'              => 'glpi_virtualmachinesystems',
          'field'              => 'name',
-         'name'               => __('Virtualization model'),
+         'name'               => VirtualMachineSystem::getTypeName(1),
          'forcegroupby'       => true,
          'massiveaction'      => false,
          'datatype'           => 'dropdown',
@@ -561,7 +615,7 @@ class ComputerVirtualMachine extends CommonDBChild {
          'id'                 => '163',
          'table'              => 'glpi_virtualmachinetypes',
          'field'              => 'name',
-         'name'               => __('Virtualization system'),
+         'name'               => VirtualMachineType::getTypeName(1),
          'datatype'           => 'dropdown',
          'forcegroupby'       => true,
          'massiveaction'      => false,
@@ -592,9 +646,9 @@ class ComputerVirtualMachine extends CommonDBChild {
          'id'                 => '165',
          'table'              => self::getTable(),
          'field'              => 'ram',
-         'name'               => __('Memory'),
+         'name'               => _n('Memory', 'Memories', 1),
          'datatype'           => 'string',
-         'unit'               => 'Mio',
+         'unit'               => 'auto',
          'forcegroupby'       => true,
          'massiveaction'      => false,
          'joinparams'         => [
@@ -608,6 +662,19 @@ class ComputerVirtualMachine extends CommonDBChild {
          'field'              => 'uuid',
          'name'               => __('UUID'),
          'forcegroupby'       => true,
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ]
+      ];
+
+      $tab[] = [
+         'id'                 => '179',
+         'table'              => self::getTable(),
+         'field'              => 'comment',
+         'name'               => __('Virtual machine Comment'),
+         'forcegroupby'       => true,
+         'datatype'           => 'string',
          'massiveaction'      => false,
          'joinparams'         => [
             'jointype'           => 'child'

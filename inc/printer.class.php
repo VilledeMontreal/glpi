@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,17 +39,30 @@ if (!defined('GLPI_ROOT')) {
  * Printer Class
 **/
 class Printer  extends CommonDBTM {
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    public $dohistory                   = true;
 
    static protected $forward_entity_to = ['Infocom', 'NetworkPort', 'ReservationItem',
-                                          'Item_OperatingSystem', 'Item_Disk'];
+                                          'Item_OperatingSystem', 'Item_Disk', 'Item_SoftwareVersion'];
 
    static $rightname                   = 'printer';
    protected $usenotepad               = true;
 
-
+   public function getCloneRelations() :array {
+      return [
+         Item_OperatingSystem::class,
+         Item_Devices::class,
+         Infocom::class,
+         NetworkPort::class,
+         Contract_Item::class,
+         Document_Item::class,
+         Computer_Item::class,
+         KnowbaseItem_Item::class,
+         Cartridge::class
+      ];
+   }
 
    /**
     * Name of the type
@@ -75,7 +88,9 @@ class Printer  extends CommonDBTM {
 
       $ong = [];
       $this->addDefaultFormTab($ong);
+      $this->addImpactTab($ong, $options);
       $this->addStandardTab('Item_OperatingSystem', $ong, $options);
+      $this->addStandardTab('Item_SoftwareVersion', $ong, $options);
       $this->addStandardTab('Cartridge', $ong, $options);
       $this->addStandardTab('Item_Devices', $ong, $options);
       $this->addStandardTab('Item_Disk', $ong, $options);
@@ -92,6 +107,8 @@ class Printer  extends CommonDBTM {
       $this->addStandardTab('Notepad', $ong, $options);
       $this->addStandardTab('Reservation', $ong, $options);
       $this->addStandardTab('Certificate_Item', $ong, $options);
+      $this->addStandardTab('Domain_Item', $ong, $options);
+      $this->addStandardTab('Appliance_Item', $ong, $options);
       $this->addStandardTab('Log', $ong, $options);
 
       return $ong;
@@ -107,7 +124,7 @@ class Printer  extends CommonDBTM {
     * @return boolean
    **/
    function canUnrecurs() {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID = $this->fields['id'];
 
@@ -129,31 +146,43 @@ class Printer  extends CommonDBTM {
       $tabend = ['networkports_id_1' => 'networkports_id_2',
                  'networkports_id_2' => 'networkports_id_1'];
       foreach ($tabend as $enda => $endb) {
+         $criteria = [
+            'SELECT'       => [
+               'itemtype',
+               new QueryExpression('GROUP_CONCAT(DISTINCT '.$DB->quoteName('items_id').') AS '.$DB->quoteName('ids'))
+            ],
+            'FROM'         => 'glpi_networkports_networkports',
+            'INNER JOIN'   => [
+               'glpi_networkports'  => [
+                  'ON'  => [
+                     'glpi_networkports_networkports' => $endb,
+                     'glpi_networkports'              => 'id'
+                  ]
+               ]
+            ],
+            'WHERE'        => [
+               'glpi_networkports_networkports.'.$enda   => new QuerySubQuery([
+                  'SELECT' => 'id',
+                  'FROM'   => 'glpi_networkports',
+                  'WHERE'  => [
+                     'itemtype'  => $this->getType(),
+                     'items_id'  => $ID
+                  ]
+               ])
+            ],
+            'GROUPBY'      => 'itemtype'
+         ];
 
-         $sql = "SELECT `itemtype`,
-                        GROUP_CONCAT(DISTINCT `items_id`) AS ids
-                 FROM `glpi_networkports_networkports`,
-                      `glpi_networkports`
-                 WHERE `glpi_networkports_networkports`.`$endb` = `glpi_networkports`.`id`
-                       AND `glpi_networkports_networkports`.`$enda`
-                            IN (SELECT `id`
-                                FROM `glpi_networkports`
-                                WHERE `itemtype` = '".$this->getType()."'
-                                      AND `items_id` = '$ID')
-                 GROUP BY `itemtype`";
-         $res = $DB->query($sql);
+         $iterator = $DB->request($criteria);
+         while ($data = $iterator->next()) {
+            $itemtable = getTableForItemType($data["itemtype"]);
+            if ($item = getItemForItemtype($data["itemtype"])) {
+               // For each itemtype which are entity dependant
+               if ($item->isEntityAssign()) {
 
-         if ($res) {
-            while ($data = $DB->fetchAssoc($res)) {
-               $itemtable = getTableForItemType($data["itemtype"]);
-               if ($item = getItemForItemtype($data["itemtype"])) {
-                  // For each itemtype which are entity dependant
-                  if ($item->isEntityAssign()) {
-
-                     if (countElementsInTable($itemtable, ['id' => $data["ids"],
-                                              'NOT' => [ 'entities_id' => $entities]]) > 0) {
-                        return false;
-                     }
+                  if (countElementsInTable($itemtable, ['id' => $data["ids"],
+                                             'NOT' => [ 'entities_id' => $entities]]) > 0) {
+                     return false;
                   }
                }
             }
@@ -199,40 +228,7 @@ class Printer  extends CommonDBTM {
    }
 
 
-   function post_addItem() {
-      global $DB, $CFG_GLPI;
-
-      // Manage add from template
-      if (isset($this->input["_oldID"])) {
-         // ADD OS
-         Item_OperatingSystem::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Devices
-         Item_devices::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Infocoms
-         Infocom::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Ports
-         NetworkPort::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Contract
-         Contract_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Documents
-         Document_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Computers
-         Computer_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         //Add KB links
-         KnowbaseItem_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-      }
-   }
-
-
    function cleanDBonPurge() {
-
       global $DB;
 
       $DB->update(
@@ -294,12 +290,12 @@ class Printer  extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Location')."</td>\n";
+      echo "<td>".Location::getTypeName(1)."</td>\n";
       echo "<td>";
       Location::dropdown(['value'  => $this->fields["locations_id"],
                                'entity' => $this->fields["entities_id"]]);
       echo "</td>\n";
-      echo "<td>".__('Type')."</td>\n";
+      echo "<td>"._n('Type', 'Types', 1)."</td>\n";
       echo "<td>";
       PrinterType::dropdown(['value' => $this->fields["printertypes_id"]]);
       echo "</td></tr>\n";
@@ -312,7 +308,7 @@ class Printer  extends CommonDBTM {
                            'right'  => 'own_ticket',
                            'entity' => $this->fields["entities_id"]]);
       echo "</td>\n";
-      echo "<td>".__('Manufacturer')."</td>\n";
+      echo "<td>".Manufacturer::getTypeName(1)."</td>\n";
       echo "<td>";
       Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"]]);
       echo "</td></tr>\n";
@@ -327,7 +323,7 @@ class Printer  extends CommonDBTM {
          'condition' => ['is_assign' => 1]
       ]);
       echo "</td>";
-      echo "<td>".__('Model')."</td>\n";
+      echo "<td>"._n('Model', 'Models', 1)."</td>\n";
       echo "<td>";
       PrinterModel::dropdown(['value' => $this->fields["printermodels_id"]]);
       echo "</td></tr>\n";
@@ -359,7 +355,7 @@ class Printer  extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('User')."</td>\n";
+      echo "<td>".User::getTypeName(1)."</td>\n";
       echo "<td>";
       User::dropdown(['value'  => $this->fields["users_id"],
                            'entity' => $this->fields["entities_id"],
@@ -379,7 +375,7 @@ class Printer  extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Group')."</td>\n";
+      echo "<td>".Group::getTypeName(1)."</td>\n";
       echo "<td>";
       Group::dropdown([
          'value'     => $this->fields["groups_id"],
@@ -387,26 +383,22 @@ class Printer  extends CommonDBTM {
          'condition' => ['is_itemgroup' => 1]
       ]);
       echo "</td>\n";
-      echo "<td>".__('Network')."</td>\n";
+      echo "<td>"._n('Network', 'Networks', 1)."</td>\n";
       echo "<td>";
       Network::dropdown(['value' => $this->fields["networks_id"]]);
       echo "</td></tr>\n";
 
-      // Display auto inventory informations
+      // Display auto inventory information
       $rowspan        = 5;
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Domain')."</td>\n";
-      echo "<td>";
-      Domain::dropdown(['value'  => $this->fields["domains_id"],
-                             'entity' => $this->fields["entities_id"]]);
-      echo "</td>";
+      echo "<td colspan='2'></td>\n";
       echo "<td rowspan='$rowspan'>".__('Comments')."</td>\n";
       echo "<td rowspan='$rowspan'>";
       echo "<textarea cols='45' rows='".($rowspan+3)."' name='comment' >".$this->fields["comment"];
       echo "</textarea></td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Memory')."</td>\n";
+      echo "<td>"._n('Memory', 'Memories', 1)."</td>\n";
       echo "<td>";
       Html::autocompletionTextField($this, "memory_size");
       echo "</td></tr>\n";
@@ -448,7 +440,7 @@ class Printer  extends CommonDBTM {
       echo "</td></tr></table>\n";
       echo "</td>";
       echo "</tr>";
-      // Display auto inventory informations
+      // Display auto inventory information
       if (!empty($ID)
          && $this->fields["is_dynamic"]) {
          echo "<tr class='tab_bg_1'><td colspan='4'>";
@@ -495,33 +487,14 @@ class Printer  extends CommonDBTM {
       $actions = parent::getSpecificMassiveActions($checkitem);
       if (static::canUpdate()) {
          Computer_Item::getMassiveActionsForItemtype($actions, __CLASS__, 0, $checkitem);
-
-         $kb_item = new KnowbaseItem();
-         $kb_item->getEmpty();
-         if ($kb_item->canViewItem()) {
-            $actions['KnowbaseItem_Item'.MassiveAction::CLASS_ACTION_SEPARATOR.'add'] = _x('button', 'Link knowledgebase article');
-         }
+         KnowbaseItem_Item::getMassiveActionsForItemtype($actions, __CLASS__, 0, $checkitem);
       }
 
       return $actions;
    }
 
    function rawSearchOptions() {
-      $tab = [];
-
-      $tab[] = [
-         'id'                 => 'common',
-         'name'               => __('Characteristics')
-      ];
-
-      $tab[] = [
-         'id'                 => '1',
-         'table'              => $this->getTable(),
-         'field'              => 'name',
-         'name'               => __('Name'),
-         'datatype'           => 'itemlink',
-         'massiveaction'      => false
-      ];
+      $tab = parent::rawSearchOptions();
 
       $tab[] = [
          'id'                 => '2',
@@ -538,7 +511,7 @@ class Printer  extends CommonDBTM {
          'id'                 => '4',
          'table'              => 'glpi_printertypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -546,7 +519,7 @@ class Printer  extends CommonDBTM {
          'id'                 => '40',
          'table'              => 'glpi_printermodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -564,7 +537,8 @@ class Printer  extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'serial',
          'name'               => __('Serial number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -572,7 +546,8 @@ class Printer  extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -580,7 +555,8 @@ class Printer  extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'contact',
          'name'               => __('Alternate username'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -588,14 +564,15 @@ class Printer  extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'contact_num',
          'name'               => __('Alternate username number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '70',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'datatype'           => 'dropdown',
          'right'              => 'all'
       ];
@@ -604,7 +581,7 @@ class Printer  extends CommonDBTM {
          'id'                 => '71',
          'table'              => 'glpi_groups',
          'field'              => 'completename',
-         'name'               => __('Group'),
+         'name'               => Group::getTypeName(1),
          'condition'          => ['is_itemgroup' => 1],
          'datatype'           => 'dropdown'
       ];
@@ -679,8 +656,9 @@ class Printer  extends CommonDBTM {
          'id'                 => '13',
          'table'              => $this->getTable(),
          'field'              => 'memory_size',
-         'name'               => __('Memory'),
-         'datatype'           => 'string'
+         'name'               => _n('Memory', 'Memories', 1),
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -689,7 +667,8 @@ class Printer  extends CommonDBTM {
          'field'              => 'init_pages_counter',
          'name'               => __('Initial page counter'),
          'datatype'           => 'number',
-         'nosearch'           => true
+         'nosearch'           => true,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -697,7 +676,8 @@ class Printer  extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'last_pages_counter',
          'name'               => __('Current counter of pages'),
-         'datatype'           => 'number'
+         'datatype'           => 'number',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -747,15 +727,7 @@ class Printer  extends CommonDBTM {
          'id'                 => '32',
          'table'              => 'glpi_networks',
          'field'              => 'name',
-         'name'               => __('Network'),
-         'datatype'           => 'dropdown'
-      ];
-
-      $tab[] = [
-         'id'                 => '33',
-         'table'              => 'glpi_domains',
-         'field'              => 'name',
-         'name'               => __('Domain'),
+         'name'               => _n('Network', 'Networks', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -763,7 +735,7 @@ class Printer  extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -788,10 +760,22 @@ class Printer  extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '61',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -804,17 +788,6 @@ class Printer  extends CommonDBTM {
          'datatype'           => 'bool',
          'massiveaction'      => false
       ];
-
-      $tab[] = [
-         'id'                 => '86',
-         'table'              => $this->getTable(),
-         'field'              => 'is_recursive',
-         'name'               => __('Child entities'),
-         'datatype'           => 'bool'
-      ];
-
-      // add objectlock search options
-      $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
 
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
@@ -878,7 +851,7 @@ class Printer  extends CommonDBTM {
     * @return the printer's ID
    **/
    function addPrinter($name, $manufacturer, $entity, $comment = '') {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $manufacturer_id = 0;
       if ($manufacturer != '') {
@@ -917,6 +890,11 @@ class Printer  extends CommonDBTM {
    **/
    function removeFromTrash($ID) {
       return $this->restore(["id" => $ID]);
+   }
+
+
+   static function getIcon() {
+      return "fas fa-print";
    }
 
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -41,7 +41,6 @@ if (!defined('GLPI_ROOT')) {
 class DeviceSimcardType extends CommonDeviceType {
 
    static function getTypeName($nb = 0) {
-      global $LANG;
       return _n('Simcard type', 'Simcard types', $nb);
    }
 }

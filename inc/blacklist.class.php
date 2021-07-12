@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -66,7 +66,7 @@ class Blacklist extends CommonDropdown {
 
    /**
     * @since 0.85
-   **/
+    */
    static function canPurge() {
       return static::canUpdate();
    }
@@ -94,7 +94,7 @@ class Blacklist extends CommonDropdown {
     * Get search function for the class
     *
     * @return array of search option
-   **/
+    */
    function rawSearchOptions() {
       $tab = parent::rawSearchOptions();
 
@@ -103,7 +103,8 @@ class Blacklist extends CommonDropdown {
          'table'              => $this->getTable(),
          'field'              => 'value',
          'name'               => __('Value'),
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -119,9 +120,6 @@ class Blacklist extends CommonDropdown {
    }
 
 
-   /**
-    * @see CommonDBTM::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
 
       if ((!isset($input['name']) || empty($input['name']))
@@ -132,9 +130,6 @@ class Blacklist extends CommonDropdown {
    }
 
 
-   /**
-    * @see CommonDropdown::displaySpecificTypeField()
-   **/
    function displaySpecificTypeField($ID, $field = []) {
 
       if ($field['name'] == 'type') {
@@ -143,11 +138,6 @@ class Blacklist extends CommonDropdown {
    }
 
 
-   /**
-    * @param $field
-    * @param $values
-    * @param $options   array
-    */
    static function getSpecificValueToDisplay($field, $values, array $options = []) {
 
       if (!is_array($values)) {
@@ -162,14 +152,6 @@ class Blacklist extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @param $field
-    * @param $name               (default '')
-    * @param $values             (default '')
-    * @param $options      array
-    **/
    static function getSpecificValueToSelect($field, $name = '', $values = '', array $options = []) {
 
       if (!is_array($values)) {
@@ -189,13 +171,13 @@ class Blacklist extends CommonDropdown {
     * Dropdown of blacklist types
     *
     * @param string $name   select name
-    * @param array $options possible options:
+    * @param array  $options possible options:
     *    - value       : integer / preselected value (default 0)
-    *    - toadd       : array / array of specific values to add at the begining
+    *    - toadd       : array / array of specific values to add at the beginning
     *    - on_change   : string / value to transmit to "onChange"
     *    - display
     *
-    * @return string id of the select
+    * @return string ID of the select
    **/
    static function dropdownType($name, $options = []) {
 
@@ -226,7 +208,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklist types
     *
-    * @return array of types
+    * @return array Array of types
    **/
    static function getTypes() {
 
@@ -247,7 +229,7 @@ class Blacklist extends CommonDropdown {
     *
     * @param string $type type to get (see constants)
     *
-    * @return array of blacklisted items
+    * @return array Array of blacklisted items
    **/
    static function getBlacklistedItems($type) {
 
@@ -265,7 +247,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklisted IP
     *
-    * @return array of blacklisted IP
+    * @return array Array of blacklisted IP
    **/
    static function getIPs() {
       return self::getBlacklistedItems(self::IP);
@@ -275,7 +257,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklisted MAC
     *
-    * @return array of blacklisted MAC
+    * @return array Array of blacklisted MAC
    **/
    static function getMACs() {
       return self::getBlacklistedItems(self::MAC);
@@ -285,7 +267,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklisted Serial number
     *
-    * @return array of blacklisted Serial number
+    * @return array Array of blacklisted Serial number
    **/
    static function getSerialNumbers() {
       return self::getBlacklistedItems(self::SERIAL);
@@ -295,7 +277,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklisted UUID
     *
-    * @return array of blacklisted UUID
+    * @return array Array of blacklisted UUID
    **/
    static function getUUIDs() {
       return self::getBlacklistedItems(self::UUID);
@@ -305,7 +287,7 @@ class Blacklist extends CommonDropdown {
    /**
     * Get blacklisted Emails
     *
-    * @return array of blacklisted Emails
+    * @return array Array of blacklisted Emails
    **/
    static function getEmails() {
       return self::getBlacklistedItems(self::EMAIL);

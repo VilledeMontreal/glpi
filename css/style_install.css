@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -128,6 +128,17 @@ th {
 .tab_check td {
    font-size:11px;
    border-bottom:1px solid #bbbbbb;
+}
+
+.tab_check td i.fas {
+   font-size: 12px;
+   margin-right: 3px;
+}
+.tab_check td i.fa-check {
+   color: #008e2c;
+}
+.tab_check td i.fa-exclamation-triangle {
+   color: #ffa500;
 }
 
 

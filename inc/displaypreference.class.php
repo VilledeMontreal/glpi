@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -53,9 +53,6 @@ class DisplayPreference extends CommonDBTM {
 
 
 
-   /**
-    * @see CommonDBTM::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
       global $DB;
 
@@ -72,11 +69,6 @@ class DisplayPreference extends CommonDBTM {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -112,8 +104,10 @@ class DisplayPreference extends CommonDBTM {
    /**
     * Get display preference for a user for an itemtype
     *
-    * @param $itemtype  itemtype
-    * @param $user_id   user ID
+    * @param string  $itemtype  itemtype
+    * @param integer $user_id   user ID
+    *
+    * @return array
    **/
    static function getForTypeUser($itemtype, $user_id) {
       global $DB;
@@ -201,8 +195,8 @@ class DisplayPreference extends CommonDBTM {
    /**
     * Order to move an item
     *
-    * @param $input  array parameter (id,itemtype,users_id)
-    * @param $action       up or down
+    * @param array  $input  array parameter (id,itemtype,users_id)
+    * @param string $action       up or down
    **/
    function orderItem(array $input, $action) {
       global $DB;
@@ -265,10 +259,10 @@ class DisplayPreference extends CommonDBTM {
    /**
     * Print the search config form
     *
-    * @param $target    form target
-    * @param $itemtype  item type
+    * @param string $target    form target
+    * @param string $itemtype  item type
     *
-    * @return nothing
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    function showFormPerso($target, $itemtype) {
       global $CFG_GLPI, $DB;
@@ -437,10 +431,10 @@ class DisplayPreference extends CommonDBTM {
    /**
     * Print the search config form
     *
-    * @param $target    form target
-    * @param $itemtype  item type
+    * @param string $target    form target
+    * @param string $itemtype  item type
     *
-    * @return nothing
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    function showFormGlobal($target, $itemtype) {
       global $CFG_GLPI, $DB;
@@ -635,7 +629,7 @@ class DisplayPreference extends CommonDBTM {
          echo "<th width='10'>";
          echo Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          echo "</th>";
-         echo "<th colspan='2'>".__('Type')."</th></tr>";
+         echo "<th colspan='2'>"._n('Type', 'Types', 1)."</th></tr>";
          while ($data = $iterator->next()) {
             echo "<tr class='tab_bg_1'><td width='10'>";
             Html::showMassiveActionCheckBox(__CLASS__, $data["itemtype"]);
@@ -712,12 +706,12 @@ class DisplayPreference extends CommonDBTM {
          case __CLASS__ :
             switch ($tabnum) {
                case 1 :
-                  $item->showFormGlobal($_GET['_target'], $_GET["displaytype"]);
+                  $item->showFormGlobal(Toolbox::cleanTarget($_GET['_target']), $_GET["displaytype"]);
                   return true;
 
                case 2 :
                   Session::checkRight(self::$rightname, self::PERSONAL);
-                  $item->showFormPerso($_GET['_target'], $_GET["displaytype"]);
+                  $item->showFormPerso(Toolbox::cleanTarget($_GET['_target']), $_GET["displaytype"]);
                   return true;
             }
       }
@@ -725,11 +719,6 @@ class DisplayPreference extends CommonDBTM {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see commonDBTM::getRights()
-   **/
    function getRights($interface = 'central') {
 
       //TRANS: short for : Search result user display

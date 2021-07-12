@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -153,15 +153,15 @@ class NotificationEventAjax extends DbTestCase {
       $expected = [
          'itemtype' => 'Ticket',
          'items_id' => $ticket->getID(),
-         'notificationtemplates_id' => '4',
-         'entities_id' => '0',
-         'is_deleted' => '0',
-         'sent_try' => '0',
+         'notificationtemplates_id' => 4,
+         'entities_id' => 0,
+         'is_deleted' => 0,
+         'sent_try' => 0,
          'sent_time' => null,
          'name' => '[GLPI #' . str_pad($ticket ->getID(), 7, '0', STR_PAD_LEFT).'] New ticket ',
          'sender' => null,
          'sendername' => '',
-         'recipient' => $uid,
+         'recipient' => (string) $uid,
          'recipientname' => null,
          'replyto' => null,
          'replytoname' => null,

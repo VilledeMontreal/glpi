@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@
  * @return bool for success (will die for most error)
 **/
 function update93to94() {
-   global $DB, $migration, $CFG_GLPI;
+   global $DB, $migration;
    $dbutils = new DbUtils();
 
    $current_config   = Config::getConfigurationValues('core');
@@ -201,23 +201,22 @@ function update93to94() {
    $migration->addConfig(['cas_version' => 'CAS_VERSION_2_0']);
 
    /** Drop old embed ocs search options */
-   $migration->addPostQuery(
-      $DB->buildDelete(
-         'glpi_displaypreferences', [
-            'itemtype'  => 'Computer',
-            'num'       => [
-               100,
-               101,
-               102,
-               103,
-               104,
-               105,
-               106,
-               110,
-               111
-            ]
+   $DB->deleteOrDie(
+      'glpi_displaypreferences',
+      [
+         'itemtype'  => 'Computer',
+         'num'       => [
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            110,
+            111
          ]
-      )
+      ]
    );
    /** /Drop old embed ocs search options */
 

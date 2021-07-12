@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -65,9 +65,6 @@ class Change_Problem extends CommonDBRelation{
    }
 
 
-   /**
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (static::canView()) {
@@ -163,9 +160,12 @@ class Change_Problem extends CommonDBRelation{
 
          echo "<tr class='tab_bg_2'><td>";
          echo "<input type='hidden' name='problems_id' value='$ID'>";
-         Change::dropdown(['used'        => $used,
-                                'entity'      => $problem->getEntityID(),
-                                'entity_sons' => $problem->isRecursive()]);
+         Change::dropdown([
+            'used'        => $used,
+            'entity'      => $problem->getEntityID(),
+            'entity_sons' => $problem->isRecursive(),
+            'condition'   => Change::getOpenCriteria(),
+         ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
          echo "</td><td>";
@@ -276,8 +276,11 @@ class Change_Problem extends CommonDBRelation{
 
          echo "<tr class='tab_bg_2'><td>";
          echo "<input type='hidden' name='changes_id' value='$ID'>";
-         Problem::dropdown(['used'   => $used,
-                                 'entity' => $change->getEntityID()]);
+         Problem::dropdown([
+            'used'   => $used,
+            'entity' => $change->getEntityID(),
+            'condition' => Problem::getOpenCriteria()
+         ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
          echo "</td></tr></table>";

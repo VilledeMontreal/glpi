@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -103,8 +103,6 @@ class KnowbaseItem_Item extends CommonDBRelation {
 
    **/
    static function showForItem(CommonDBTM $item, $withtemplate = 0) {
-      global $DB;
-
       $item_id = $item->getID();
       $item_type = $item::getType();
 
@@ -129,7 +127,18 @@ class KnowbaseItem_Item extends CommonDBRelation {
          );
       }
 
-      if ($canedit) {
+      $ok_state = true;
+      if ($item instanceof CommonITILObject) {
+         $ok_state = !in_array(
+            $item->fields['status'],
+            array_merge(
+               $item->getClosedStatusArray(),
+               $item->getSolvedStatusArray()
+            )
+         );
+      }
+
+      if ($canedit && $ok_state) {
          echo '<form method="post" action="' . Toolbox::getItemTypeFormURL(__CLASS__) . '">';
          echo "<div class='center'>";
          echo "<table class=\"tab_cadre_fixe\">";
@@ -140,7 +149,7 @@ class KnowbaseItem_Item extends CommonDBRelation {
             echo __('Link a knowledge base entry');
          }
          echo "</th><tr>";
-         echo "<tr><td>";
+         echo "<tr class='tab_bg_2'><td>";
          if ($item_type == KnowbaseItem::getType()) {
             //TODO: pass used array to restrict visible items in list
             $rand = self::dropdownAllTypes($item, 'items_id');
@@ -209,8 +218,8 @@ class KnowbaseItem_Item extends CommonDBRelation {
          $header    .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand) . "</th>";
       }
 
-      $header .= "<th>" . __('Type') . "</th>";
-      $header .= "<th>".__('Item')."</th>";
+      $header .= "<th>" . _n('Type', 'Types', 1) . "</th>";
+      $header .= "<th>"._n('Item', 'Items', 1)."</th>";
       $header .= "<th>".__('Creation date')."</th>";
       $header .= "<th>".__('Update date')."</th>";
       $header .= "</tr>";
@@ -379,24 +388,32 @@ class KnowbaseItem_Item extends CommonDBRelation {
    /**
     * Duplicate KB links from an item template to its clone
     *
+    * @deprecated 9.5
     * @since 9.2
     *
-    * @param $itemtype     itemtype of the item
-    * @param $oldid        ID of the item to clone
-    * @param $newid        ID of the item cloned
-    * @param $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
+    * @param string  $itemtype     itemtype of the item
+    * @param integer $oldid        ID of the item to clone
+    * @param integer $newid        ID of the item cloned
+    * @param string  $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
    **/
    static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '') {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       if (empty($newitemtype)) {
          $newitemtype = $itemtype;
       }
 
-      foreach ($DB->request('glpi_knowbaseitems_items',
-                            ['FIELDS' => 'knowbaseitems_id',
-                                  'WHERE'  => "`items_id` = '$oldid'
-                                                AND `itemtype` = '$itemtype'"]) as $data) {
+      $iterator = $DB->request([
+         'FROM'   => 'glpi_knowbaseitems_items',
+         'FIELDS' => 'knowbaseitems_id',
+         'WHERE'  => [
+            'items_id'  => $oldid,
+            'itemtype'  => $itemtype
+         ]
+      ]);
+
+      while ($data = $iterator->next()) {
          $kb_link = new self();
          $kb_link->add(['knowbaseitems_id' => $data['knowbaseitems_id'],
                                   'itemtype'    => $newitemtype,
@@ -408,5 +425,21 @@ class KnowbaseItem_Item extends CommonDBRelation {
       $forbidden   = parent::getForbiddenStandardMassiveAction();
       $forbidden[] = 'update';
       return $forbidden;
+   }
+
+   static function getMassiveActionsForItemtype(array &$actions, $itemtype, $is_deleted = 0,
+                                                CommonDBTM $checkitem = null) {
+
+      $kb_item = new KnowbaseItem();
+      $kb_item->getEmpty();
+      if ($kb_item->canViewItem()) {
+         $action_prefix = __CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR;
+
+         $actions[$action_prefix.'add']
+            = "<i class='ma-icon fas fa-book'></i>".
+              _x('button', 'Link knowledgebase article');
+      }
+
+      parent::getMassiveActionsForItemtype($actions, $itemtype, $is_deleted, $checkitem);
    }
 }

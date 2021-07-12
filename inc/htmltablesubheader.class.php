@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,10 +45,10 @@ class HTMLTableSubHeader extends HTMLTableHeader {
 
 
    /**
-    * @param $header    HTMLTableSuperHeader object
-    * @param $name
-    * @param $content   see HTMLTableEntity#__construct()
-    * @param $father    HTMLTableHeader object (default NULL)
+    * @param HTMLTableSuperHeader $header
+    * @param string               $name
+    * @param string               $content
+    * @param HTMLTableHeader      $father
    **/
    function __construct(HTMLTableSuperHeader $header, $name, $content,
                         HTMLTableHeader $father = null) {
@@ -67,7 +67,7 @@ class HTMLTableSubHeader extends HTMLTableHeader {
    function getHeaderAndSubHeaderName(&$header_name, &$subheader_name) {
 
       $header_name    = $this->header->getName();
-      $subheader_name = parent::getName();
+      $subheader_name = $this->getName();
    }
 
 

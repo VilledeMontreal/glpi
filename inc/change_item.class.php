@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * Relation between Changes and Items
 **/
-class Change_Item extends CommonDBRelation{
+class Change_Item extends CommonItilObject_Item {
 
 
    // From CommonDBRelation
@@ -144,8 +144,8 @@ class Change_Item extends CommonDBRelation{
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Name')."</th>";
       $header_end .= "<th>".__('Serial number')."</th>";
       $header_end .= "<th>".__('Inventory number')."</th></tr>";
@@ -211,6 +211,7 @@ class Change_Item extends CommonDBRelation{
 
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
+      global $DB;
 
       if (!$withtemplate) {
          $nb = 0;
@@ -225,7 +226,15 @@ class Change_Item extends CommonDBRelation{
             case 'Group' :
             case 'Supplier' :
                if ($_SESSION['glpishow_count_on_tabs']) {
-                  $nb = self::countForItem($item);
+                  $from = 'glpi_changes_' . strtolower($item->getType() . 's');
+                  $result = $DB->request([
+                     'COUNT'  => 'cpt',
+                     'FROM'   => $from,
+                     'WHERE'  => [
+                        $item->getForeignKeyField()   => $item->fields['id']
+                     ]
+                  ])->next();
+                  $nb = $result['cpt'];
                }
                return self::createTabEntry(Change::getTypeName(Session::getPluralNumber()), $nb);
 
@@ -264,7 +273,7 @@ class Change_Item extends CommonDBRelation{
             break;
 
          default :
-            Change::showListForItem($item);
+            Change::showListForItem($item, $withtemplate);
       }
       return true;
 

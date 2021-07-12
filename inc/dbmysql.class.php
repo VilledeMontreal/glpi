@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +33,8 @@
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
+
+use Glpi\Application\ErrorHandler;
 
 /**
  *  Database class for Mysql
@@ -192,7 +194,13 @@ class DBmysql {
       if ($this->dbh->connect_error) {
          $this->connected = false;
          $this->error     = 1;
+      } else if (!defined('MYSQLI_OPT_INT_AND_FLOAT_NATIVE')) {
+         $this->connected = false;
+         $this->error     = 2;
       } else {
+         if (isset($this->dbenc)) {
+            Toolbox::deprecated('Usage of alternative DB connection encoding (`DB::$dbenc` property) is deprecated.');
+         }
          $dbenc = isset($this->dbenc) ? $this->dbenc : "utf8";
          $this->dbh->set_charset($dbenc);
          if ($dbenc === "utf8") {
@@ -206,9 +214,13 @@ class DBmysql {
             $this->dbh->query("SET NAMES 'utf8' COLLATE 'utf8_unicode_ci';");
          }
 
+         // force mysqlnd to return int and float types correctly (not as strings)
+         $this->dbh->options(MYSQLI_OPT_INT_AND_FLOAT_NATIVE, true);
+
          if (GLPI_FORCE_EMPTY_SQL_MODE) {
             $this->dbh->query("SET SESSION sql_mode = ''");
          }
+
          $this->connected = true;
 
          $this->setTimezone($this->guessTimezone());
@@ -275,7 +287,7 @@ class DBmysql {
     * @throws GlpitestSQLError
     */
    function query($query) {
-      global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST;
+      global $CFG_GLPI, $DEBUG_SQL, $GLPI, $SQL_TOTAL_REQUEST;
 
       $is_debug = isset($_SESSION['glpi_use_mode']) && ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE);
       if ($is_debug && $CFG_GLPI["debug_sql"]) {
@@ -287,7 +299,7 @@ class DBmysql {
          $TIMER->start();
       }
 
-      $res = @$this->dbh->query($query);
+      $res = $this->dbh->query($query);
       if (!$res) {
          // no translation for error logs
          $error = "  *** MySQL query error:\n  SQL: ".$query."\n  Error: ".
@@ -295,6 +307,11 @@ class DBmysql {
          $error .= Toolbox::backtrace(false, 'DBmysql->query()', ['Toolbox::backtrace()']);
 
          Toolbox::logSqlError($error);
+
+         $error_handler = $GLPI->getErrorHandler();
+         if ($error_handler instanceof ErrorHandler) {
+            $error_handler->handleSqlError($this->dbh->errno, $this->dbh->error, $query);
+         }
 
          if (($is_debug || isAPI()) && $CFG_GLPI["debug_sql"]) {
             $DEBUG_SQL["errors"][$SQL_TOTAL_REQUEST] = $this->error();
@@ -304,6 +321,7 @@ class DBmysql {
       if ($is_debug && $CFG_GLPI["debug_sql"]) {
          $TIME                                   = $TIMER->getTime();
          $DEBUG_SQL["times"][$SQL_TOTAL_REQUEST] = $TIME;
+         $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affectedRows();
       }
       if ($this->execution_time === true) {
          $this->execution_time = $TIMER->getTime(0, true);
@@ -354,7 +372,7 @@ class DBmysql {
    function prepare($query) {
       global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST;
 
-      $res = @$this->dbh->prepare($query);
+      $res = $this->dbh->prepare($query);
       if (!$res) {
          // no translation for error logs
          $error = "  *** MySQL prepare error:\n  SQL: ".$query."\n  Error: ".
@@ -549,8 +567,6 @@ class DBmysql {
     * Give ID of the last inserted item by Mysql
     *
     * @return mixed
-    *
-    * @deprecated 9.5.0
     */
    function insertId() {
       return $this->dbh->insert_id;
@@ -621,7 +637,7 @@ class DBmysql {
     *
     * @return DBmysqlIterator
     */
-   function listTables($table = 'glpi_%', array $where = []) {
+   function listTables($table = 'glpi\_%', array $where = []) {
       $iterator = $this->request([
          'SELECT' => 'table_name as TABLE_NAME',
          'FROM'   => 'information_schema.tables',
@@ -660,7 +676,7 @@ class DBmysql {
     * @return DBmysqlIterator
     */
    public function getMyIsamTables(): DBmysqlIterator {
-      $iterator = $this->listTables('glpi_%', ['engine' => 'MyIsam']);
+      $iterator = $this->listTables('glpi\_%', ['engine' => 'MyIsam']);
       return $iterator;
    }
 
@@ -704,6 +720,21 @@ class DBmysql {
          return [];
       }
       return false;
+   }
+
+   /**
+    * Get field of a table
+    *
+    * @param string  $table
+    * @param string  $field
+    * @param boolean $usecache
+    *
+    * @return array|null Field characteristics
+    */
+   function getField(string $table, string $field, $usecache = true): ?array {
+
+      $fields = $this->listFields($table, $usecache);
+      return $fields[$field] ?? null;
    }
 
    /**
@@ -800,43 +831,37 @@ class DBmysql {
     * @return boolean true if all query are successfull
     */
    function runFile($path) {
-      $DBf_handle = fopen($path, "rt");
-      if (!$DBf_handle) {
+      $script = fopen($path, 'r');
+      if (!$script) {
          return false;
       }
+      $sql_query = @fread(
+         $script,
+         @filesize($path)
+      ) . "\n";
+      $sql_query = html_entity_decode($sql_query, ENT_COMPAT, 'UTF-8');
 
-      $formattedQuery = "";
-      $lastresult     = false;
-      while (!feof($DBf_handle)) {
-         // specify read length to be able to read long lines
-         $buffer = fgets($DBf_handle, 102400);
+      $sql_query = $this->removeSqlRemarks($sql_query);
+      $queries = preg_split('/;\s*$/m', $sql_query);
 
-         // do not strip comments due to problems when # in begin of a data line
-         $formattedQuery .= $buffer;
-         if ((substr(rtrim($formattedQuery), -1) == ";")
-             && (substr(rtrim($formattedQuery), -4) != "&gt;")
-             && (substr(rtrim($formattedQuery), -4) != "160;")) {
-
-            $formattedQuerytorun = $formattedQuery;
-
-            // Do not use the $DB->query
-            if ($this->query($formattedQuerytorun)) { //if no success continue to concatenate
-               $formattedQuery = "";
-               $lastresult     = true;
-               if (!isCommandLine()) {
-                  // Flush will prevent proxy to timeout as it will receive data.
-                  // Flush requires a content to be sent, so we sent sp&aces as multiple spaces
-                  // will be shown as a single one on browser.
-                  echo ' ';
-                  flush();
-               }
-            } else {
-               $lastresult = false;
+      foreach ($queries as $query) {
+         $query = trim($query);
+         if ($query != '') {
+            $query = htmlentities($query);
+            if (!$this->query($query)) {
+               return false;
+            }
+            if (!isCommandLine()) {
+               // Flush will prevent proxy to timeout as it will receive data.
+               // Flush requires a content to be sent, so we sent spaces as multiple spaces
+               // will be shown as a single one on browser.
+               echo ' ';
+               Html::glpi_flush();
             }
          }
       }
 
-      return $lastresult;
+      return true;
    }
 
    /**
@@ -874,7 +899,7 @@ class DBmysql {
 
 
    /**
-    * Get information about DB connection for showSystemInformations
+    * Get information about DB connection for showSystemInformation
     *
     * @since 0.84
     *
@@ -990,7 +1015,7 @@ class DBmysql {
       // with all known tables
       $retrieve_all = !$this->cache_disabled && empty($this->table_cache);
 
-      $result = $this->listTables($retrieve_all ? 'glpi_%' : $tablename);
+      $result = $this->listTables($retrieve_all ? 'glpi\_%' : $tablename);
       $found_tables = [];
       while ($data = $result->next()) {
          $found_tables[] = $data['TABLE_NAME'];
@@ -1062,7 +1087,7 @@ class DBmysql {
          return $name->getValue();
       }
       //handle aliases
-      $names = preg_split('/ AS /i', $name);
+      $names = preg_split('/\s+AS\s+/i', $name);
       if (count($names) > 2) {
          throw new \RuntimeException(
             'Invalid field name ' . $name
@@ -1096,7 +1121,10 @@ class DBmysql {
          $value = $value->getValue();
       } else if ($value === null || $value === 'NULL' || $value === 'null') {
          $value = 'NULL';
-      } else if (!preg_match("/^`.*?`$/", $value)) { //`field` is valid only for mysql :/
+      } else if (is_bool($value)) {
+         // transform boolean as int (prevent `false` to be transformed to empty string)
+         $value = "'" . (int)$value . "'";
+      } else {
          //phone numbers may start with '+' and will be considered as numeric
          $value = "'$value'";
       }
@@ -1220,7 +1248,7 @@ class DBmysql {
 
       //JOINS
       $it = new DBmysqlIterator($this);
-      $query .= $it->analyzeJoins($joins);
+      $query .= $it->analyseJoins($joins);
 
       $query .= " SET ";
       foreach ($params as $field => $value) {
@@ -1345,7 +1373,7 @@ class DBmysql {
       $query  = "DELETE " . self::quoteName($table) . " FROM ". self::quoteName($table);
 
       $it = new DBmysqlIterator($this);
-      $query .= $it->analyzeJoins($joins);
+      $query .= $it->analyseJoins($joins);
       $query .= " WHERE " . $it->analyseCrit($where);
 
       return $query;
@@ -1503,8 +1531,7 @@ class DBmysql {
     * @return string
     */
    public function getVersion() {
-      global $DB;
-      $req = $DB->request('SELECT version()')->next();
+      $req = $this->request('SELECT version()')->next();
       $raw = $req['version()'];
       return $raw;
    }
@@ -1647,20 +1674,132 @@ class DBmysql {
            'COUNT'       => 'cpt',
            'FROM'        => 'information_schema.columns',
            'WHERE'       => [
-              'information_schema.columns.table_schema'  => $DB->dbdefault,
-              'information_schema.columns.data_type'     => ['datetime']
+              'information_schema.columns.table_schema' => $DB->dbdefault,
+              'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
+              'information_schema.columns.data_type'    => ['datetime']
            ]
        ])->next();
        return (int)$result['cpt'];
    }
 
    /**
-    * Clear cached schema informations.
+    * Clear cached schema information.
     *
     * @return void
     */
    public function clearSchemaCache() {
       $this->table_cache = [];
       $this->field_cache = [];
+   }
+
+   /**
+    * Quote a value for a specified type
+    * Should be used for PDO, but this will prevent heavy
+    * replacements in the source code in the future.
+    *
+    * @param mixed   $value Value to quote
+    * @param integer $type  Value type, defaults to PDO::PARAM_STR
+    *
+    * @return mixed
+    *
+    * @since 9.5.0
+    */
+   public function quote($value, int $type = 2/*\PDO::PARAM_STR*/) {
+      return "'" . $this->escape($value) . "'";
+      //return $this->dbh->quote($value, $type);
+   }
+
+   /**
+    * Get character used to quote names for current database engine
+    *
+    * @return string
+    *
+    * @since 9.5.0
+    */
+   public static function getQuoteNameChar(): string {
+      return '`';
+   }
+
+   /**
+    * Is value quoted as database field/expression?
+    *
+    * @param string|\QueryExpression $value Value to check
+    *
+    * @return boolean
+    *
+    * @since 9.5.0
+    */
+   public static function isNameQuoted($value): bool {
+      $quote = static::getQuoteNameChar();
+      return is_string($value) && trim($value, $quote) != $value;
+   }
+
+   /**
+    * Remove SQL comments
+    * © 2011 PHPBB Group
+    *
+    * @param string $output SQL statements
+    *
+    * @return string
+    */
+   public function removeSqlComments($output) {
+      $lines = explode("\n", $output);
+      $output = "";
+
+      // try to keep mem. use down
+      $linecount = count($lines);
+
+      $in_comment = false;
+      for ($i = 0; $i < $linecount; $i++) {
+         if (preg_match("/^\/\*/", $lines[$i])) {
+            $in_comment = true;
+         }
+
+         if (!$in_comment) {
+            $output .= $lines[$i] . "\n";
+         }
+
+         if (preg_match("/\*\/$/", preg_quote($lines[$i]))) {
+            $in_comment = false;
+         }
+      }
+
+      unset($lines);
+      return trim($output);
+   }
+
+   /**
+    * Remove remarks and comments from SQL
+    * @see DBmysql::removeSqlComments()
+    * © 2011 PHPBB Group
+    *
+    * @param $string $sql SQL statements
+    *
+    * @return string
+    */
+   public function removeSqlRemarks($sql) {
+      $lines = explode("\n", $sql);
+
+      // try to keep mem. use down
+      $sql = "";
+
+      $linecount = count($lines);
+      $output = "";
+
+      for ($i = 0; $i < $linecount; $i++) {
+         if (($i != ($linecount - 1)) || (strlen($lines[$i]) > 0)) {
+            if (isset($lines[$i][0])) {
+               if ($lines[$i][0] != "#" && substr($lines[$i], 0, 2) != "--") {
+
+                  $output .= $lines[$i] . "\n";
+               } else {
+                  $output .= "\n";
+               }
+            }
+            // Trading a bit of speed for lower mem. use here.
+            $lines[$i] = "";
+         }
+      }
+      return trim($this->removeSqlComments($output));
    }
 }

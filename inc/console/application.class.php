@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,10 @@ if (!defined('GLPI_ROOT')) {
 use Config;
 use DB;
 use GLPI;
+use Glpi\Application\ErrorHandler;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
+use Glpi\Console\Command\GlpiCommandInterface;
+use Glpi\System\RequirementsManager;
 use Plugin;
 use Session;
 use Toolbox;
@@ -59,10 +62,29 @@ use Symfony\Component\Console\Output\OutputInterface;
 class Application extends BaseApplication {
 
    /**
+    * Error code returned when system requirements are missing.
+    *
+    * @var integer
+    */
+   const ERROR_MISSING_REQUIREMENTS = 128; // start application codes at 128 be sure to be different from commands codes
+
+   /**
+    * Error code returned when DB is not up-to-date.
+    *
+    * @var integer
+    */
+   const ERROR_DB_OUTDATED = 129;
+
+   /**
     * Pointer to $CFG_GLPI.
     * @var array
     */
    private $config;
+
+   /**
+    * @var ErrorHandler
+    */
+   private $error_handler;
 
    /**
     * @var DB
@@ -91,10 +113,10 @@ class Application extends BaseApplication {
       $loader = new CommandLoader(false);
       $this->setCommandLoader($loader);
 
-      $use_plugins = $this->usePlugins();
-      if ($use_plugins) {
-         $this->loadActivePlugins();
-         $loader->registerPluginsCommands();
+      if ($this->usePlugins()) {
+         $plugin = new Plugin();
+         $plugin->init(true);
+         $loader->setIncludePlugins(true);
       }
    }
 
@@ -178,6 +200,9 @@ class Application extends BaseApplication {
 
       global $CFG_GLPI;
 
+      $this->output = $output;
+      $this->error_handler->setOutputHandler($output);
+
       parent::configureIO($input, $output);
 
       // Trigger error on invalid lang. This is not done before as error handler would not be set.
@@ -189,11 +214,8 @@ class Application extends BaseApplication {
       }
 
       if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
-         // TODO Find a way to route errors to console output in a clean format.
-         Toolbox::setDebugMode(Session::DEBUG_MODE, 1, 1, 1);
+         Toolbox::setDebugMode(Session::DEBUG_MODE, 0, 0, 1);
       }
-
-      $this->output = $output;
    }
 
    /**
@@ -208,6 +230,21 @@ class Application extends BaseApplication {
    protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output) {
 
       $begin_time = microtime(true);
+
+      if ($command instanceof GlpiCommandInterface && $command->requiresUpToDateDb()
+          && (!array_key_exists('dbversion', $this->config) || (trim($this->config['dbversion']) != GLPI_SCHEMA_VERSION))) {
+         $output->writeln(
+            '<error>'
+            . __('The version of the database is not compatible with the version of the installed files. An update is necessary.')
+            . '</error>'
+         );
+         return self::ERROR_DB_OUTDATED;
+      }
+
+      if ($command instanceof GlpiCommandInterface && $command->mustCheckMandatoryRequirements()
+          && !$this->checkCoreMandatoryRequirements()) {
+         return self::ERROR_MISSING_REQUIREMENTS;
+      }
 
       $result = parent::doRunCommand($command, $input, $output);
 
@@ -252,6 +289,7 @@ class Application extends BaseApplication {
       global $GLPI;
       $GLPI = new GLPI();
       $GLPI->initLogger();
+      $this->error_handler = $GLPI->initErrorHandler();
 
       Config::detectRootDoc();
    }
@@ -267,7 +305,7 @@ class Application extends BaseApplication {
     */
    private function initDb() {
 
-      if (!class_exists('DB', false)) {
+      if (!class_exists('DB', false) || !class_exists('mysqli', false)) {
          return;
       }
 
@@ -313,7 +351,7 @@ class Application extends BaseApplication {
    /**
     * Initialize GLPI cache.
     *
-    * @global Zend\Cache\Storage\StorageInterface $GLPI_CACHE
+    * @global Laminas\Cache\Storage\StorageInterface $GLPI_CACHE
     *
     * @return void
     */
@@ -390,35 +428,14 @@ class Application extends BaseApplication {
    }
 
    /**
-    * Load active plugins.
-    *
-    * @return void
-    */
-   private function loadActivePlugins() {
-
-      if (!($this->db instanceof DB) || !$this->db->connected) {
-         return;
-      }
-
-      $plugin = new Plugin();
-      $plugin->init();
-
-      $plugins_list = $plugin->getPlugins();
-      if (count($plugins_list) > 0) {
-         foreach ($plugins_list as $name) {
-            Plugin::load($name);
-         }
-         // For plugins which require action after all plugin init
-         Plugin::doHook("post_init");
-      }
-   }
-
-   /**
     * Whether or not plugins have to be used.
     *
     * @return boolean
     */
    private function usePlugins() {
+      if (!($this->db instanceof DB) || !$this->db->connected) {
+         return false;
+      }
 
       $input = new ArgvInput();
 
@@ -433,5 +450,32 @@ class Application extends BaseApplication {
       }
 
       return !$input->hasParameterOption('--no-plugins', true);
+   }
+
+   /**
+    * Check if core mandatory requirements are OK.
+    *
+    * @return boolean  true if requirements are OK, false otherwise
+    */
+   private function checkCoreMandatoryRequirements(): bool {
+      $db = property_exists($this, 'db') ? $this->db : null;
+
+      $requirements_manager = new RequirementsManager();
+      $core_requirements = $requirements_manager->getCoreRequirementList(
+         $db instanceof \DBmysql && $db->connected ? $db : null
+      );
+
+      if ($core_requirements->hasMissingMandatoryRequirements()) {
+         $message = __('Some mandatory system requirements are missing.')
+            . ' '
+            . __('Run "php bin/console glpi:system:check_requirements" for more details.');
+         $this->output->writeln(
+            '<error>' . $message . '</error>',
+            OutputInterface::VERBOSITY_QUIET
+         );
+         return false;
+      }
+
+      return true;
    }
 }

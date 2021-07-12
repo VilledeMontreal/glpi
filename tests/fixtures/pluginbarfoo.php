@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -32,6 +32,6 @@
 
 namespace GlpiPlugin\Bar;
 
-class Foo {
+class Foo extends \CommonDBTM {
 
 }

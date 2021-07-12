@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -89,7 +89,7 @@ class InstallCommand extends AbstractPluginCommand {
       parent::interact($input, $output);
 
       if (null === $input->getOption('username')) {
-         /** @var QuestionHelper $question_helper */
+         /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
          $question_helper = $this->getHelper('question');
          $value = $question_helper->ask(
             $input,
@@ -117,15 +117,16 @@ class InstallCommand extends AbstractPluginCommand {
             OutputInterface::VERBOSITY_NORMAL
          );
 
+         $plugin = new Plugin();
+         $plugin->checkPluginState($directory); // Be sure that plugin information are up to date in DB
+
          if (!$this->canRunInstallMethod($directory, $force)) {
             continue;
          }
 
-         $plugin = new Plugin();
-         $plugin->checkPluginState($directory); // Be sure that plugin informations are up to date in DB
          if (!$plugin->getFromDBByCrit(['directory' => $directory])) {
             $this->output->writeln(
-               '<error>' . sprintf(__('Unable to load plugin "%s" informations.'), $directory) . '</error>',
+               '<error>' . sprintf(__('Unable to load plugin "%s" information.'), $directory) . '</error>',
                OutputInterface::VERBOSITY_QUIET
             );
             continue;
@@ -166,23 +167,24 @@ class InstallCommand extends AbstractPluginCommand {
 
       // Fetch directory list
       $directories = [];
-      $plugins_directory = GLPI_ROOT . DIRECTORY_SEPARATOR . 'plugins';
-      $directory_handle  = opendir($plugins_directory);
-      while (false !== ($filename = readdir($directory_handle))) {
-         if (!in_array($filename, ['.svn', '.', '..'])
-             && is_dir($plugins_directory . DIRECTORY_SEPARATOR . $filename)) {
-             $directories[] = $filename;
+      foreach (PLUGINS_DIRECTORIES as $plugins_directory) {
+         $directory_handle  = opendir($plugins_directory);
+         while (false !== ($filename = readdir($directory_handle))) {
+            if (!in_array($filename, ['.svn', '.', '..'])
+                && is_dir($plugins_directory . DIRECTORY_SEPARATOR . $filename)) {
+                $directories[] = $filename;
+            }
          }
       }
 
-      // Fetch plugins informations
+      // Fetch plugins information
       $choices = [];
       foreach ($directories as $directory) {
          $plugin = new Plugin();
          $informations = $plugin->getInformationsFromDirectory($directory);
 
          if (empty($informations)) {
-            continue; // Ignore directory if not able to load plugin informations.
+            continue; // Ignore directory if not able to load plugin information.
          }
 
          if ($only_not_installed
@@ -295,20 +297,18 @@ class InstallCommand extends AbstractPluginCommand {
       Plugin::load($directory, true);
 
       // Check that required functions exists
-      foreach (['install', 'check_config'] as $fct_suffix) {
-         $function = 'plugin_' . $directory . '_' . $fct_suffix;
-         if (!function_exists($function)) {
-            $message = sprintf(
-               __('Plugin "%s" function "%s" is missing.'),
-               $directory,
-               $function
-            );
-            $this->output->writeln(
-               '<error>' . $message . '</error>',
-               OutputInterface::VERBOSITY_QUIET
-            );
-            return false;
-         }
+      $function = 'plugin_' . $directory . '_install';
+      if (!function_exists($function)) {
+         $message = sprintf(
+            __('Plugin "%s" function "%s" is missing.'),
+            $directory,
+            $function
+         );
+         $this->output->writeln(
+            '<error>' . $message . '</error>',
+            OutputInterface::VERBOSITY_QUIET
+         );
+         return false;
       }
 
       // Check prerequisites

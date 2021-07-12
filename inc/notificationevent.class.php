@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,6 +38,8 @@ if (!defined('GLPI_ROOT')) {
  * Class which manages notification events
 **/
 class NotificationEvent extends CommonDBTM {
+
+   static protected $notable = true;
 
    static function getTypeName($nb = 0) {
       return _n('Event', 'Events', $nb);
@@ -100,7 +102,7 @@ class NotificationEvent extends CommonDBTM {
     * Raise a notification event
     *
     * @param string     $event   the event raised for the itemtype
-    * @param CommonDBTM $item    the object which raised the event
+    * @param CommonGLPI $item    the object which raised the event
     * @param array      $options array   of options used
     * @param string     $label   used for debugEvent() (default '')
     *
@@ -122,7 +124,7 @@ class NotificationEvent extends CommonDBTM {
          //Foreach notification
          $notifications = Notification::getNotificationsByEventAndType(
             $event,
-            $item->getType(),
+            addslashes($item->getType()),
             $notificationtarget->getEntity()
          );
 
@@ -130,6 +132,7 @@ class NotificationEvent extends CommonDBTM {
          foreach ($notifications as $data) {
             $notificationtarget->clearAddressesList();
             $notificationtarget->setMode($data['mode']);
+            $notificationtarget->setAllowResponse($data['allow_response']);
 
             //Get template's information
             $template = new NotificationTemplate();
@@ -137,9 +140,34 @@ class NotificationEvent extends CommonDBTM {
             $template->resetComputedTemplates();
 
             $notify_me = false;
+            $emitter = null;
+
             if (Session::isCron()) {
                // Cron notify me
                $notify_me = true;
+
+               // If mailcollector_user is set, use the given user preferences
+               if (isset($_SESSION['mailcollector_user'])) {
+                  $mailcollector_user = $_SESSION['mailcollector_user'];
+
+                  if (is_int($mailcollector_user)) {
+                     // Try to load the given user and his preferences
+                     $user = new User();
+                     $res = $user->getFromDB($_SESSION['mailcollector_user']);
+
+                     if ($res) {
+                        $user->computePreferences();
+                        $notify_me = $user->fields['notification_to_myself'];
+                        $emitter = $_SESSION['mailcollector_user'];
+                     }
+                  } else {
+                     // Special case for anonymous helpdesk, we have an email
+                     // instead of an ID
+                     // -> load the global conf and use the email as the emitter
+                     $notify_me = $CFG_GLPI['notification_to_myself'];
+                     $emitter = $mailcollector_user;
+                  }
+               }
             } else {
                // Not cron see my pref
                $notify_me = $_SESSION['glpinotification_to_myself'];
@@ -160,7 +188,8 @@ class NotificationEvent extends CommonDBTM {
                   $data,
                   $notificationtarget->setEvent($eventclass),
                   $template,
-                  $notify_me
+                  $notify_me,
+                  $emitter
                );
             } else {
                Toolbox::logWarning('Missing event class for mode ' . $data['mode'] . ' (' . $eventclass . ')');

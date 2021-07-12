@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -162,7 +162,7 @@ class IPNetwork_Vlan extends CommonDBRelation {
          $header_bottom .= "</th>";
       }
       $header_end .= "<th>".__('Name')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>".__('ID TAG')."</th>";
       $header_end .= "</tr>";
       echo $header_begin.$header_top.$header_end;
@@ -208,10 +208,12 @@ class IPNetwork_Vlan extends CommonDBRelation {
       global $DB;
 
       $vlans = [];
-      $query = "SELECT `vlans_id`
-                FROM `".self::getTable()."`
-                WHERE `ipnetworks_id` = '$portID'";
-      foreach ($DB->request($query) as $data) {
+      $iterator = $DB->request([
+         'SELECT' => 'vlans_id',
+         'FROM'   => self::getTable(),
+         'WHERE'  => ['ipnetworks_id' => $portID]
+      ]);
+      while ($data = $iterator->next()) {
          $vlans[$data['vlans_id']] = $data['vlans_id'];
       }
 

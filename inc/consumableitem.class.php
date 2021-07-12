@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -134,7 +134,7 @@ class ConsumableItem extends CommonDBTM {
       echo "<td>";
       Html::autocompletionTextField($this, "name");
       echo "</td>";
-      echo "<td>".__('Type')."</td>";
+      echo "<td>"._n('Type', 'Types', 1)."</td>";
       echo "<td>";
       ConsumableItemType::dropdown(['value' => $this->fields["consumableitemtypes_id"]]);
       echo "</td></tr>";
@@ -144,7 +144,7 @@ class ConsumableItem extends CommonDBTM {
       echo "<td>";
       Html::autocompletionTextField($this, "ref");
       echo "</td>";
-      echo "<td>".__('Manufacturer')."</td>";
+      echo "<td>".Manufacturer::getTypeName(1)."</td>";
       echo "<td>";
       Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"]]);
       echo "</td></tr>\n";
@@ -192,7 +192,7 @@ class ConsumableItem extends CommonDBTM {
       Alert::displayLastAlert('ConsumableItem', $ID);
       echo "</td></tr>";
 
-      echo "<tr>";
+      echo "<tr class='tab_bg_1'>";
       $tplmark = $this->getAutofillMark('otherserial', $options);
       echo "<td>".sprintf(__('%1$s%2$s'), __('Inventory number'), $tplmark)."</td>";
       echo "<td>";
@@ -214,21 +214,7 @@ class ConsumableItem extends CommonDBTM {
 
 
    function rawSearchOptions() {
-      $tab = [];
-
-      $tab[] = [
-         'id'                 => 'common',
-         'name'               => __('Characteristics')
-      ];
-
-      $tab[] = [
-         'id'                 => '1',
-         'table'              => $this->getTable(),
-         'field'              => 'name',
-         'name'               => __('Name'),
-         'datatype'           => 'itemlink',
-         'massiveaction'      => false
-      ];
+      $tab = parent::rawSearchOptions();
 
       $tab[] = [
          'id'                 => '2',
@@ -244,7 +230,8 @@ class ConsumableItem extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'ref',
          'name'               => __('Reference'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -252,14 +239,15 @@ class ConsumableItem extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '4',
          'table'              => 'glpi_consumableitemtypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -267,7 +255,7 @@ class ConsumableItem extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -359,13 +347,10 @@ class ConsumableItem extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
-
-      // add objectlock search options
-      $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
 
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
@@ -529,5 +514,10 @@ class ConsumableItem extends CommonDBTM {
          return false;
       }
       return true;
+   }
+
+
+   static function getIcon() {
+      return Consumable::getIcon();
    }
 }

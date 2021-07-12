@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -151,7 +151,7 @@ function update0781to0782($output = 'HTML') {
 
    // Check existing rule
    if (countElementsInTable('glpi_rulecriterias',
-                 ['criteria' => ['auto-submitted','x-auto-response-suppress']]) == 0 ) {
+                 ['criteria' => ['auto-submitted','x-auto-response-suppress']]) == 0) {
       /// Reorder ranking
       $query = "UPDATE `glpi_rules`
                 SET `ranking` = ranking +2

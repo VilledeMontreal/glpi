@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -114,7 +114,7 @@ class DBmysqlIterator implements Iterator, Countable {
       $is_legacy = false;
 
       if (is_string($table) && strpos($table, " ")) {
-         $names = preg_split('/ AS /i', $table);
+         $names = preg_split('/\s+AS\s+/i', $table);
          if (isset($names[1]) && strpos($names[1], ' ') || !isset($names[1]) || strpos($names[0], ' ')) {
             $is_legacy = true;
          }
@@ -145,6 +145,7 @@ class DBmysqlIterator implements Iterator, Countable {
          $count    = '';
          $join     = [];
          $groupby  = '';
+         $having   = '';
          if (is_array($crit) && count($crit)) {
             foreach ($crit as $key => $val) {
                switch ((string)$key) {
@@ -187,6 +188,11 @@ class DBmysqlIterator implements Iterator, Countable {
                      unset($crit[$key]);
                      break;
 
+                  case 'HAVING' :
+                     $having = $val;
+                     unset($crit[$key]);
+                     break;
+
                   case 'GROUP' :
                   case 'GROUPBY' :
                      $groupby = $val;
@@ -216,6 +222,9 @@ class DBmysqlIterator implements Iterator, Countable {
             if (!empty($field) && !is_array($field)) {
                $this->sql .= "" . DBmysql::quoteName($field);
             } else {
+               if ($distinct) {
+                  trigger_error("With COUNT and DISTINCT, you must specify exactly one field, or use 'COUNT DISTINCT'", E_USER_ERROR);
+               }
                $this->sql .= "*";
             }
             $this->sql .= ") AS $count";
@@ -254,6 +263,8 @@ class DBmysqlIterator implements Iterator, Countable {
          } else if ($table) {
             if ($table instanceof \AbstractQuery) {
                $table = $table->getQuery();
+            } else if ($table instanceof \QueryExpression) {
+               $table = $table->getValue();
             } else {
                $table = DBmysql::quoteName($table);
             }
@@ -268,12 +279,18 @@ class DBmysqlIterator implements Iterator, Countable {
 
          // JOIN
          if (!empty($join)) {
-            $this->sql .= $this->analyzeJoins($join);
+            $this->sql .= $this->analyseJoins($join);
          }
 
          // WHERE criteria list
          if (!empty($crit)) {
             $this->sql .= " WHERE ".$this->analyseCrit($crit);
+            if ($where) {
+               trigger_error(
+                  'Criteria found both inside and outside "WHERE" key. Some of them will be ignored',
+                  E_USER_WARNING
+               );
+            }
          } else if ($where) {
             $this->sql .= " WHERE ".$this->analyseCrit($where);
          }
@@ -289,6 +306,11 @@ class DBmysqlIterator implements Iterator, Countable {
          } else if ($groupby) {
             $groupby = DBmysql::quoteName($groupby);
             $this->sql .= " GROUP BY $groupby";
+         }
+
+         // HAVING criteria list
+         if ($having) {
+            $this->sql .= " HAVING ".$this->analyseCrit($having);
          }
 
          // ORDER BY
@@ -373,6 +395,8 @@ class DBmysqlIterator implements Iterator, Countable {
       if (is_numeric($t)) {
          if ($f instanceof \AbstractQuery) {
             return $f->getQuery();
+         } else if ($f instanceof \QueryExpression) {
+            return $f->getValue();
          } else {
             return DBmysql::quoteName($f);
          }
@@ -430,10 +454,10 @@ class DBmysqlIterator implements Iterator, Countable {
     * @return string
     */
    private function handleFieldsAlias($t, $f, $suffix = '') {
-      $names = preg_split('/ AS /i', $f);
+      $names = preg_split('/\s+AS\s+/i', $f);
       $expr  = "$t(".$this->handleFields(0, $names[0])."$suffix)";
       if (isset($names[1])) {
-         $expr .= " AS {$names[1]}";
+          $expr .= " AS " . DBmysql::quoteName($names[1]);
       }
 
       return $expr;
@@ -507,65 +531,84 @@ class DBmysqlIterator implements Iterator, Countable {
          } else if ($name === 'RAW') {
             $key = key($value);
             $value = current($value);
-            $ret .= '((' . $key . ') ' . $this->analyzeCriterion($value) . ')';
+            $ret .= '((' . $key . ') ' . $this->analyseCriterion($value) . ')';
          } else {
-            $ret .= DBmysql::quoteName($name) . ' ' . $this->analyzeCriterion($value);
+            $ret .= DBmysql::quoteName($name) . ' ' . $this->analyseCriterion($value);
          }
       }
       return $ret;
    }
 
    /**
-    * Analyze a criterion
+    * analyse a criterion
     *
     * @since 9.3.1
     *
-    * @param mixed $value Value to analyze
+    * @param mixed $value Value to analyse
     *
     * @return string
     */
-   private function analyzeCriterion($value) {
+   private function analyseCriterion($value) {
       $criterion = null;
-      $crit_value;
 
-      if (is_null($value) || is_string($value) && strtolower($value) === 'null') {
+      if (is_null($value) || (is_string($value) && strtolower($value) === 'null')) {
          // NULL condition
          $criterion = 'IS NULL';
       } else {
-         $criterion = "= %crit_value";
          if (is_array($value)) {
             if (count($value) == 2 && isset($value[0]) && $this->isOperator($value[0])) {
-               $criterion = "{$value[0]} %crit_value";
-               $crit_value = $this->analyzeCriterionValue($value[1]);
+               $comparison = $value[0];
+               $criterion_value = $value[1];
             } else {
                if (!count($value)) {
                   throw new \RuntimeException('Empty IN are not allowed');
                }
                // Array of Values
-               $criterion = "IN (%crit_value)";
-               $crit_value = $this->analyzeCriterionValue($value);
+               return "IN (".$this->analyseCriterionValue($value).")";
             }
          } else {
-            if ($value instanceof \QuerySubquery) {
-               $criterion = "IN %crit_value";
-            }
-            $crit_value = $this->analyzeCriterionValue($value);
+            $comparison = ($value instanceof \AbstractQuery ? 'IN' : '=');
+            $criterion_value = $value;
          }
-         $criterion = str_replace('%crit_value', $crit_value, $criterion);
+         $criterion = "$comparison " . $this->getCriterionValue($criterion_value);
       }
 
       return $criterion;
    }
 
-   private function analyzeCriterionValue($value) {
+   /**
+    * Handle a criterion value
+    *
+    * @since 9.5.0
+    *
+    * @param mixed $value The value to handle. This may be:
+    *                      - an instance of AbstractQuery
+    *                      - a QueryExpression
+    *                      - a value quoted as a name in the db engine
+    *                      - a QueryParam
+    *                      - a value or an array of values
+    *
+    * @return string
+    */
+   private function getCriterionValue($value) {
+      if ($value instanceof \AbstractQuery) {
+         return $value->getQuery();
+      } else if ($value instanceof \QueryExpression) {
+         return $value->getValue();
+      } else if ($value instanceof \QueryParam) {
+         return $value->getValue();
+      } else {
+         return $this->analyseCriterionValue($value);
+      }
+   }
+
+   private function analyseCriterionValue($value) {
       $crit_value = null;
       if (is_array($value)) {
          foreach ($value as $k => $v) {
             $value[$k] = DBmysql::quoteValue($v);
          }
          $crit_value = implode(', ', $value);
-      } else if ($value instanceof \AbstractQuery) {
-         $crit_value = $value->getQuery();
       } else {
          $crit_value = DBmysql::quoteValue($value);
       }
@@ -573,16 +616,16 @@ class DBmysqlIterator implements Iterator, Countable {
    }
 
    /**
-    * Analyze an array of joins criteria
+    * analyse an array of joins criteria
     *
     * @since 9.4.0
     *
-    * @param array $joinarray Array of joins to analyze
+    * @param array $joinarray Array of joins to analyse
     *       [jointype => [table => criteria]]
     *
     * @return string
     */
-   public function analyzeJoins(array $joinarray) {
+   public function analyseJoins(array $joinarray) {
       $query = '';
       foreach ($joinarray as $jointype => $jointables) {
          if (!in_array($jointype, ['JOIN', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN'])) {
@@ -607,7 +650,7 @@ class DBmysqlIterator implements Iterator, Countable {
                throw new \RuntimeException('BAD JOIN');
             }
 
-            if ($jointablekey instanceof \QuerySubquery) {
+            if ($jointablekey instanceof \QuerySubQuery) {
                $jointablekey = $jointablekey->getQuery();
             } else {
                $jointablekey = DBmysql::quoteName($jointablekey);
@@ -634,8 +677,13 @@ class DBmysqlIterator implements Iterator, Countable {
             $f1 = $values[$t1];
             $t2 = $keys[1];
             $f2 = $values[$t2];
-            return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = ' .
-                     (is_numeric($t2) ? DBmysql::quoteName($f2) : DBmysql::quoteName($t2) . '.' . DBmysql::quoteName($f2));
+            if ($f2 instanceof QuerySubQuery) {
+               return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = ' .
+                  $f2->getQuery();
+            } else {
+               return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = ' .
+                  (is_numeric($t2) ? DBmysql::quoteName($f2) : DBmysql::quoteName($t2) . '.' . DBmysql::quoteName($f2));
+            }
          } else if (count($values) == 3) {
             $condition = array_pop($values);
             $fkey = $this->analyseFkey($values);

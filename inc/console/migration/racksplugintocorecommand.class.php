@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -50,15 +50,16 @@ use NetworkEquipmentModel;
 use Peripheral;
 use PeripheralModel;
 use Plugin;
-use Pdu;
-use PduModel;
+use PDU;
+use PDUModel;
 use Rack;
 use RackModel;
 use RackType;
 use State;
 use Toolbox;
 use Glpi\Console\AbstractCommand;
-
+use PassiveDCEquipment;
+use PassiveDCEquipmentModel;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
@@ -126,6 +127,12 @@ class RacksPluginToCoreCommand extends AbstractCommand {
     * @var string
     */
    const OTHER_TYPE_CHOICE_MONITOR = 'm';
+
+   /**
+    * Choice value for other type: passive device.
+    * @var string
+    */
+   const OTHER_TYPE_CHOICE_PASSIVEDCEQUIPEMENT = 'd';
 
    /**
     * Datacenter on which rooms will be created.
@@ -406,6 +413,9 @@ class RacksPluginToCoreCommand extends AbstractCommand {
          'glpi_racks',
          'glpi_rackmodels',
          'glpi_racktypes',
+         'glpi_passivedcequipments',
+         'glpi_passivedcequipmenttypes',
+         'glpi_passivedcequipmentmodels',
       ];
 
       foreach ($core_tables as $table) {
@@ -537,12 +547,13 @@ class RacksPluginToCoreCommand extends AbstractCommand {
                new ChoiceQuestion(
                   sprintf(__('Where do you want to import "%s" ?'), $model_label),
                   [
-                     self::OTHER_TYPE_CHOICE_COMPUTER          => __('Computer'),
-                     self::OTHER_TYPE_CHOICE_NETWORKEQUIPEMENT => __('Network device'),
-                     self::OTHER_TYPE_CHOICE_PERIPHERAL        => __('Peripheral'),
-                     self::OTHER_TYPE_CHOICE_PDU               => __('Pdu'),
-                     self::OTHER_TYPE_CHOICE_MONITOR           => __('Monitor'),
-                     self::OTHER_TYPE_CHOICE_IGNORE            => __('Ignore (default)'),
+                     self::OTHER_TYPE_CHOICE_COMPUTER            => Computer::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_NETWORKEQUIPEMENT   => NetworkEquipment::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_PERIPHERAL          => Peripheral::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_PDU                 => PDU::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_MONITOR             => Monitor::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_PASSIVEDCEQUIPEMENT => PassiveDCEquipment::getTypeName(1),
+                     self::OTHER_TYPE_CHOICE_IGNORE              => __('Ignore (default)'),
                   ],
                   self::OTHER_TYPE_CHOICE_IGNORE
                )
@@ -568,12 +579,16 @@ class RacksPluginToCoreCommand extends AbstractCommand {
                   $new_model_itemtype = PeripheralModel::class;
                   break;
                case self::OTHER_TYPE_CHOICE_PDU:
-                  $new_itemtype       = Pdu::class;
-                  $new_model_itemtype = PduModel::class;
+                  $new_itemtype       = PDU::class;
+                  $new_model_itemtype = PDUModel::class;
                   break;
                case self::OTHER_TYPE_CHOICE_MONITOR:
                   $new_itemtype       = Monitor::class;
                   $new_model_itemtype = MonitorModel::class;
+                  break;
+               case self::OTHER_TYPE_CHOICE_PASSIVEDCEQUIPEMENT:
+                  $new_itemtype       = PassiveDCEquipment::class;
+                  $new_model_itemtype = PassiveDCEquipmentModel::class;
                   break;
             }
 

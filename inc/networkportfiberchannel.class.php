@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -48,18 +48,22 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
 
 
    function getNetworkCardInterestingFields() {
-      return ['link.`mac`' => 'mac'];
+      return ['link.mac' => 'mac'];
    }
 
 
    function prepareInput($input) {
 
       if (isset($input['speed']) && ($input['speed'] == 'speed_other_value')) {
-         $speed = self::transformPortSpeed($input['speed_other_value'], false);
-         if ($speed === false) {
+         if (!isset($input['speed_other_value'])) {
             unset($input['speed']);
          } else {
-            $input['speed'] = $speed;
+            $speed = self::transformPortSpeed($input['speed_other_value'], false);
+            if ($speed === false) {
+               unset($input['speed']);
+            } else {
+               $input['speed'] = $speed;
+            }
          }
       }
       return $input;
@@ -76,9 +80,6 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
    }
 
 
-   /**
-    * @see NetworkPortInstantiation::showInstantiationForm()
-    */
    function showInstantiationForm(NetworkPort $netport, $options, $recursiveItems) {
 
       if (!$options['several']) {
@@ -115,9 +116,6 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
    }
 
 
-   /**
-    * @see NetworkPortInstantiation::getInstantiationHTMLTableHeaders
-   **/
    function getInstantiationHTMLTableHeaders(HTMLTableGroup $group, HTMLTableSuperHeader $super,
                                              HTMLTableSuperHeader $internet_super = null,
                                              HTMLTableHeader $father = null,
@@ -134,16 +132,13 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
 
       Netpoint::getHTMLTableHeader('NetworkPortFiberchannel', $group, $super, $header, $options);
 
-      $group->addHeader('Outlet', __('Network outlet'), $super, $header);
+      $group->addHeader('Outlet', _n('Network outlet', 'Network outlets', 1), $super, $header);
 
       parent::getInstantiationHTMLTableHeaders($group, $super, $internet_super, $header, $options);
       return $header;
    }
 
 
-   /**
-    * @see NetworkPortInstantiation::getPeerInstantiationHTMLTable()
-    **/
    protected function getPeerInstantiationHTMLTable(NetworkPort $netport, HTMLTableRow $row,
                                                     HTMLTableCell $father = null,
                                                     array $options = []) {
@@ -164,13 +159,10 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
    }
 
 
-   /**
-    * @see NetworkPortInstantiation::getInstantiationHTMLTable()
-    **/
    function getInstantiationHTMLTable(NetworkPort $netport, HTMLTableRow $row,
                                       HTMLTableCell $father = null, array $options = []) {
 
-      return parent::getInstantiationHTMLTableWithPeer($netport, $row, $father, $options);
+      return $this->getInstantiationHTMLTableWithPeer($netport, $row, $father, $options);
    }
 
 
@@ -185,11 +177,14 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
 
       $tab[] = [
          'id'                 => '10',
-         'table'              => $this->getTable(),
+         'table'              => NetworkPort::getTable(),
          'field'              => 'mac',
          'datatype'           => 'mac',
          'name'               => __('MAC'),
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'empty'
+         ]
       ];
 
       $tab[] = [
@@ -197,7 +192,8 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
          'table'              => $this->getTable(),
          'field'              => 'wwn',
          'name'               => __('World Wide Name'),
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -216,10 +212,10 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
    /**
     * Transform a port speed from string to integerer and vice-versa
     *
-    * @param $val       port speed (integer or string)
-    * @param $to_string (boolean) true if we must transform the speed to string
+    * @param integer|string $val        port speed
+    * @param boolean        $to_string  true if we must transform the speed to string
     *
-    * @return integer or string (regarding what is requested)
+    * @return integer|string (regarding what is requested)
    **/
    static function transformPortSpeed($val, $to_string) {
 
@@ -259,11 +255,11 @@ class NetworkPortFiberchannel extends NetworkPortInstantiation {
 
 
    /**
-    * Get the possible value for Fiberchannel port speed
+    * Get the possible value for Ethernet port speed
     *
-    * @param $val if not set, ask for all values, else for 1 value (default NULL)
+    * @param integer|null $val  if not set, ask for all values, else for 1 value (default NULL)
     *
-    * @return array or string
+    * @return array|string
    **/
    static function getPortSpeed($val = null) {
 

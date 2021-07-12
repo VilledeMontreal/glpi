@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -42,7 +42,7 @@ class DevicePci extends CommonDevice {
    static protected $forward_entity_to = ['Item_DevicePci', 'Infocom'];
 
    static function getTypeName($nb = 0) {
-      return _n('Other component', 'Other components', $nb);
+      return _n('PCI device', 'PCI devices', $nb);
    }
 
 
@@ -60,7 +60,7 @@ class DevicePci extends CommonDevice {
                                                                                     null, false),
                                      'type'  => 'registeredIDChooser'],
                          ['name'  => 'devicepcimodels_id',
-                                     'label' => __('Model'),
+                                     'label' => _n('Model', 'Models', 1),
                                      'type'  => 'dropdownValue']]);
    }
 
@@ -72,7 +72,7 @@ class DevicePci extends CommonDevice {
          'id'                 => '17',
          'table'              => 'glpi_devicepcimodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 

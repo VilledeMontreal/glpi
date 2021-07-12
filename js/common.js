@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -28,6 +28,9 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+/* global L */
+
 var timeoutglobalvar;
 
 if (typeof(String.prototype.normalize) !== 'function') {
@@ -229,10 +232,7 @@ $.fn.shiftSelectable = function() {
       }
    };
 
-   $($boxes.selector).parent().click(function(evt) {
-      if ($boxes.length <= 0) {
-         $boxes = $($boxes.selector);
-      }
+   $($boxes).parent().click(function(evt) {
       var selected_checkbox = $(this).children('input[type=checkbox]');
 
       if (!lastChecked) {
@@ -482,7 +482,7 @@ var filter_timeline = function() {
 
 
 var read_more = function() {
-   $(document).on("click", ".long_text .read_more a", function() {
+   $(document).on("click", ".long_text .read_more a, .long_text .read_more .read_more_button", function() {
       $(this).parents('.long_text').removeClass('long_text');
       $(this).parent('.read_more').remove();
       return false;
@@ -619,15 +619,6 @@ $(function() {
    // prevent jquery ui dialog to keep focus
    $.ui.dialog.prototype._focusTabbable = function() {};
 
-   //Hack for Jquery Ui Date picker
-   var _gotoToday = jQuery.datepicker._gotoToday;
-   jQuery.datepicker._gotoToday = function(a) {
-      var target = jQuery(a);
-      var inst = this._getInst(target[0]);
-      _gotoToday.call(this, a);
-      jQuery.datepicker._selectDate(a, jQuery.datepicker._formatDate(inst,inst.selectedDay, inst.selectedMonth, inst.selectedYear));
-   };
-
    //quick lang switch
    $('#language_link > a').on('click', function(event) {
       event.preventDefault();
@@ -641,6 +632,17 @@ $(function() {
          submitparentForm($(this));
       }
    });
+
+   // permits to have html in dialogs title
+   $.widget("ui.dialog", $.extend({}, $.ui.dialog.prototype, {
+      _title: function(title) {
+         if (!this.options.title ) {
+            title.html("&#160;");
+         } else {
+            title.html(this.options.title);
+         }
+      }
+   }));
 });
 
 /**
@@ -654,7 +656,7 @@ var submitparentForm = function(input) {
    var form = $(input).closest('form');
 
    // find submit button(s)
-   var submit = form.find('input[type=submit]').filter('[name=add], [name=update]');
+   var submit = form.find('[type=submit]').filter('[name=add], [name=update]');
 
    // trigger if only one submit button
    if (submit.length == 1) {
@@ -829,11 +831,9 @@ var initMap = function(parent_elt, map_id, height) {
 
    //add map, set a default arbitrary location
    parent_elt.append($('<div id="'+map_id+'" style="height: ' + height + '"></div>'));
-   /* global L */
    var map = L.map(map_id, {fullscreenControl: true}).setView([43.6112422, 3.8767337], 6);
 
    //setup tiles and © messages
-   /* global L */
    L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href=\'https://osm.org/copyright\'>OpenStreetMap</a> contributors'
    }).addTo(map);
@@ -877,11 +877,9 @@ var showMapForLocation = function(elt) {
          });
       } else {
          var _markers = [];
-         /* global L */
          var _marker = L.marker([data.lat, data.lng]);
          _markers.push(_marker);
 
-         /* global L */
          var _group = L.featureGroup(_markers).addTo(map_elt);
          map_elt.fitBounds(
             _group.getBounds(), {
@@ -905,22 +903,22 @@ function markMatch (text, term) {
 
    // If there is no match, move on
    if (match < 0) {
-      _result.append(text);
+      _result.append(escapeMarkupText(text));
       return _result.html();
    }
 
    // Put in whatever text is before the match
-   _result.html(text.substring(0, match));
+   _result.html(escapeMarkupText(text.substring(0, match)));
 
    // Mark the match
    var _match = $('<span class=\'select2-rendered__match\'></span>');
-   _match.html(text.substring(match, match + term.length));
+   _match.html(escapeMarkupText(text.substring(match, match + term.length)));
 
    // Append the matching text
    _result.append(_match);
 
    // Put in whatever is after the match
-   _result.append(text.substring(match + term.length));
+   _result.append(escapeMarkupText(text.substring(match + term.length)));
 
    return _result.html();
 }
@@ -940,18 +938,13 @@ var templateResult = function(result) {
       }
 
       var text = result.text;
-      if (text.indexOf('>') !== -1 || text.indexOf('<') !== -1) {
-         // escape text, if it contains chevrons (can already be escaped prior to this point :/)
-         text = jQuery.fn.select2.defaults.defaults.escapeMarkup(text);
-      }
-
       if (!result.id) {
          // If result has no id, then it is used as an optgroup and is not used for matches
-         _elt.html(text);
+         _elt.html(escapeMarkupText(text));
          return _elt;
       }
 
-      var _term = jQuery.fn.select2.defaults.defaults.escapeMarkup(query.term || '');
+      var _term = query.term || '';
       var markup = markMatch(text, _term);
 
       if (result.level) {
@@ -983,16 +976,22 @@ var typewatch = (function(){
  * Function that renders select2 selections.
  */
 var templateSelection = function (selection) {
-   // Data generated by ajax containing 'selection_text'
-   if (selection.hasOwnProperty('selection_text')) {
-      return selection.selection_text;
+   var text = '';
+   if (!("element" in selection)) {
+      text = selection.text;
+   } else if (Object.prototype.hasOwnProperty.call(selection, 'selection_text')) {
+      // Data generated by ajax containing 'selection_text'
+      text = selection.selection_text;
+   } else if (selection.element.parentElement.nodeName == 'OPTGROUP') {
+      // Data generated with optgroups
+      text = selection.element.parentElement.getAttribute('label') + ' - ' + selection.text;
+   } else {
+      // Default text
+      text = selection.text;
    }
-   // Data generated with optgroups
-   if (selection.element.parentElement.nodeName == 'OPTGROUP') {
-      return selection.element.parentElement.getAttribute('label') + ' - ' + selection.text;
-   }
-   // Default text
-   return selection.text;
+   var _elt = $('<span></span>');
+   _elt.html(escapeMarkupText(text));
+   return _elt;
 };
 
 /**
@@ -1011,3 +1010,207 @@ var getTextWithoutDiacriticalMarks = function (text) {
    // They are removed to keep only chars without their diacritical mark.
    return text.replace(/[\u0300-\u036f]/g, '');
 };
+
+/**
+ * Escape markup in text to prevent XSS.
+ *
+ * @param {string} text
+ *
+ * @return {string}
+ */
+var escapeMarkupText = function (text) {
+   if (text.indexOf('>') !== -1 || text.indexOf('<') !== -1) {
+      // escape text, if it contains chevrons (can already be escaped prior to this point :/)
+      text = jQuery.fn.select2.defaults.defaults.escapeMarkup(text);
+   }
+   return text;
+};
+
+/**
+ * Updates an accessible progress bar title and foreground width.
+ * @since 9.5.0
+ * @param progressid ID of the progress bar
+ * @return void
+ */
+function updateProgress(progressid) {
+   var progress = $("progress#progress"+progressid).first();
+   $("div[data-progressid='"+progressid+"']").each(function(i, item) {
+      var j_item = $(item);
+      var fg = j_item.find(".progress-fg").first();
+      var calcWidth = (progress.attr('value') / progress.attr('max')) * 100;
+      fg.width(calcWidth+'%');
+      if (j_item.data('append-percent') === 1) {
+         var new_title = (j_item.prop('title').replace(new RegExp("\\d*%$"), progress.attr('value')+'%')).trim();
+         progress.prop('title', new_title);
+         j_item.prop('title', new_title);
+      }
+   });
+}
+
+/**
+ * Normalize altfield value of a MultiDatePicker instance.
+ *
+ * @param input_id     id of the date input field
+ * @param date_format  dateFormat option used in MultiDatePicker instance
+ *    (i.e. 'dd-mm-yy', 'mm-dd-yy' or 'yy-mm-dd')
+ *
+ * @return void
+ */
+function normalizeMultiDateAltField(input_id, date_format) {
+   var dates = $(input_id).val().split(', ');
+   var alt_dates = [];
+   for (var i = 0; i < dates.length; i++) {
+      var date_obj = $.datepicker.parseDate(date_format, dates[i]);
+      alt_dates.push($.datepicker.formatDate('yy-mm-dd', date_obj));
+   }
+   $(input_id).val(alt_dates.join(', '));
+}
+
+/**
+ * Get RGB object from an hexadecimal color code
+ *
+ * @param {*} hex
+ * @returns {Object} {r, g, b}
+ */
+function hexToRgb(hex) {
+   var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+   return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+   } : null;
+}
+
+/**
+ * Get luminance for a color
+ * https://www.w3.org/TR/2008/REC-WCAG20-20081211/#relativeluminancedef
+ *
+ * @param {Array} rgb [r, g, b] array
+ * @returns {Number}
+ */
+function luminance(rgb) {
+   var a = rgb.map(function (v) {
+      v /= 255;
+      return v <= 0.03928
+         ? v / 12.92
+         : Math.pow( (v + 0.055) / 1.055, 2.4 );
+   });
+   return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+}
+
+/**
+ * Get contrast ratio between two colors
+ * https://www.w3.org/TR/2008/REC-WCAG20-20081211/#contrast-ratiodef
+ *
+ * @param {Array} rgb1 [r, g, b] array
+ * @param {Array} rgb2 [r, g, b] array
+ * @returns {Number}
+ */
+function contrast(rgb1, rgb2) {
+   return (luminance(rgb1) + 0.05) / (luminance(rgb2) + 0.05);
+}
+
+// fullscreen api
+function GoInFullscreen(element) {
+   if (element.requestFullscreen) {
+      element.requestFullscreen();
+   } else if (element.mozRequestFullScreen) {
+      element.mozRequestFullScreen();
+   } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen();
+   } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen();
+   }
+}
+
+function GoOutFullscreen() {
+   if (document.exitFullscreen) {
+      document.exitFullscreen();
+   } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+   } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+   } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+   }
+}
+
+function getUuidV4() {
+   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+   });
+}
+
+/** Track input changes and warn the user of unsaved changes if they try to navigate away */
+window.glpiUnsavedFormChanges = false;
+$(document).ready(function() {
+   // Forms must have the data-track-changes attribute set to true.
+   // Form fields may have their data-track-changes attribute set to empty (false) to override the tracking on that input.
+   $(document).on('input', 'form[data-track-changes="true"] input:not([data-track-changes=""]),' +
+      'form[data-track-changes="true"] textarea:not([data-track-changes="false"])', function() {
+      window.glpiUnsavedFormChanges = true;
+   });
+   $(document).on('change', 'form[data-track-changes="true"] select:not([data-track-changes=""])', function() {
+      window.glpiUnsavedFormChanges = true;
+   });
+   $(window).on('beforeunload', function(e) {
+      if (window.glpiUnsavedFormChanges) {
+         e.preventDefault();
+         // All supported browsers will show a localized message
+         return '';
+      }
+   });
+
+   $(document).on('submit', 'form', function() {
+      window.glpiUnsavedFormChanges = false;
+   });
+});
+
+function onTinyMCEChange(e) {
+   var editor = $(e.target)[0];
+   if ($(editor.targetElm).data('trackChanges') !== false) {
+      if ($(editor.formElement).data('trackChanges') === true) {
+         window.glpiUnsavedFormChanges = true;
+      }
+   }
+}
+
+function relativeDate(str) {
+   var s = ( +new Date() - Date.parse(str) ) / 1e3,
+      m = s / 60,
+      h = m / 60,
+      d = h / 24,
+      y = d / 365.242199,
+      tmp;
+
+   return (tmp = Math.round(s)) === 1 ? __('just now')
+      : m < 1.01 ? '%s seconds ago'.replace('%s', tmp)
+         : (tmp = Math.round(m)) === 1 ? __('a minute ago')
+            : h < 1.01 ? '%s minutes ago'.replace('%s', tmp)
+               : (tmp = Math.round(h)) === 1 ? __('an hour ago')
+                  : d < 1.01 ? '%s hours ago'.replace('%s', tmp)
+                     : (tmp = Math.round(d)) === 1 ? __('yesterday')
+                        : y < 1.01 ? '%s days ago'.replace('%s', tmp)
+                           : (tmp = Math.round(y)) === 1 ? __('a year ago')
+                              : '%s years ago'.replace('%s', tmp);
+}
+
+/**
+ * Special case as both "English" and "English (US)" use the same locale for
+ * flatpickr but should have different first day of week.
+ * We must manually set firstDayOfWeek for "English"
+ *
+ * @param {String} language
+ * @param {String} region
+ * @returns
+ */
+function getFlatPickerLocale(language, region) {
+   if (language == "en" && region == "GB") {
+      return {
+         firstDayOfWeek: 1 // No need to specify locale code, default is english
+      };
+   } else {
+      return language;
+   }
+}

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -169,9 +169,9 @@ class Contract_Supplier extends CommonDBRelation {
          $header_bottom .= "</th>";
       }
       $header_end .= "<th>".__('Name')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>"._x('phone', 'Number')."</th>";
-      $header_end .= "<th>".__('Contract type')."</th>";
+      $header_end .= "<th>".ContractType::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Start date')."</th>";
       $header_end .= "<th>".__('Initial contract period')."</th>";
       $header_end .= "</tr>";
@@ -292,10 +292,10 @@ class Contract_Supplier extends CommonDBRelation {
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Supplier')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
-      $header_end .= "<th>".__('Third party type')."</th>";
-      $header_end .= "<th>".__('Phone')."</th>";
+      $header_end .= "<th>".Supplier::getTypeName(1)."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
+      $header_end .= "<th>".SupplierType::getTypeName(1)."</th>";
+      $header_end .= "<th>".Phone::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Website')."</th>";
       $header_end .= "</tr>";
       echo $header_begin.$header_top.$header_end;
@@ -343,5 +343,4 @@ class Contract_Supplier extends CommonDBRelation {
       }
       echo "</div>";
    }
-
 }

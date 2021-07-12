@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -96,8 +96,10 @@ class DB extends \GLPITestCase {
          [null, 'NULL'],
          ['null', 'NULL'],
          ['NULL', 'NULL'],
-         ['`field`', '`field`'],
-         ['`field', "'`field'"]
+         [new \QueryExpression('`field`'), '`field`'],
+         ['`field', "'`field'"],
+         [false, "'0'"],
+         [true, "'1'"],
       ];
    }
 
@@ -277,12 +279,12 @@ class DB extends \GLPITestCase {
          ->then
             ->given($tables = $this->testedInstance->listTables())
             ->object($tables)
-               ->isInstanceOf(\DBMysqlIterator::class)
+               ->isInstanceOf(\DBmysqlIterator::class)
             ->integer(count($tables))
                ->isGreaterThan(100)
             ->given($tables = $this->testedInstance->listTables('glpi_configs'))
             ->object($tables)
-               ->isInstanceOf(\DBMysqlIterator::class)
+               ->isInstanceOf(\DBmysqlIterator::class)
                ->hasSize(1);
 
    }
@@ -299,8 +301,13 @@ class DB extends \GLPITestCase {
          $this->array($line)
             ->hasSize(1);
          $table = $line['TABLE_NAME'];
+         if ($table == 'glpi_appliancerelations') {
+            //FIXME temporary hack for unit tests
+            continue;
+         }
          $type = $dbu->getItemTypeForTable($table);
 
+         $this->string($type)->isNotEqualTo('UNKNOWN', 'Cannot find type for table ' . $table);
          $this->object($item = $dbu->getItemForItemtype($type))->isInstanceOf('CommonDBTM', $table);
          $this->string(get_class($item))->isIdenticalTo($type);
          $this->string($dbu->getTableForItemType($type))->isIdenticalTo($table);
@@ -316,5 +323,51 @@ class DB extends \GLPITestCase {
             ->string($this->testedInstance->escape("First\nSecond"))->isIdenticalTo("First\\nSecond")
             ->string($this->testedInstance->escape("First\rSecond"))->isIdenticalTo("First\\rSecond")
             ->string($this->testedInstance->escape('Hi, "you"'))->isIdenticalTo('Hi, \\"you\\"');
+   }
+
+   protected function commentsProvider() {
+      return [
+         [
+            'sql' => "SQL EXPRESSION;
+/* Here begins a
+   multiline comment */
+OTHER EXPRESSION;
+",
+            'expected'  => "SQL EXPRESSION;
+OTHER EXPRESSION;"
+         ]
+      ];
+   }
+
+   /**
+    * @dataProvider commentsProvider
+    */
+   public function testRemoveSqlComments($sql, $expected) {
+      $this
+         ->if($this->newTestedInstance)
+         ->then
+            ->string($this->testedInstance->removeSqlComments($sql))->isIdenticalTo($expected);
+   }
+
+   /**
+    * Sql expressions provider
+    */
+   protected function sqlProvider () {
+      return array_merge([
+         [
+            'sql'       => "SQL;\n-- comment;\n\nSQL2;",
+            'expected'  => "SQL;\n\nSQL2;"
+         ]
+      ], $this->commentsProvider());
+   }
+
+   /**
+    * @dataProvider sqlProvider
+    */
+   public function testRemoveSqlRemarks($sql, $expected) {
+      $this
+         ->if($this->newTestedInstance)
+         ->then
+            ->string($this->testedInstance->removeSqlRemarks($sql))->isIdenticalTo($expected);
    }
 }

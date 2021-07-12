@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -99,7 +99,7 @@ class Notification_NotificationTemplate extends DbTestCase {
    public function testGetName() {
       $n_nt = new \Notification_NotificationTemplate();
       $this->boolean($n_nt->getFromDB(1))->isTrue();
-      $this->string($n_nt->getName())->isIdenticalTo('1');
+      $this->integer($n_nt->getName())->isIdenticalTo(1);
    }
 
    public function testShowForFormNotLogged() {

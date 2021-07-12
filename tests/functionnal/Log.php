@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -40,7 +40,9 @@ class Log extends DbTestCase {
 
    private function createComputer() {
       $computer = new \Computer();
-      $this->integer((int)$computer->add(['entities_id' => uniqid()], [], false))->isGreaterThan(0);
+      $this->integer(
+         (int)$computer->add(['entities_id' => getItemByTypeName('Entity', '_test_root_entity', true)], [], false)
+      )->isGreaterThan(0);
       return $computer;
    }
 
@@ -593,10 +595,13 @@ class Log extends DbTestCase {
          ],
          [
             [
-               'date' => '18-04-22 15',
+               'date' => '2018-04-22',
             ],
             [
-               'date_mod' => ['LIKE', '%18-04-22 15%'],
+               [
+                  ['date_mod' => ['>=', '2018-04-22 00:00:00']],
+                  ['date_mod' => ['<=', '2018-04-22 23:59:59']],
+               ]
             ]
          ],
          [
@@ -687,7 +692,10 @@ class Log extends DbTestCase {
                      ]
                   ]
                ],
-               'date_mod' => ['LIKE', '%2018-04-22%'],
+               [
+                  ['date_mod' => ['>=', '2018-04-22 00:00:00']],
+                  ['date_mod' => ['<=', '2018-04-22 23:59:59']],
+               ],
                [
                   'OR' => [
                      [

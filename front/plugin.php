@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -40,6 +40,8 @@ $plugin = new Plugin();
 $plugin->checkStates(true);
 
 Html::header(__('Setup'), $_SERVER['PHP_SELF'], "config", "plugin");
+
+\Glpi\Marketplace\View::showFeatureSwitchDialog();
 
 $catalog_btn = '<div class="center">'
    . '<a href="http://plugins.glpi-project.org" class="vsubmit" target="_blank">'

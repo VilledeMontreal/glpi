@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -51,7 +51,7 @@ class Entity_RSSFeed extends CommonDBRelation {
    /**
     * Get entities for a rssfeed
     *
-    * @param $rssfeeds_id ID of the rssfeed
+    * @param integer $rssfeeds_id ID of the rssfeed
     *
     * @return array of entities linked to a rssfeed
    **/

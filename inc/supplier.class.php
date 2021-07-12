@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -104,7 +104,7 @@ class Supplier extends CommonDBTM {
     *     - target form target
     *     - withtemplate boolean : template or basic item
     *
-    *@return Nothing (display)
+    *@return void
    **/
    function showForm($ID, $options = []) {
 
@@ -116,18 +116,18 @@ class Supplier extends CommonDBTM {
       echo "<td>";
       Html::autocompletionTextField($this, "name");
       echo "</td>";
-      echo "<td>".__('Third party type')."</td>";
+      echo "<td>".SupplierType::getTypeName(1)."</td>";
       echo "<td>";
       SupplierType::dropdown(['value' => $this->fields["suppliertypes_id"]]);
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>". __('Phone')."</td>";
+      echo "<td>". Phone::getTypeName(1)."</td>";
       echo "<td>";
       Html::autocompletionTextField($this, "phonenumber");
       echo "</td>";
-      echo "<td rowspan='8' class='middle right'>".__('Comments')."</td>";
-      echo "<td class='center middle' rowspan='8'>";
+      echo "<td rowspan='7' class='middle'>".__('Comments')."</td>";
+      echo "<td class='middle' rowspan='7'>";
       echo "<textarea cols='45' rows='13' name='comment' >".$this->fields["comment"]."</textarea>";
       echo "</td></tr>";
 
@@ -173,9 +173,8 @@ class Supplier extends CommonDBTM {
       echo "<td>".__('Country')."</td>";
       echo "<td>";
       Html::autocompletionTextField($this, "country");
-      echo "</td></tr>";
+      echo "</td>";
 
-      echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Active')."</td>";
       echo "<td>";
       Dropdown::showYesNo('is_active', $this->fields['is_active']);
@@ -208,6 +207,8 @@ class Supplier extends CommonDBTM {
    }
 
    function rawSearchOptions() {
+      global $DB;
+
       $tab = [];
 
       $tab[] = [
@@ -221,7 +222,8 @@ class Supplier extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -246,7 +248,8 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'fax',
          'name'               => __('Fax'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -254,7 +257,8 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'town',
          'name'               => __('City'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -262,7 +266,8 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'postcode',
          'name'               => __('Postal code'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -270,7 +275,8 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'state',
          'name'               => _x('location', 'State'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -278,7 +284,8 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'country',
          'name'               => __('Country'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -286,15 +293,17 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'website',
          'name'               => __('Website'),
-         'datatype'           => 'weblink'
+         'datatype'           => 'weblink',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '5',
          'table'              => $this->getTable(),
          'field'              => 'phonenumber',
-         'name'               => __('Phone'),
-         'datatype'           => 'string'
+         'name'               => Phone::getTypeName(1),
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -302,14 +311,15 @@ class Supplier extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'email',
          'name'               => _n('Email', 'Emails', 1),
-         'datatype'           => 'email'
+         'datatype'           => 'email',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '9',
          'table'              => 'glpi_suppliertypes',
          'field'              => 'name',
-         'name'               => __('Third party type'),
+         'name'               => SupplierType::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -347,7 +357,7 @@ class Supplier extends CommonDBTM {
          'forcegroupby'       => true,
          'datatype'           => 'itemlink',
          'massiveaction'      => false,
-         'computation'        => "CONCAT(TABLE.`$name1`, ' ', TABLE.`$name2`)",
+         'computation'        => "CONCAT(".$DB->quoteName("TABLE.$name1").", ' ', ".$DB->quoteName("TABLE.$name2").")",
          'computationgroupby' => true,
          'joinparams'         => [
             'beforejoin'         => [
@@ -371,7 +381,7 @@ class Supplier extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -444,18 +454,18 @@ class Supplier extends CommonDBTM {
    /**
     * Print the HTML array for infocoms linked
     *
-    *@return Nothing (display)
+    *@return void
     *
    **/
    function showInfocoms() {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $instID = $this->fields['id'];
       if (!$this->can($instID, READ)) {
          return false;
       }
 
-      $types_iterator = InfoCom::getTypes(['suppliers_id' => $instID]);
+      $types_iterator = Infocom::getTypes(['suppliers_id' => $instID]);
       $number = count($types_iterator);
 
       echo "<div class='spaced'><table class='tab_cadre_fixe'>";
@@ -468,8 +478,8 @@ class Supplier extends CommonDBTM {
          echo _n('Associated item', 'Associated items', $number);
       }
       echo "</th></tr>";
-      echo "<tr><th>".__('Type')."</th>";
-      echo "<th>".__('Entity')."</th>";
+      echo "<tr><th>"._n('Type', 'Types', 1)."</th>";
+      echo "<th>".Entity::getTypeName(1)."</th>";
       echo "<th>".__('Name')."</th>";
       echo "<th>".__('Serial number')."</th>";
       echo "<th>".__('Inventory number')."</th>";
@@ -488,45 +498,76 @@ class Supplier extends CommonDBTM {
             $linkfield = 'id';
             $itemtable = getTableForItemType($itemtype);
 
-            $query = "SELECT `glpi_infocoms`.`entities_id`, `NAME_FIELD`, `$itemtable`.*
-                      FROM `glpi_infocoms`
-                      INNER JOIN `$itemtable` ON (`$itemtable`.`id` = `glpi_infocoms`.`items_id`) ";
+            $criteria = [
+               'SELECT'       => [],
+               'FROM'         => 'glpi_infocoms',
+               'INNER JOIN'   => [
+                  $itemtable  => [
+                     'ON' => [
+                        'glpi_infocoms'   => 'items_id',
+                        $itemtable        => 'id'
+                     ]
+                  ]
+               ]
+            ];
 
             // Set $linktype for entity restriction AND link to search engine
             if ($itemtype == 'Cartridge') {
-               $query .= "INNER JOIN `glpi_cartridgeitems`
-                            ON (`glpi_cartridgeitems`.`id`=`glpi_cartridges`.`cartridgeitems_id`) ";
+               $criteria['INNER JOIN']['glpi_cartridgeitems'] = [
+                  'ON' => [
+                     'glpi_cartridgeitems'   => 'id',
+                     'glpi_cartridges'       => 'cartridgeitems_id'
+                  ]
+               ];
 
                $linktype  = 'CartridgeItem';
                $linkfield = 'cartridgeitems_id';
             }
 
             if ($itemtype == 'Consumable') {
-               $query .= "INNER JOIN `glpi_consumableitems`
-                            ON (`glpi_consumableitems`.`id`=`glpi_consumables`.`consumableitems_id`) ";
+               $criteria['INNER JOIN']['glpi_consumableitems'] = [
+                  'ON' => [
+                     'glpi_consumableitems'  => 'id',
+                     'glpi_consumables'      => 'cartridgeitems_id'
+                  ]
+               ];
 
                $linktype  = 'ConsumableItem';
                $linkfield = 'consumableitems_id';
             }
 
             if ($itemtype == 'Item_DeviceControl') {
-               $query .= "INNER JOIN `glpi_devicecontrols`
-                           ON (`glpi_items_devicecontrols`.`devicecontrols_id`=`glpi_devicecontrols`.`id`)";
+               $criteria['INNER JOIN']['glpi_devicecontrols'] = [
+                  'ON' => [
+                     'glpi_items_devicecontrols'   => 'devicecontrols_id',
+                     'glpi_devicecontrols'         => 'id'
+                  ]
+               ];
+
                $linktype = 'DeviceControl';
                $linkfield = 'devicecontrols_id';
             }
 
             $linktable = getTableForItemType($linktype);
 
-            $query = str_replace('NAME_FIELD', $linktype::getNameField(), $query);
-            $query .= "WHERE `glpi_infocoms`.`itemtype` = '$itemtype'
-                             AND `glpi_infocoms`.`suppliers_id` = '$instID'".
-                             getEntitiesRestrictRequest(" AND", $linktable) ."
-                       ORDER BY `glpi_infocoms`.`entities_id`,
-                                `$linktable`.`" . $linktype::getNameField() . "`";
+            $criteria['SELECT'] = [
+               'glpi_infocoms.entities_id',
+               $linktype::getNameField(),
+               "$itemtable.*"
+            ];
 
-            $result_linked = $DB->query($query);
-            $nb            = $DB->numrows($result_linked);
+            $criteria['WHERE'] = [
+               'glpi_infocoms.itemtype'      => $itemtype,
+               'glpi_infocoms.suppliers_id'  => $instID,
+            ] + getEntitiesRestrictCriteria($linktable);
+
+            $criteria['ORDERBY'] = [
+               'glpi_infocoms.entities_id',
+               "$linktable." . $linktype::getNameField()
+            ];
+
+            $iterator = $DB->request($criteria);
+            $nb = count($iterator);
 
             if ($nb > $_SESSION['glpilist_limit']) {
                echo "<tr class='tab_bg_1'>";
@@ -553,7 +594,8 @@ class Supplier extends CommonDBTM {
                echo "<td class='center'>-</td><td class='center'>-</td></tr>";
 
             } else if ($nb) {
-               for ($prem=true; $data=$DB->fetchAssoc($result_linked); $prem=false) {
+               $prem = true;
+               while ($data = $iterator->next()) {
                   $name = $data[$linktype::getNameField()];
                   if ($_SESSION["glpiis_ids_visible"] || empty($data["name"])) {
                      $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
@@ -567,6 +609,7 @@ class Supplier extends CommonDBTM {
                   }
                   echo "'>";
                   if ($prem) {
+                     $prem = false;
                      $title = $item->getTypeName($nb);
                      if ($nb > 0) {
                         $title = sprintf(__('%1$s: %2$s'), $title, $nb);
@@ -612,5 +655,10 @@ class Supplier extends CommonDBTM {
       ]);
 
       return $suppliers;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-dolly";
    }
 }

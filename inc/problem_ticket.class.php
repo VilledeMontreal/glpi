@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -148,8 +148,6 @@ class Problem_Ticket extends CommonDBRelation{
     * @see CommonDBTM::showMassiveActionsSubForm()
    **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
-      global $CFG_GLPI;
-
       switch ($ma->getAction()) {
          case 'add_task' :
             $tasktype = 'TicketTask';
@@ -279,7 +277,9 @@ class Problem_Ticket extends CommonDBRelation{
          $used[$ticket['id']] = $ticket['id'];
       }
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($problem->fields['status'], array_merge($problem->getClosedStatusArray(),
+                                                               $problem->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='changeticket_form$rand' id='changeticket_form$rand' method='post'
                action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -289,20 +289,12 @@ class Problem_Ticket extends CommonDBRelation{
 
          echo "<tr class='tab_bg_2'><td class='right'>";
          echo "<input type='hidden' name='problems_id' value='$ID'>";
-         $condition = [
-            'NOT' => [
-               'glpi_tickets.status' => array_merge(
-                  Ticket::getSolvedStatusArray(),
-                  Ticket::getClosedStatusArray()
-               )
-            ]
-         ];
          Ticket::dropdown([
             'used'        => $used,
             'entity'      => $problem->getEntityID(),
             'entity_sons' => $problem->isRecursive(),
-            'condition'   => $condition,
-            'displaywith' => ['id']
+            'displaywith' => ['id'],
+            'condition'   => Ticket::getOpenCriteria()
          ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
@@ -344,10 +336,14 @@ class Problem_Ticket extends CommonDBRelation{
          $i = 0;
          foreach ($tickets as $data) {
             Session::addToNavigateListItems('Ticket', $data["id"]);
-            Ticket::showShort($data['id'], ['followups'              => false,
-                                                 'row_num'                => $i,
-                                                 'type_for_massiveaction' => __CLASS__,
-                                                 'id_for_massiveaction'   => $data['linkid']]);
+            Ticket::showShort(
+               $data['id'],
+               [
+                  'row_num'                => $i,
+                  'type_for_massiveaction' => __CLASS__,
+                  'id_for_massiveaction'   => $data['linkid']
+               ]
+            );
             $i++;
          }
          Ticket::commonListHeader(Search::HTML_OUTPUT, 'mass'.__CLASS__.$rand);
@@ -386,7 +382,9 @@ class Problem_Ticket extends CommonDBRelation{
       foreach ($problems as $problem) {
          $used[$problem['id']] = $problem['id'];
       }
-      if ($canedit) {
+      if ($canedit
+          && !in_array($ticket->fields['status'], array_merge($ticket->getClosedStatusArray(),
+                                                              $ticket->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='problemticket_form$rand' id='problemticket_form$rand' method='post'
                 action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -395,19 +393,11 @@ class Problem_Ticket extends CommonDBRelation{
          echo "<tr class='tab_bg_2'><th colspan='3'>".__('Add a problem')."</th></tr>";
          echo "<tr class='tab_bg_2'><td>";
          echo "<input type='hidden' name='tickets_id' value='$ID'>";
-         $condition = [
-            'NOT' => [
-               'glpi_problems.status' => array_merge(
-                  Problem::getSolvedStatusArray(),
-                  Problem::getClosedStatusArray()
-               )
-            ]
-         ];
 
          Problem::dropdown([
             'used'      => $used,
             'entity'    => $ticket->getEntityID(),
-            'condition' => $condition
+            'condition' => Problem::getOpenCriteria()
          ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";

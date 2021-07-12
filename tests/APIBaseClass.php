@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,7 +30,9 @@
  * ---------------------------------------------------------------------
  */
 
-abstract class APIBaseClass extends \atoum {
+use atoum\atoum;
+
+abstract class APIBaseClass extends atoum {
    protected $session_token;
    protected $http_client;
    protected $base_uri = "";
@@ -38,17 +40,25 @@ abstract class APIBaseClass extends \atoum {
 
    abstract protected function query($resource = "",
                                      $params = [],
-                                     $expected_code = 200);
+                                     $expected_codes = 200);
 
    public function beforeTestMethod($method) {
-      parent::beforeTestMethod($method);
       $this->initSessionCredentials();
    }
 
    abstract public function initSessionCredentials();
 
    public function setUp() {
-      parent::setUp();
+      // To bypass various right checks
+      // This is mandatory to create/update/delete some items during tests.
+      $_SESSION['glpishowallentities'] = 1;
+      $_SESSION['glpiactive_entity']   = 0;
+      $_SESSION['glpiactiveentities']  = [0];
+      $_SESSION['glpiactiveentities_string'] = "'0'";
+
+      // Force "cron" mode to prevent user related behaviors
+      $_SESSION['glpicronuserrunning'] = "cron_phpunit";
+
       // enable api config
       $config = new Config;
       $config->update(['id'                              => 1,
@@ -56,7 +66,6 @@ abstract class APIBaseClass extends \atoum {
                             'enable_api_login_credentials'    => true,
                             'enable_api_login_external_token' => true]);
    }
-
 
    /**
     * @tags   api
@@ -88,8 +97,8 @@ abstract class APIBaseClass extends \atoum {
          (int)$apiclient->add([
             'name'             => 'test app token',
             'is_active'        => 1,
-            'ipv4_range_start' => 2130706433,
-            'ipv4_range_end'   => 2130706433,
+            'ipv4_range_start' => '127.0.0.1',
+            'ipv4_range_end'   => '127.0.0.1',
             '_reset_app_token' => true,
          ])
       )->isGreaterThan(0);
@@ -344,10 +353,6 @@ abstract class APIBaseClass extends \atoum {
       $this->array($first_user)->hasKey(81);
       $this->array($second_user)->hasKey(81);
 
-      $first_user_date_mod = strtotime($first_user[19]);
-      $second_user_date_mod = strtotime($second_user[19]);
-      $this->integer($second_user_date_mod)->isLessThanOrEqualTo($first_user_date_mod);
-
       $this->checkContentRange($data, $headers);
    }
 
@@ -384,9 +389,6 @@ abstract class APIBaseClass extends \atoum {
       $second_user = array_shift($data['data']);
       $this->array($first_user)->hasKey(81);
       $this->array($second_user)->hasKey(81);
-      $first_user_date_mod = strtotime($first_user[19]);
-      $second_user_date_mod = strtotime($second_user[19]);
-      $this->integer($second_user_date_mod)->isLessThanOrEqualTo($first_user_date_mod);
 
       $this->checkContentRange($data, $data['headers']);
    }
@@ -913,7 +915,7 @@ abstract class APIBaseClass extends \atoum {
                     'id'       => $tickets_id,
                     'headers'  => [
                         'Session-Token' => $data['session_token']]],
-                   401,
+                   403,
                    'ERROR_RIGHT_MISSING');
 
       // try to access ticket list (we should get empty return)
@@ -1147,7 +1149,7 @@ abstract class APIBaseClass extends \atoum {
          $this->string($value[$name])->isNotEmpty();
       }
 
-      $config = new config();
+      $config = new Config();
       $rows = $config->find(['context' => 'core', 'name' => $sensitiveSettings]);
       $this->array($rows)
          ->hasSize(count($sensitiveSettings));
@@ -1210,7 +1212,7 @@ abstract class APIBaseClass extends \atoum {
       $this->object($computer)->isInstanceOf('\Computer');
       $deviceSimcard = getItemByTypeName('DeviceSimcard', '_test_simcard_1');
       $this->integer((int) $deviceSimcard->getID())->isGreaterThan(0);
-      $this->object($deviceSimcard)->isInstanceOf('\Devicesimcard');
+      $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
       $input = [
             'itemtype'           => 'Computer',
             'items_id'           => $computer->getID(),
@@ -1307,6 +1309,40 @@ abstract class APIBaseClass extends \atoum {
          ->hasKey('cfg_glpi');
       $this->array($data['cfg_glpi'])
          ->hasKey('infocom_types');
+   }
+
+
+   public function testUndisclosedField() {
+      // test common cases
+      $itemtypes = [
+         'APIClient', 'AuthLDAP', 'MailCollector', 'User'
+      ];
+      foreach ($itemtypes as $itemtype) {
+         $data = $this->query(
+            'getItems',
+            [
+               'itemtype' => $itemtype,
+               'headers'  => ['Session-Token' => $this->session_token]
+            ]
+         );
+
+         $this->array($itemtype::$undisclosedFields)
+            ->size->isGreaterThan(0);
+
+         foreach ($itemtype::$undisclosedFields as $key) {
+            $this->array($data);
+            unset($data['headers']);
+            foreach ($data as $item) {
+               $this->array($item)->notHasKey($key);
+            }
+         }
+      }
+
+      // test specific cases
+      // Config
+      $data = $this->query('getGlpiConfig', [
+         'headers'  => ['Session-Token' => $this->session_token]
+      ]);
 
       // Test undisclosed data are actually not disclosed
       $this->array(Config::$undisclosedFields)

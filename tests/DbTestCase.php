@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -52,25 +52,37 @@ class DbTestCase extends \GLPITestCase {
     *
     * @param string $user_name User name (defaults to TU_USER)
     * @param string $user_pass user password (defaults to TU_PASS)
+    * @param bool $noauto disable autologin (from CAS by example)
+    * @param bool $expected bool result expected from login return
     *
-    * @return voidd
+    * @return \Auth
     */
-   protected function login($user_name = TU_USER, $user_pass = TU_PASS) {
+   protected function login(
+      string $user_name = TU_USER,
+      string $user_pass = TU_PASS,
+      bool $noauto = true,
+      bool $expected = true
+   ): \Auth {
+      \Session::destroy();
+      \Session::start();
 
       $auth = new Auth();
-      $this->boolean($auth->login($user_name, $user_pass, true))->isTrue();
+      $this->boolean($auth->login($user_name, $user_pass, $noauto))->isEqualTo($expected);
+
+      return $auth;
    }
 
    /**
     * change current entity
     *
-    * @param string $entityname Name of the entity
+    * @param int|string $entityname Name of the entity (or its id)
     * @param boolean $subtree   Recursive load
     *
     * @return void
     */
    protected function setEntity($entityname, $subtree) {
-      $res = Session::changeActiveEntities(getItemByTypeName('Entity', $entityname, true), $subtree);
+      $entity_id = is_int($entityname) ? $entityname : getItemByTypeName('Entity', $entityname, true);
+      $res = Session::changeActiveEntities($entity_id, $subtree);
       $this->boolean($res)->isTrue();
    }
 
@@ -81,9 +93,11 @@ class DbTestCase extends \GLPITestCase {
     * @param  int    $id     The id of added object
     * @param  array  $input  the input used for add object (optionnal)
     *
-    * @return nothing (do tests)
+    * @return void
     */
    protected function checkInput(CommonDBTM $object, $id = 0, $input = []) {
+      $input = \Toolbox::stripslashes_deep($input); // slashes in input should not be stored in DB
+
       $this->integer((int)$id)->isGreaterThan(0);
       $this->boolean($object->getFromDB($id))->isTrue();
       $this->variable($object->getField('id'))->isEqualTo($id);
@@ -92,6 +106,77 @@ class DbTestCase extends \GLPITestCase {
          foreach ($input as $k => $v) {
             $this->variable($object->getField($k))->isEqualTo($v);
          }
+      }
+   }
+
+   /**
+    * Get all classes in folder inc/
+    *
+    * @param boolean $function Whether to look for a function
+    * @param array   $excludes List of classes to exclude
+    *
+    * @return array
+    */
+   protected function getClasses($function = false, array $excludes = []) {
+      // Add deprecated classes to excludes to prevent test failure
+      $excludes = array_merge(
+         $excludes,
+         [
+            'TicketFollowup', // Deprecated
+            '/^Computer_Software.*/', // Deprecated
+         ]
+      );
+
+      $classes = [];
+      foreach (new \DirectoryIterator('inc/') as $fileInfo) {
+         if (!$fileInfo->isFile()) {
+            continue;
+         }
+
+         $php_file = file_get_contents("inc/".$fileInfo->getFilename());
+         $tokens = token_get_all($php_file);
+         $class_token = false;
+         foreach ($tokens as $token) {
+            if (is_array($token)) {
+               if ($token[0] == T_CLASS) {
+                  $class_token = true;
+               } else if ($class_token && $token[0] == T_STRING) {
+                  $classname = $token[1];
+
+                  foreach ($excludes as $exclude) {
+                     if ($classname === $exclude || @preg_match($exclude, $classname) === 1) {
+                        break 2; // Class is excluded from results, go to next file
+                     }
+                  }
+
+                  if ($function) {
+                     if (method_exists($classname, $function)) {
+                        $classes[] = $classname;
+                     }
+                  } else {
+                     $classes[] = $classname;
+                  }
+
+                  break; // Assume there is only one class by file
+               }
+            }
+         }
+      }
+      return array_unique($classes);
+   }
+
+   /**
+    * Create multiples items of the given class
+    *
+    * @param string $itemtype
+    * @param array $inputs
+    */
+   protected function createItems($itemtype, $inputs) {
+      foreach ($inputs as $input) {
+         $item = new $itemtype();
+         $id = $item->add($input);
+         $this->integer($id)->isGreaterThan(0);
+         $this->checkInput($item, $id, $input);
       }
    }
 }

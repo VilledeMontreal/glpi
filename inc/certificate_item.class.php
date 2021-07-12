@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -79,13 +79,13 @@ class Certificate_Item extends CommonDBRelation {
          if ($item->getType() == 'Certificate'
             && count(Certificate::getTypes(false))) {
             if ($_SESSION['glpishow_count_on_tabs']) {
-               return self::createTabEntry(_n('Associated item', 'Associated items', 2),
+               return self::createTabEntry(_n('Associated item', 'Associated items', Session::getPluralNumber()),
                                            self::countForMainItem($item));
             }
-            return _n('Associated item', 'Associated items', 2);
+            return _n('Associated item', 'Associated items', Session::getPluralNumber());
 
          } else if (in_array($item->getType(), Certificate::getTypes(true))
-            && Certificate::canView() ) {
+            && Certificate::canView()) {
             if ($_SESSION['glpishow_count_on_tabs']) {
                return self::createTabEntry(Certificate::getTypeName(2),
                                            self::countForItem($item));
@@ -174,9 +174,9 @@ class Certificate_Item extends CommonDBRelation {
     *
     * @since 9.2
     *
-    * @param $certificate Certificate object
+    * @param Certificate $certificate Certificate object
     *
-    * @return void (HTML display)
+    * @return void|boolean (display) Returns false if there is a rights error.
     **/
    public static function showForCertificate(Certificate $certificate) {
 
@@ -240,10 +240,10 @@ class Certificate_Item extends CommonDBRelation {
             Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand) . "</th>";
       }
 
-      echo "<th>" . __('Type') . "</th>";
+      echo "<th>" . _n('Type', 'Types', 1) . "</th>";
       echo "<th>" . __('Name') . "</th>";
       if (Session::isMultiEntitiesMode()) {
-         echo "<th>" . __('Entity') . "</th>";
+         echo "<th>" . Entity::getTypeName(1) . "</th>";
       }
       echo "<th>" . __('Serial number') . "</th>";
       echo "<th>" . __('Inventory number') . "</th>";
@@ -323,7 +323,7 @@ class Certificate_Item extends CommonDBRelation {
       $ID = $item->getField('id');
 
       if ($item->isNewID($ID)
-         || !certificate::canView() ||
+         || !Certificate::canView() ||
             !$item->can($item->fields['id'], READ)) {
          return false;
       }
@@ -421,9 +421,9 @@ class Certificate_Item extends CommonDBRelation {
       }
       echo "<th>" . __('Name') . "</th>";
       if (Session::isMultiEntitiesMode()) {
-         echo "<th>" . __('Entity') . "</th>";
+         echo "<th>" . Entity::getTypeName(1) . "</th>";
       }
-      echo "<th>" . __('Type') . "</th>";
+      echo "<th>" . _n('Type', 'Types', 1) . "</th>";
       echo "<th>" . __('DNS name') . "</th>";
       echo "<th>" . __('DNS suffix') . "</th>";
       echo "<th>" . __('Creation date') . "</th>";

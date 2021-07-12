@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -28,6 +28,8 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+/* global fuzzy */
 
 $(document).ready(function() {
    var list = [];
@@ -116,7 +118,6 @@ $(document).ready(function() {
       $("#fuzzysearch .results").empty();
 
       // launch fuzzy search on this list
-      /* global fuzzy */
       var results = fuzzy.filter(input_text, list, fuzzy_options);
 
       // append new results

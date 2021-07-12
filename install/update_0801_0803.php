@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@
  * @return bool for success (will die for most error)
 **/
 function update0801to0803() {
-   global $DB, $migration;
+   global $migration;
 
    $updateresult     = true;
    $ADDTODISPLAYPREF = [];

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -50,7 +50,7 @@ class RuleDictionnaryOperatingSystem extends RuleDictionnaryDropdown {
       }
 
       $criterias['name']['field'] = 'name';
-      $criterias['name']['name']  = __('Operating system');
+      $criterias['name']['name']  = OperatingSystem::getTypeName(1);
       $criterias['name']['table'] = 'glpi_operatingsystems';
       return $criterias;
    }
@@ -62,7 +62,7 @@ class RuleDictionnaryOperatingSystem extends RuleDictionnaryDropdown {
    function getActions() {
 
       $actions                          = [];
-      $actions['name']['name']          = __('Operating system');
+      $actions['name']['name']          = OperatingSystem::getTypeName(1);
       $actions['name']['force_actions'] = ['append_regex_result', 'assign', 'regex_result'];
 
       return $actions;

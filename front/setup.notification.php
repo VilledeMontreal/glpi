@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -35,7 +35,7 @@ include ('../inc/includes.php');
 Session::checkSeveralRightsOr(['notification' => READ,
                                     'config'       => UPDATE]);
 
-Html::header(_n('Notification', 'Notifications', 2), $_SERVER['PHP_SELF'], "config", "notification");
+Html::header(_n('Notification', 'Notifications', Session::getPluralNumber()), $_SERVER['PHP_SELF'], "config", "notification");
 
 if (!Session::haveRight("config", READ)
    && Session::haveRight("notification", READ)) {

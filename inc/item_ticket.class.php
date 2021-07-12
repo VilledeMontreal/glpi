@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,7 @@ if (!defined('GLPI_ROOT')) {
  *
  *  Relation between Tickets and Items
 **/
-class Item_Ticket extends CommonDBRelation{
+class Item_Ticket extends CommonItilObject_Item {
 
 
    // From CommonDBRelation
@@ -119,9 +119,6 @@ class Item_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @see CommonDBTM::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
 
       // Avoid duplicate entry
@@ -140,7 +137,7 @@ class Item_Ticket extends CommonDBRelation{
             if ($item = getItemForItemtype($input["itemtype"])) {
                if ($item->getFromDB($input["items_id"])) {
                   if ($item->isField('locations_id')) {
-                     $ticket->fields['items_locations'] = $item->fields['locations_id'];
+                     $ticket->fields['_locations_id_of_item'] = $item->fields['locations_id'];
 
                      // Process Business Rules
                      $rules = new RuleTicketCollection($ticket->fields['entities_id']);
@@ -149,7 +146,7 @@ class Item_Ticket extends CommonDBRelation{
                                                 Toolbox::stripslashes_deep($ticket->fields),
                                                 ['recursive' => true]);
 
-                     unset($ticket->fields['items_locations']);
+                     unset($ticket->fields['_locations_id_of_item']);
                      $ticket->updateInDB(['locations_id']);
                   }
                }
@@ -170,7 +167,7 @@ class Item_Ticket extends CommonDBRelation{
     *    - _users_id_requester : ID of the requester user
     *    - items_id            : array of elements (itemtype => array(id1, id2, id3, ...))
     *
-    * @return Nothing (display)
+    * @return void
    **/
    static function itemAddForm(Ticket $ticket, $options = []) {
       global $CFG_GLPI;
@@ -333,8 +330,6 @@ class Item_Ticket extends CommonDBRelation{
 
 
    static function showItemToAdd($tickets_id, $itemtype, $items_id, $options) {
-      global $CFG_GLPI;
-
       $params = [
          'rand'      => mt_rand(),
          'delete'    => true,
@@ -370,11 +365,9 @@ class Item_Ticket extends CommonDBRelation{
     *
     * @param $ticket Ticket object
     *
-    * @return Nothing (display)
+    * @return void
    **/
    static function showForTicket(Ticket $ticket) {
-      global $DB, $CFG_GLPI;
-
       $instID = $ticket->fields['id'];
 
       if (!$ticket->can($instID, READ)) {
@@ -387,7 +380,9 @@ class Item_Ticket extends CommonDBRelation{
       $types_iterator = self::getDistinctTypes($instID);
       $number = count($types_iterator);
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($ticket->fields['status'], array_merge($ticket->getClosedStatusArray(),
+                                                              $ticket->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='ticketitem_form$rand' id='ticketitem_form$rand' method='post'
                 action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -411,7 +406,7 @@ class Item_Ticket extends CommonDBRelation{
             self::dropdownMyDevices($dev_user_id, $ticket->fields["entities_id"], null, 0, ['tickets_id' => $instID]);
          }
 
-         $data =  array_keys(getAllDataFromTable('glpi_items_tickets'));
+         $used = self::getUsedItems($instID);
          self::dropdownAllDevices("itemtype", null, 0, 1, $dev_user_id, $ticket->fields["entities_id"], ['tickets_id' => $instID, 'used' => $used, 'rand' => $rand]);
          echo "<span id='item_ticket_selection_information$rand'></span>";
          echo "</td><td class='center' width='30%'>";
@@ -440,8 +435,8 @@ class Item_Ticket extends CommonDBRelation{
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Name')."</th>";
       $header_end .= "<th>".__('Serial number')."</th>";
       $header_end .= "<th>".__('Inventory number')."</th>";
@@ -547,116 +542,17 @@ class Item_Ticket extends CommonDBRelation{
    }
 
    /**
-    * Make a select box for Tracking All Devices
-    *
-    * @param $myname             select name
-    * @param $itemtype           preselected value.for item type
-    * @param $items_id           preselected value for item ID (default 0)
-    * @param $admin              is an admin access ? (default 0)
-    * @param $users_id           user ID used to display my devices (default 0
-    * @param $entity_restrict    Restrict to a defined entity (default -1)
-    * @param $options   array of possible options:
-    *    - tickets_id : ID of the ticket
-    *    - used       : ID of the requester user
-    *    - multiple   : allow multiple choice
-    *    - rand       : random number
-    *
-    * @return nothing (print out an HTML select box)
-   **/
-   static function dropdownAllDevices($myname, $itemtype, $items_id = 0, $admin = 0, $users_id = 0,
-                                      $entity_restrict = -1, $options = []) {
-      global $CFG_GLPI, $DB;
-
-      $params = ['tickets_id' => 0,
-                      'used'       => [],
-                      'multiple'   => 0,
-                      'rand'       => mt_rand()];
-
-      foreach ($options as $key => $val) {
-         $params[$key] = $val;
-      }
-
-      $rand = $params['rand'];
-
-      if ($_SESSION["glpiactiveprofile"]["helpdesk_hardware"] == 0) {
-         echo "<input type='hidden' name='$myname' value=''>";
-         echo "<input type='hidden' name='items_id' value='0'>";
-
-      } else {
-         echo "<div id='tracking_all_devices$rand'>";
-         if ($_SESSION["glpiactiveprofile"]["helpdesk_hardware"]&pow(2,
-                                                                     Ticket::HELPDESK_ALL_HARDWARE)) {
-            // Display a message if view my hardware
-            if ($users_id
-                &&($_SESSION["glpiactiveprofile"]["helpdesk_hardware"]&pow(2,
-                                                                           Ticket::HELPDESK_MY_HARDWARE))) {
-               echo __('Or complete search')."&nbsp;";
-            }
-
-            $types = Ticket::getAllTypesForHelpdesk();
-            $emptylabel = __('General');
-            if ($params['tickets_id'] > 0) {
-               $emptylabel = Dropdown::EMPTY_VALUE;
-            }
-            Dropdown::showItemTypes($myname, array_keys($types),
-                                    ['emptylabel' => $emptylabel,
-                                          'value'      => $itemtype,
-                                          'rand'       => $rand, 'display_emptychoice' => true]);
-            $found_type = isset($types[$itemtype]);
-
-            $p = ['itemtype'        => '__VALUE__',
-                       'entity_restrict' => $entity_restrict,
-                       'admin'           => $admin,
-                       'used'            => $params['used'],
-                       'multiple'        => $params['multiple'],
-                       'rand'            => $rand,
-                       'myname'          => "add_items_id"];
-
-            Ajax::updateItemOnSelectEvent("dropdown_$myname$rand", "results_$myname$rand",
-                                          $CFG_GLPI["root_doc"].
-                                             "/ajax/dropdownTrackingDeviceType.php",
-                                          $p);
-            echo "<span id='results_$myname$rand'>\n";
-
-            // Display default value if itemtype is displayed
-            if ($found_type
-                && $itemtype) {
-               if (($item = getItemForItemtype($itemtype))
-                    && $items_id) {
-                  if ($item->getFromDB($items_id)) {
-                     Dropdown::showFromArray('items_id', [$items_id => $item->getName()],
-                                             ['value' => $items_id]);
-                  }
-               } else {
-                  $p['itemtype'] = $itemtype;
-                  echo "<script type='text/javascript' >\n";
-                  echo "$(function() {";
-                  Ajax::updateItemJsCode("results_$myname$rand",
-                                         $CFG_GLPI["root_doc"].
-                                            "/ajax/dropdownTrackingDeviceType.php",
-                                         $p);
-                  echo '});</script>';
-               }
-            }
-            echo "</span>\n";
-         }
-         echo "</div>";
-      }
-      return $rand;
-   }
-
-   /**
     * Make a select box for Ticket my devices
     *
-    * @param $userID          User ID for my device section (default 0)
-    * @param $entity_restrict restrict to a specific entity (default -1)
-    * @param $itemtype        of selected item (default 0)
-    * @param $items_id        of selected item (default 0)
-    * @param $options   array of possible options:
+    * @param integer $userID           User ID for my device section (default 0)
+    * @param integer $entity_restrict  restrict to a specific entity (default -1)
+    * @param string  $itemtype         of selected item (default 0)
+    * @param integer $items_id         of selected item (default 0)
+    * @param array   $options          array of possible options:
     *    - used     : ID of the requester user
     *    - multiple : allow multiple choice
     *
-    * @return nothing (print out an HTML select box)
+    * @return void
    **/
    static function dropdownMyDevices($userID = 0, $entity_restrict = -1, $itemtype = 0, $items_id = 0, $options = []) {
       global $DB, $CFG_GLPI;
@@ -692,7 +588,7 @@ class Item_Ticket extends CommonDBRelation{
                   'WHERE'  => [
                      'users_id' => $userID
                   ] + getEntitiesRestrictCriteria($itemtable, '', $entity_restrict, $item->maybeRecursive()),
-                  'ORDER'  => 'name'
+                  'ORDER'  => $item->getNameField()
                ];
 
                if ($item->maybeDeleted()) {
@@ -712,7 +608,7 @@ class Item_Ticket extends CommonDBRelation{
 
                   while ($data = $iterator->next()) {
                      if (!isset($already_add[$itemtype]) || !in_array($data["id"], $already_add[$itemtype])) {
-                        $output = $data["name"];
+                        $output = $data[$item->getNameField()];
                         if (empty($output) || $_SESSION["glpiis_ids_visible"]) {
                            $output = sprintf(__('%1$s (%2$s)'), $output, $data['id']);
                         }
@@ -776,7 +672,7 @@ class Item_Ticket extends CommonDBRelation{
                         'WHERE'  => [
                            'groups_id' => $groups
                         ] + getEntitiesRestrictCriteria($itemtable, '', $entity_restrict, $item->maybeRecursive()),
-                        'ORDER'  => 'name'
+                        'ORDER'  => $item->getNameField()
                      ];
 
                      if ($item->maybeDeleted()) {
@@ -818,6 +714,69 @@ class Item_Ticket extends CommonDBRelation{
                }
                if (count($devices)) {
                   $my_devices[__('Devices own by my groups')] = $devices;
+               }
+            }
+         }
+         // Get software linked to all owned items
+         if (in_array('Software', $_SESSION["glpiactiveprofile"]["helpdesk_item_type"])) {
+            $software_helpdesk_types = array_intersect($CFG_GLPI['software_types'], $_SESSION["glpiactiveprofile"]["helpdesk_item_type"]);
+            foreach ($software_helpdesk_types as $itemtype) {
+               if (isset($already_add[$itemtype]) && count($already_add[$itemtype])) {
+                  $iterator = $DB->request([
+                     'SELECT'          => [
+                        'glpi_softwareversions.name AS version',
+                        'glpi_softwares.name AS name',
+                        'glpi_softwares.id'
+                     ],
+                     'DISTINCT'        => true,
+                     'FROM'            => 'glpi_items_softwareversions',
+                     'LEFT JOIN'       => [
+                        'glpi_softwareversions'  => [
+                           'ON' => [
+                              'glpi_items_softwareversions' => 'softwareversions_id',
+                              'glpi_softwareversions'       => 'id'
+                           ]
+                        ],
+                        'glpi_softwares'        => [
+                           'ON' => [
+                              'glpi_softwareversions' => 'softwares_id',
+                              'glpi_softwares'        => 'id'
+                           ]
+                        ]
+                     ],
+                     'WHERE'        => [
+                           'glpi_items_softwareversions.items_id' => $already_add[$itemtype],
+                           'glpi_items_softwareversions.itemtype' => $itemtype,
+                           'glpi_softwares.is_helpdesk_visible'   => 1
+                        ] + getEntitiesRestrictCriteria('glpi_softwares', '', $entity_restrict),
+                     'ORDERBY'      => 'glpi_softwares.name'
+                  ]);
+
+                  $devices = [];
+                  if (count($iterator)) {
+                     $item       = new Software();
+                     $type_name  = $item->getTypeName();
+                     if (!isset($already_add['Software'])) {
+                        $already_add['Software'] = [];
+                     }
+                     while ($data = $iterator->next()) {
+                        if (!in_array($data["id"], $already_add['Software'])) {
+                           $output = sprintf(__('%1$s - %2$s'), $type_name, $data["name"]);
+                           $output = sprintf(__('%1$s (%2$s)'), $output,
+                              sprintf(__('%1$s: %2$s'), __('version'),
+                                 $data["version"]));
+                           if ($_SESSION["glpiis_ids_visible"]) {
+                              $output = sprintf(__('%1$s (%2$s)'), $output, $data["id"]);
+                           }
+                           $devices["Software_".$data["id"]] = $output;
+
+                           $already_add['Software'][] = $data["id"];
+                        }
+                     }
+                     if (count($devices)) {
+                        $my_devices[__('Installed software')] = $devices;
+                     }
+                  }
                }
             }
          }
@@ -884,65 +843,6 @@ class Item_Ticket extends CommonDBRelation{
             if (count($devices)) {
                $my_devices[__('Connected devices')] = $devices;
             }
-
-            // Software
-            if (in_array('Software', $_SESSION["glpiactiveprofile"]["helpdesk_item_type"])) {
-               $iterator = $DB->request([
-                  'SELECT'          => [
-                     'glpi_softwareversions.name AS version',
-                     'glpi_softwares.name AS name',
-                     'glpi_softwares.id'
-                  ],
-                  'DISTINCT'        => true,
-                  'FROM'            => 'glpi_computers_softwareversions',
-                  'LEFT JOIN'       => [
-                     'glpi_softwareversions'  => [
-                        'ON' => [
-                           'glpi_computers_softwareversions'   => 'softwareversions_id',
-                           'glpi_softwareversions'             => 'id'
-                        ]
-                     ],
-                     'glpi_softwares'        => [
-                        'ON' => [
-                           'glpi_softwareversions' => 'softwares_id',
-                           'glpi_softwares'        => 'id'
-                        ]
-                     ]
-                  ],
-                  'WHERE'        => [
-                     'glpi_computers_softwareversions.computers_id'   => $already_add['Computer'],
-                     'glpi_softwares.is_helpdesk_visible'   => 1
-                  ] + getEntitiesRestrictCriteria('glpi_softwares', '', $entity_restrict),
-                  'ORDERBY'      => 'glpi_softwares.name'
-               ]);
-
-               $devices = [];
-               if (count($iterator)) {
-                  $tmp_device = "";
-                  $item       = new Software();
-                  $type_name  = $item->getTypeName();
-                  if (!isset($already_add['Software'])) {
-                     $already_add['Software'] = [];
-                  }
-                  while ($data = $iterator->next()) {
-                     if (!in_array($data["id"], $already_add['Software'])) {
-                        $output = sprintf(__('%1$s - %2$s'), $type_name, $data["name"]);
-                        $output = sprintf(__('%1$s (%2$s)'), $output,
-                                          sprintf(__('%1$s: %2$s'), __('version'),
-                                                  $data["version"]));
-                        if ($_SESSION["glpiis_ids_visible"]) {
-                           $output = sprintf(__('%1$s (%2$s)'), $output, $data["id"]);
-                        }
-                        $devices["Software_".$data["id"]] = $output;
-
-                        $already_add['Software'][] = $data["id"];
-                     }
-                  }
-                  if (count($devices)) {
-                     $my_devices[__('Installed software')] = $devices;
-                  }
-               }
-            }
          }
          echo "<div id='tracking_my_devices'>";
          echo __('My devices')."&nbsp;";
@@ -1007,7 +907,6 @@ class Item_Ticket extends CommonDBRelation{
 
       $union = new \QueryUnion();
       foreach ($itemtypes as $type) {
-         //TODO: migrate when iterator usuports UNION
          $table = getTableForItemType($type);
          $union->addQuery([
             'SELECT' => [
@@ -1037,9 +936,9 @@ class Item_Ticket extends CommonDBRelation{
    /**
     * Return used items for a ticket
     *
-    * @param type $tickets_id
+    * @param integer type $tickets_id
     *
-    * @return type
+    * @return array
     */
    static function getUsedItems($tickets_id) {
 
@@ -1106,11 +1005,6 @@ class Item_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -1200,10 +1094,18 @@ class Item_Ticket extends CommonDBRelation{
       $tab = [];
 
       $tab[] = [
+         'id'                 => '3',
+         'table'              => $this->getTable(),
+         'field'              => 'tickets_id',
+         'name'               => Ticket::getTypeName(1),
+         'datatype'           => 'dropdown',
+      ];
+
+      $tab[] = [
          'id'                 => '13',
          'table'              => $this->getTable(),
          'field'              => 'items_id',
-         'name'               => _n('Associated element', 'Associated elements', 2),
+         'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
          'datatype'           => 'specific',
          'comments'           => true,
          'nosort'             => true,
@@ -1214,7 +1116,7 @@ class Item_Ticket extends CommonDBRelation{
          'id'                 => '131',
          'table'              => $this->getTable(),
          'field'              => 'itemtype',
-         'name'               => _n('Associated item type', 'Associated item types', 2),
+         'name'               => _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
          'datatype'           => 'itemtypename',
          'itemtype_list'      => 'ticket_types',
          'nosort'             => true
@@ -1223,80 +1125,10 @@ class Item_Ticket extends CommonDBRelation{
       return $tab;
    }
 
-
-   /**
-    * @since 0.84
-    *
-    * @param $field
-    * @param $values
-    * @param $options   array
-   **/
-   static function getSpecificValueToDisplay($field, $values, array $options = []) {
-
-      if (!is_array($values)) {
-         $values = [$field => $values];
-      }
-      switch ($field) {
-         case 'items_id':
-            if (strpos($values[$field], "_") !== false) {
-               $item_itemtype      = explode("_", $values[$field]);
-               $values['itemtype'] = $item_itemtype[0];
-               $values[$field]     = $item_itemtype[1];
-            }
-
-            if (isset($values['itemtype'])) {
-               if (isset($options['comments']) && $options['comments']) {
-                  $tmp = Dropdown::getDropdownName(getTableForItemtype($values['itemtype']),
-                                                   $values[$field], 1);
-                  return sprintf(__('%1$s %2$s'), $tmp['name'],
-                                 Html::showToolTip($tmp['comment'], ['display' => false]));
-
-               }
-               return Dropdown::getDropdownName(getTableForItemtype($values['itemtype']),
-                                                $values[$field]);
-            }
-            break;
-      }
-      return parent::getSpecificValueToDisplay($field, $values, $options);
-   }
-
-
-   /**
-    * @since 0.84
-    *
-    * @param $field
-    * @param $name            (default '')
-    * @param $values          (default '')
-    * @param $options   array
-    *
-    * @return string
-   **/
-   static function getSpecificValueToSelect($field, $name = '', $values = '', array $options = []) {
-      if (!is_array($values)) {
-         $values = [$field => $values];
-      }
-      $options['display'] = false;
-      switch ($field) {
-         case 'items_id' :
-            if (isset($values['itemtype']) && !empty($values['itemtype'])) {
-               $options['name']  = $name;
-               $options['value'] = $values[$field];
-               return Dropdown::show($values['itemtype'], $options);
-            } else {
-               self::dropdownAllDevices($name, 0, 0);
-               return ' ';
-            }
-            break;
-      }
-      return parent::getSpecificValueToSelect($field, $name, $values, $options);
-   }
-
    /**
     * Add a message on add action
    **/
    function addMessageOnAddAction() {
-      global $CFG_GLPI;
-
       $addMessAfterRedirect = false;
       if (isset($this->input['_add'])) {
          $addMessAfterRedirect = true;

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -52,27 +52,42 @@ function isCommandLine() {
  * @return boolean
  */
 function isAPI() {
-   if (strpos($_SERVER["SCRIPT_FILENAME"], 'apirest.php') !== false) {
+   global $CFG_GLPI;
+
+   $called_url = (!empty($_SERVER['HTTPS'] ?? "") && ($_SERVER['HTTPS'] ?? "") !== 'off'
+                     ? 'https'
+                     : 'http').
+                 '://' . ($_SERVER['HTTP_HOST'] ?? "").
+                 ($_SERVER['REQUEST_URI'] ?? "");
+
+   $base_api_url = $CFG_GLPI['url_base_api'] ?? ""; // $CFG_GLPI may be not defined if DB is not available
+   if (!empty($base_api_url) && strpos($called_url, $base_api_url) !== false) {
       return true;
    }
-   if (strpos($_SERVER["SCRIPT_FILENAME"], 'apixmlrpc.php') !== false) {
+
+   $script = isset($_SERVER['SCRIPT_FILENAME']) ? $_SERVER['SCRIPT_FILENAME'] : '';
+   if (strpos($script, 'apirest.php') !== false) {
       return true;
    }
+   if (strpos($script, 'apixmlrpc.php') !== false) {
+      return true;
+   }
+
    return false;
 }
 
 
 /**
- * Determine if an object name is a plugin one
+ * Determine if an class name is a plugin one
  *
- * @param string $classname class name to analyze
+ * @param string $classname Class name to analyze
  *
- * @return boolean[object false or an object containing plugin name and class name
+ * @return boolean|array False or an array containing plugin name and class name
  */
 function isPluginItemType($classname) {
 
    /** @var array $matches */
-   if (preg_match("/Plugin([A-Z][a-z0-9]+)([A-Z]\w+)/", $classname, $matches)) {
+   if (preg_match("/^Plugin([A-Z][a-z0-9]+)([A-Z]\w+)$/", $classname, $matches)) {
       $plug           = [];
       $plug['plugin'] = $matches[1];
       $plug['class']  = $matches[2];
@@ -153,7 +168,7 @@ function _sx($ctx, $str, $domain = 'glpi') {
  *
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plurial
+ * @param integer $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string translated string
@@ -180,7 +195,7 @@ function _n($sing, $plural, $nb, $domain = 'glpi') {
  *
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plurial
+ * @param integer $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string protected string (with htmlentities)
@@ -223,7 +238,7 @@ function _x($ctx, $str, $domain = 'glpi') {
  * @param string  $ctx    context
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plurial
+ * @param integer $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string
@@ -252,13 +267,12 @@ function _nx($ctx, $sing, $plural, $nb, $domain = 'glpi') {
  *
  * @param string $classname : class to load
  *
- * @return void
+ * @return void|boolean
  */
 function glpi_autoload($classname) {
    global $DEBUG_AUTOLOAD;
    static $notfound = ['xStates'    => true,
                             'xAllAssets' => true, ];
-
    // empty classname or non concerted plugin or classname containing dot (leaving GLPI main treee)
    if (empty($classname) || is_numeric($classname) || (strpos($classname, '.') !== false)) {
       trigger_error(
@@ -276,20 +290,53 @@ function glpi_autoload($classname) {
 
    $dir = GLPI_ROOT . "/inc/";
 
-   // Deprecation warn for TicketFollowup
-   if ($classname === 'TicketFollowup') {
-      Toolbox::deprecated('TicketFollowup has been replaced by ITILFollowup.');
+   // Deprecation warn for Computer_Software* classes
+   if ($classname === 'Computer_SoftwareLicense') {
+      Toolbox::deprecated('Computer_SoftwareLicense has been replaced by Item_SoftwareLicense.');
+   }
+   if ($classname === 'Computer_SoftwareVersion') {
+      Toolbox::deprecated('Computer_SoftwareVersion has been replaced by Item_SoftwareVersion.');
    }
 
    if ($plug = isPluginItemType($classname)) {
       $plugname = strtolower($plug['plugin']);
-      $dir      = GLPI_ROOT . "/plugins/$plugname/inc/";
-      $item     = str_replace('\\', '/', strtolower($plug['class']));
-      // Is the plugin active?
+
+      // check plugin exists and is enabled
       if (!Plugin::isPluginLoaded($plugname)) {
-         // Plugin not activated
+         // Do not load plugin class if plugin is not loaded
          return false;
       }
+
+      $item = str_replace('\\', '/', strtolower($plug['class']));
+
+      // load from first found directory
+      foreach (PLUGINS_DIRECTORIES as $base_dir) {
+         $dir = "$base_dir/$plugname/inc/";
+         if (is_dir($dir)) {
+            break;
+         }
+      }
+   } else if (strpos($classname, 'Glpi\Tests\Web\Deprecated') !== false) {
+      // Special case to autoload files in the tests dir that have a namespace
+      // and are not an atoum test case
+      $dir = GLPI_ROOT . "/tests/";
+
+      // Convert classname to array
+      $path = explode('\\', $classname);
+
+      // Remove first two items (Glpi\Tests)
+      array_splice($path, 0, 2);
+
+      // Extract file name
+      $item = array_pop($path);
+
+      // Convert all remaining path to lowercase
+      $path = array_map(function($folder) {
+         return strtolower($folder);
+      }, $path);
+
+      // Revert to string and add to dir path
+      $dir .= implode('/', $path) . '/';
    } else {
       $item = strtolower($classname);
       if (substr($classname, 0, \strlen(NS_GLPI)) === NS_GLPI) {
@@ -356,4 +403,4 @@ if ($needrun) {
 require_once $autoload;
 
 // Use spl autoload to allow stackable autoload.
-spl_autoload_register('glpi_autoload', false, true);
+spl_autoload_register('glpi_autoload', true, true);

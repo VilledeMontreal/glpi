@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -61,9 +61,7 @@ if (isset($_GET['getvcard'])) {
 } else if (isset($_POST["add"])) {
    $user->check(-1, CREATE, $_POST);
 
-   // Pas de nom pas d'ajout
-   if (!empty($_POST["name"])
-       && ($newID = $user->add($_POST))) {
+   if (($newID = $user->add($_POST))) {
       Event::log($newID, "users", 4, "setup",
                  sprintf(__('%1$s adds the item %2$s'), $_SESSION["glpiname"], $_POST["name"]));
       if ($_SESSION['glpibackcreated']) {
@@ -99,7 +97,7 @@ if (isset($_GET['getvcard'])) {
    Session::checkRight('user', User::UPDATEAUTHENT);
 
    $user->getFromDB($_POST["id"]);
-   AuthLdap::forceOneUserSynchronization($user);
+   AuthLDAP::forceOneUserSynchronization($user);
    Html::back();
 
 } else if (isset($_POST["update"])) {
@@ -141,13 +139,16 @@ if (isset($_GET['getvcard'])) {
    Html::back();
 
 } else if (isset($_POST['language']) && !GLPI_DEMO_MODE) {
-   $user->update(
-      [
-         'id'        => Session::getLoginUserID(),
-         'language'  => $_POST['language']
-      ]
-   );
-
+   if (Session::getLoginUserID()) {
+      $user->update(
+         [
+            'id'        => Session::getLoginUserID(),
+            'language'  => $_POST['language']
+         ]
+      );
+   } else {
+      $_SESSION["glpilanguage"] = $_POST['language'];
+   }
    Session::addMessageAfterRedirect(__('Lang has been changed!'));
    Html::back();
 
@@ -183,7 +184,7 @@ if (isset($_GET['getvcard'])) {
       Session::checkRight("user", User::IMPORTEXTAUTHUSERS);
 
       if (isset($_POST['login']) && !empty($_POST['login'])) {
-         AuthLdap::importUserFromServers(['name' => $_POST['login']]);
+         AuthLDAP::importUserFromServers(['name' => $_POST['login']]);
       }
       Html::back();
    } else if (isset($_POST['add_ext_auth_simple'])) {
@@ -203,7 +204,10 @@ if (isset($_GET['getvcard'])) {
    } else {
       Session::checkRight("user", READ);
       Html::header(User::getTypeName(Session::getPluralNumber()), '', "admin", "user");
-      $user->display(['id' => $_GET["id"]]);
+      $user->display([
+         'id'           => $_GET["id"],
+         'formoptions'  => "data-track-changes=true"
+      ]);
       Html::footer();
 
    }

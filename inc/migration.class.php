@@ -1,11 +1,8 @@
 <?php
-use Symfony\Component\Console\Output\OutputInterface;
-use Glpi\Console\Application;
-
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +30,9 @@ use Glpi\Console\Application;
  * ---------------------------------------------------------------------
  */
 
+use Symfony\Component\Console\Output\OutputInterface;
+use Glpi\Console\Application;
+
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
@@ -47,6 +47,7 @@ class Migration {
    private   $change    = [];
    private   $fulltexts = [];
    private   $uniques   = [];
+   private   $search_opts = [];
    protected $version;
    private   $deb;
    private   $lastMessage;
@@ -106,7 +107,6 @@ class Migration {
    **/
    function setVersion($ver) {
 
-      $this->flushLogDisplayMessage();
       $this->version = $ver;
       $this->addNewMessageArea("migration_message_$ver");
    }
@@ -158,12 +158,13 @@ class Migration {
    **/
    function displayMessage($msg) {
 
+      $this->flushLogDisplayMessage();
+
       $now = time();
       $tps = Html::timestampToString($now-$this->deb);
 
       $this->outputMessage("{$msg} ({$tps})", null, $this->current_message_area_id);
 
-      $this->flushLogDisplayMessage();
       $this->lastMessage = ['time' => time(),
                             'msg'  => $msg];
    }
@@ -203,6 +204,8 @@ class Migration {
     * @return void
    **/
    function displayTitle($title) {
+      $this->flushLogDisplayMessage();
+
       $this->outputMessage($title, 'title');
    }
 
@@ -287,7 +290,7 @@ class Migration {
             }
             break;
 
-         case 'date' :
+         case 'date':
             $format = "DATE";
             if (!$nodefault) {
                if (is_null($default_value)) {
@@ -298,11 +301,12 @@ class Migration {
             }
             break;
 
-         case 'datetime' :
-            $format = "DATETIME";
+         case 'timestamp':
+         case 'datetime':
+            $format = "TIMESTAMP";
             if (!$nodefault) {
                if (is_null($default_value)) {
-                  $format.= " DEFAULT NULL";
+                  $format.= " NULL DEFAULT NULL";
                } else {
                   $format.= " DEFAULT '$default_value'";
                }
@@ -402,7 +406,7 @@ class Migration {
             $this->change[$table][] = "ADD `$field` $format ".$params['comment'] ." ".
                                       $params['null'].$params['first'].$params['after'];
 
-            if (!empty($params['update'])) {
+            if ($params['update'] !== '') {
                $this->migrationOneTable($table);
                $query = "UPDATE `$table`
                         SET `$field` = ".$params['update']." ".
@@ -533,7 +537,7 @@ class Migration {
       // si pas de nom d'index, on prend celui du ou des champs
       if (!$indexname) {
          if (is_array($fields)) {
-            $indexname = implode($fields, "_");
+            $indexname = implode("_", $fields);
          } else {
             $indexname = $fields;
          }
@@ -542,9 +546,9 @@ class Migration {
       if (!isIndex($table, $indexname)) {
          if (is_array($fields)) {
             if ($len) {
-               $fields = "`".implode($fields, "`($len), `")."`($len)";
+               $fields = "`".implode("`($len), `", $fields)."`($len)";
             } else {
-               $fields = "`".implode($fields, "`, `")."`";
+               $fields = "`".implode("`, `", $fields)."`";
             }
          } else if ($len) {
             $fields = "`$fields`($len)";
@@ -706,7 +710,7 @@ class Migration {
       global $DB;
 
       if (isset($this->change[$table])) {
-         $query = "ALTER TABLE `$table` ".implode($this->change[$table], " ,\n")." ";
+         $query = "ALTER TABLE `$table` ".implode(" ,\n", $this->change[$table])." ";
          $this->displayMessage( sprintf(__('Change of the database layout - %s'), $table));
          $DB->queryOrDie($query, $this->version." multiple alter in $table");
          unset($this->change[$table]);
@@ -760,6 +764,7 @@ class Migration {
       $this->queries[self::POST_QUERY] = [];
 
       $this->storeConfig();
+      $this->migrateSearchOptions();
 
       // end of global message
       $this->displayMessage(__('Task completed.'));
@@ -982,16 +987,21 @@ class Migration {
    }
 
    /**
-    * Add configuration value(s) to current context; @see Migration::setContext()
+    * Add configuration value(s) to current context; @see Migration::addConfig()
     *
     * @since 9.2
     *
-    * @param string|array $values Value(s) to add
+    * @param string|array $values  Value(s) to add
+    * @param string       $context Context to add on (optional)
     *
     * @return Migration
     */
-   public function addConfig($values) {
-      $this->configs += (array)$values;
+   public function addConfig($values, $context = null) {
+      $context = $context ?? $this->context;
+      if (!isset($this->configs[$context])) {
+         $this->configs[$context] = [];
+      }
+      $this->configs[$context] += (array)$values;
       return $this;
    }
 
@@ -1005,39 +1015,30 @@ class Migration {
    private function storeConfig() {
       global $DB;
 
-      if (count($this->configs)) {
-         $existing = $DB->request(
-            "glpi_configs", [
-               'context'   => $this->context,
-               'name'      => array_keys($this->configs)
-            ]
-         );
-         foreach ($existing as $conf) {
-            unset($this->configs[$conf['name']]);
+      foreach ($this->configs as $context => $config) {
+         if (count($config)) {
+            $existing = $DB->request(
+               "glpi_configs", [
+                  'context'   => $context,
+                  'name'      => array_keys($config)
+               ]
+            );
+            foreach ($existing as $conf) {
+               unset($config[$conf['name']]);
+            }
+            if (count($config)) {
+               Config::setConfigurationValues($context, $config);
+               $this->displayMessage(sprintf(
+                  __('Configuration values added for %1$s (%2$s).'),
+                  implode(', ', array_keys($config)),
+                  $context
+               ));
+            }
          }
-         if (count($this->configs)) {
-            Config::setConfigurationValues($this->context, $this->configs);
-            $this->displayMessage(sprintf(
-               __('Configuration values added for %1$s.'),
-               implode(', ', array_keys($this->configs))
-            ));
-         }
+         unset($this->configs[$context]);
       }
    }
 
-   /**
-    * Set configuration context
-    *
-    * @since 9.2
-    *
-    * @param string $context Configuration context
-    *
-    * @return Migration
-    */
-   public function setContext($context) {
-      $this->context = $context;
-      return $this;
-   }
 
    /**
     * Add new right to profiles that match rights requirements
@@ -1227,6 +1228,251 @@ class Migration {
          Html::glpi_flush();
       } else {
          echo $msg;
+      }
+   }
+
+   /**
+    * Rename an itemtype an update database structure and data to use the new itemtype name.
+    * Changes done by this method:
+    *  - renaming of itemtype table;
+    *  - renaming of foreign key fields corresponding to this itemtype;
+    *  - update of "itemtype" column values in all tables.
+    *
+    * @param string  $old_itemtype
+    * @param string  $new_itemtype
+    * @param boolean $update_structure
+    *    Whether to update or not DB structure (itemtype table name and foreign key fields)
+    *
+    * @return void
+    *
+    * @since 9.5.0
+    */
+   public function renameItemtype($old_itemtype, $new_itemtype, $update_structure = true) {
+      global $DB;
+
+      if ($old_itemtype == $new_itemtype) {
+         // Do nothing if new value is same as old one
+         return;
+      }
+
+      $this->displayTitle(sprintf('Rename "%s" itemtype to "%s"', $old_itemtype, $new_itemtype));
+
+      if ($update_structure) {
+         $old_table = getTableForItemType($old_itemtype);
+         $new_table = getTableForItemType($new_itemtype);
+         $old_fkey  = getForeignKeyFieldForItemType($old_itemtype);
+         $new_fkey  = getForeignKeyFieldForItemType($new_itemtype);
+
+         // Check prerequisites
+         if (!$DB->tableExists($old_table)) {
+            throw new \RuntimeException(
+               sprintf(
+                  'Table "%s" does not exists.',
+                  $old_table
+               )
+            );
+         }
+         if ($DB->tableExists($new_table)) {
+            throw new \RuntimeException(
+               sprintf(
+                  'Table "%s" cannot be renamed as table "%s" already exists.',
+                  $old_table,
+                  $new_table
+               )
+            );
+         }
+         $fkey_column_iterator = $DB->request(
+            [
+               'SELECT' => [
+                  'table_name AS TABLE_NAME',
+                  'column_name AS COLUMN_NAME',
+               ],
+               'FROM'   => 'information_schema.columns',
+               'WHERE'  => [
+                  'table_schema' => $DB->dbdefault,
+                  'table_name'   => ['LIKE', 'glpi\_%'],
+                  'OR' => [
+                     ['column_name'  => $old_fkey],
+                     ['column_name'  => ['LIKE', $old_fkey . '_%']],
+                  ],
+               ],
+               'ORDER'  => 'TABLE_NAME',
+            ]
+         );
+         $fkey_column_array = iterator_to_array($fkey_column_iterator); // Convert to array to be able to loop twice
+         foreach ($fkey_column_array as $fkey_column) {
+            $fkey_table   = $fkey_column['TABLE_NAME'];
+            $fkey_oldname = $fkey_column['COLUMN_NAME'];
+            $fkey_newname = preg_replace('/^' . preg_quote($old_fkey) . '/', $new_fkey, $fkey_oldname);
+            if ($DB->fieldExists($fkey_table, $fkey_newname)) {
+               throw new \RuntimeException(
+                  sprintf(
+                     'Field "%s" cannot be renamed in table "%s" as "%s" is field already exists.',
+                     $fkey_oldname,
+                     $fkey_table,
+                     $fkey_newname
+                  )
+               );
+            }
+         }
+
+         //1. Rename itemtype table
+         $this->displayMessage(sprintf('Rename "%s" table to "%s"', $old_table, $new_table));
+         $this->renameTable($old_table, $new_table);
+
+         //2. Rename foreign key fields
+         $this->displayMessage(
+            sprintf('Rename "%s" foreign keys to "%s" in all tables', $old_fkey, $new_fkey)
+         );
+         foreach ($fkey_column_array as $fkey_column) {
+            $fkey_table   = $fkey_column['TABLE_NAME'];
+            $fkey_oldname = $fkey_column['COLUMN_NAME'];
+            $fkey_newname = preg_replace('/^' . preg_quote($old_fkey) . '/', $new_fkey, $fkey_oldname);
+
+            if ($fkey_table == $old_table) {
+               // Special case, foreign key is inside renamed table, use new name
+               $fkey_table = $new_table;
+            }
+
+            $this->changeField(
+               $fkey_table,
+               $fkey_oldname,
+               $fkey_newname,
+               'integer' // assume that foreign key always uses integer type
+            );
+         }
+      }
+
+      //3. Update "itemtype" values in all tables
+      $this->displayMessage(
+         sprintf('Rename "%s" itemtype to "%s" in all tables', $old_itemtype, $new_itemtype)
+      );
+      $itemtype_column_iterator = $DB->request(
+         [
+            'SELECT' => [
+               'table_name AS TABLE_NAME',
+               'column_name AS COLUMN_NAME',
+            ],
+            'FROM'   => 'information_schema.columns',
+            'WHERE'  => [
+               'table_schema' => $DB->dbdefault,
+               'table_name'   => ['LIKE', 'glpi\_%'],
+               'OR' => [
+                  ['column_name'  => 'itemtype'],
+                  ['column_name'  => ['LIKE', 'itemtype_%']],
+               ],
+            ],
+            'ORDER'  => 'TABLE_NAME',
+         ]
+      );
+      foreach ($itemtype_column_iterator as $itemtype_column) {
+         $this->addPostQuery(
+            $DB->buildUpdate(
+               $itemtype_column['TABLE_NAME'],
+               [$itemtype_column['COLUMN_NAME'] => $new_itemtype],
+               [$itemtype_column['COLUMN_NAME'] => $old_itemtype]
+            )
+         );
+      }
+   }
+
+   /**
+    * Migrate search option values in various locations in the database.
+    * This does not change the actual search option ID. This must still be changed manually in the itemtype's class file.
+    * The changes made by this function will only be applied when the migration is finalized through {@link Migration::executeMigration()}.
+    *
+    * @param string $itemtype The itemtype
+    * @param int    $old_search_opt The old search option ID
+    * @param int    $new_search_opt The new search option ID
+    *
+    * @return void
+    * @since 9.5.6
+    */
+   public function changeSearchOption(string $itemtype, int $old_search_opt, int $new_search_opt) {
+      if (!isset($this->search_opts[$itemtype])) {
+         $this->search_opts[$itemtype] = [];
+      }
+      $this->search_opts[$itemtype][] = [
+         'old' => $old_search_opt,
+         'new' => $new_search_opt
+      ];
+   }
+
+   /**
+    * Finalize search option migrations
+    *
+    * @return void
+    * @since 9.5.6
+    */
+   private function migrateSearchOptions() {
+      global $DB;
+
+      if (empty($this->search_opts)) {
+         return;
+      }
+
+      foreach ($this->search_opts as $itemtype => $changes) {
+         foreach ($changes as $p) {
+            $old_search_opt = $p['old'];
+            $new_search_opt = $p['new'];
+
+            // Update display preferences
+            $DB->updateOrDie(DisplayPreference::getTable(), [
+               'num' => $new_search_opt
+            ], [
+               'itemtype' => $itemtype,
+               'num'      => $old_search_opt
+            ]);
+         }
+      }
+
+      // Update saved searches. We have to parse every query to account for the search option in meta criteria
+      $iterator = $DB->request([
+         'SELECT' => ['id', 'itemtype', 'query'],
+         'FROM'   => SavedSearch::getTable(),
+      ]);
+
+      foreach ($iterator as $data) {
+         $query = [];
+         parse_str($data['query'], $query);
+         $is_changed = false;
+
+         foreach ($this->search_opts as $itemtype => $changes) {
+            foreach ($changes as $p) {
+               $old_search_opt = $p['old'];
+               $new_search_opt = $p['new'];
+
+               if ($data['itemtype'] === $itemtype) {
+                  // Fix sort
+                  if (isset($query['sort']) && (int)$query['sort'] === $old_search_opt) {
+                     $query['sort'] = $new_search_opt;
+                     $is_changed = true;
+                  }
+               }
+
+               // Fix criteria
+               if (isset($query['criteria'])) {
+                  foreach ($query['criteria'] as $cid => $criterion) {
+                     $is_meta = isset($criterion['meta']) && (int)$criterion['meta'] === 1;
+                     if (($is_meta && isset($criterion['itemtype'], $criterion['field']) &&
+                           $criterion['itemtype'] === $itemtype && (int)$criterion['field'] === $old_search_opt)
+                        || (!$is_meta && $data['itemtype'] === $itemtype && isset($criterion['field']) && (int)$criterion['field'] === $old_search_opt)) {
+                        $query['criteria'][$cid]['field'] = $new_search_opt;
+                        $is_changed = true;
+                     }
+                  }
+               }
+            }
+         }
+
+         // Write changes if any were made
+         if ($is_changed) {
+            $DB->updateOrDie(SavedSearch::getTable(), [
+               'query'  => http_build_query($query)
+            ], [
+               'id'     => $data['id']
+            ]);
+         }
       }
    }
 }

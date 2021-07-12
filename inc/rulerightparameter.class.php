@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -71,7 +71,8 @@ class RuleRightParameter extends CommonDropdown {
          'table'              => $this->getTable(),
          'field'              => 'value',
          'name'               => _n('Criterion', 'Criteria', 1),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       return $tab;

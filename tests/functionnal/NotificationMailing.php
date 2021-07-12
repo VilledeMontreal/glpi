@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,6 +38,10 @@ use \DbTestCase;
 
 class NotificationMailing extends DbTestCase {
 
+   /**
+    * @ignore
+    * @see https://gitlab.alpinelinux.org/alpine/aports/issues/7392
+    */
    public function testCheck() {
       $instance = new \NotificationMailing();
 
@@ -80,11 +84,11 @@ class NotificationMailing extends DbTestCase {
       $this->array($row)
          ->isIdenticalTo([
             'itemtype'                 => 'NotificationMailing',
-            'items_id'                 => '1',
-            'notificationtemplates_id' => '0',
-            'entities_id'              => '0',
-            'is_deleted'               => '0',
-            'sent_try'                 => '0',
+            'items_id'                 => 1,
+            'notificationtemplates_id' => 0,
+            'entities_id'              => 0,
+            'is_deleted'               => 0,
+            'sent_try'                 => 0,
             'sent_time'                => null,
             'name'                     => 'Test notification',
             'sender'                   => 'glpi@tests',

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -56,6 +56,18 @@ class InstallCommand extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
       \$this->setName('glpi:database:install');
       \$this->setAliases(['db:install']);
+   }
+}
+PHP
+            ,
+
+            // Namespaced command case located in root of source dir
+            'validatecommand.class.php' => <<<PHP
+<?php
+namespace Glpi;
+class ValidateCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('glpi:validate');
    }
 }
 PHP
@@ -116,7 +128,33 @@ class PluginAwesomeUpdateCommand extends \\Symfony\\Component\\Console\\Command\
    }
 }
 PHP
-               ]
+                  ,
+
+                  // Plugin namespaced command case (inside "inc" dir)
+                  'namespacedcommand.class.php' => <<<PHP
+<?php
+namespace GlpiPlugin\\Awesome;
+class NamespacedCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_awesome:namespaced');
+   }
+}
+PHP
+                  ,
+
+                  'console' => [
+                     // Plugin namespaced command case (inside a sub dir)
+                    'anothercommand.class.php' => <<<PHP
+<?php
+namespace GlpiPlugin\\Awesome\\Console;
+class AnotherCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_awesome:another');
+   }
+}
+PHP
+                  ],
+               ],
             ],
             'misc' => [
                'inc' => [
@@ -125,25 +163,97 @@ PHP
                ]
             ],
          ],
+         'tests' => [
+            'fixtures' => [
+               'plugins' => [
+                  'random' => [
+                     'inc' => [
+                        // Not recognized due to bad filename pattern
+                        'testcmd.class.php' => <<<PHP
+<?php
+class PluginRandomTestCmd extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_random:test');
+   }
+}
+PHP
+                        ,
+
+                        // Plugin command case
+                        'randomcommand.class.php' => <<<PHP
+<?php
+class PluginRandomRandomCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_random:random');
+   }
+}
+PHP
+                        ,
+
+                        // Plugin namespaced command case (inside "inc" dir)
+                        'checkcommand.class.php' => <<<PHP
+<?php
+namespace GlpiPlugin\\Random;
+class CheckCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_random:check');
+   }
+}
+PHP
+                        ,
+
+                        'console' => [
+                           // Plugin namespaced command case (inside a sub dir)
+                          'foocommand.class.php' => <<<PHP
+<?php
+namespace GlpiPlugin\\Random\\Console;
+class FooCommand extends \\Symfony\\Component\\Console\\Command\\Command {
+   protected function configure() {
+      \$this->setName('plugin_random:foo');
+   }
+}
+PHP
+                        ],
+                     ],
+                  ],
+                  'misc' => [
+                     'inc' => [
+                        // Not a command case
+                        'something.class.php' => '<?php class PluginRandomSomething {}',
+                     ]
+                  ],
+               ],
+            ],
+         ]
       ];
       vfsStream::setup('glpi', null, $structure);
 
       $core_names_to_class = [
          'glpi:database:install' => 'InstallCommand',
          'db:install'            => 'InstallCommand',
+         'glpi:validate'         => 'Glpi\\ValidateCommand',
          'glpi:test'             => 'Glpi\\Console\\TestCommand',
          'glpi:tools:debug'      => 'DebugCommand',
          'tools:debug'           => 'DebugCommand',
       ];
 
       $plugins_names_to_class = [
-         'plugin_awesome:update' => 'PluginAwesomeUpdateCommand',
+         'plugin_awesome:update'     => 'PluginAwesomeUpdateCommand',
+         'plugin_awesome:namespaced' => 'GlpiPlugin\\Awesome\\NamespacedCommand',
+         'plugin_awesome:another'    => 'GlpiPlugin\\Awesome\\Console\\AnotherCommand',
+         'plugin_random:random'      => 'PluginRandomRandomCommand',
+         'plugin_random:check'       => 'GlpiPlugin\\Random\\CheckCommand',
+         'plugin_random:foo'         => 'GlpiPlugin\\Random\\Console\\FooCommand',
       ];
 
       $all_names_to_class = array_merge($core_names_to_class, $plugins_names_to_class);
 
+      // Mock plugin
+      $plugin = $this->newMockInstance('Plugin');
+      $this->calling($plugin)->isActivated = true;
+
       // Check with plugins
-      $command_loader = new \Glpi\Console\CommandLoader(true, vfsStream::url('glpi'));
+      $command_loader = new \Glpi\Console\CommandLoader(true, vfsStream::url('glpi'), $plugin);
       $this->array($command_loader->getNames())->isIdenticalTo(array_keys($all_names_to_class));
       foreach ($all_names_to_class as $name => $classname) {
          $this->boolean($command_loader->has($name))->isTrue();
@@ -151,7 +261,7 @@ PHP
       }
 
       // Check without plugins
-      $command_loader = new \Glpi\Console\CommandLoader(false, vfsStream::url('glpi'));
+      $command_loader = new \Glpi\Console\CommandLoader(false, vfsStream::url('glpi'), $plugin);
       $this->array($command_loader->getNames())->isIdenticalTo(array_keys($core_names_to_class));
       foreach ($core_names_to_class as $name => $classname) {
          $this->boolean($command_loader->has($name))->isTrue();
@@ -159,7 +269,7 @@ PHP
       }
 
       // Check async plugin registration
-      $command_loader->registerPluginsCommands();
+      $command_loader->setIncludePlugins(true);
       $this->array($command_loader->getNames())->isIdenticalTo(array_keys($all_names_to_class));
       foreach ($all_names_to_class as $name => $classname) {
          $this->boolean($command_loader->has($name))->isTrue();

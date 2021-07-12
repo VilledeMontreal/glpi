@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -140,12 +140,13 @@ abstract class CommonDBVisible extends CommonDBTM {
       $rand    = mt_rand();
       $nb      = $this->countVisibilities();
       $str_type = strtolower($this::getType());
+      $fk = static::getForeignKeyField();
 
       if ($canedit) {
          echo "<div class='firstbloc'>";
          echo "<form name='{$str_type}visibility_form$rand' id='{$str_type}visibility_form$rand' ";
          echo " method='post' action='".static::getFormURL()."'>";
-         echo "<input type='hidden' name='{$str_type}s_id' value='$ID'>";
+         echo "<input type='hidden' name='{$fk}' value='$ID'>";
          echo "<table class='tab_cadre_fixe'>";
          echo "<tr class='tab_bg_1'><th colspan='4'>".__('Add a target')."</tr>";
          echo "<tr class='tab_bg_1'><td class='tab_bg_2' width='100px'>";
@@ -192,7 +193,7 @@ abstract class CommonDBVisible extends CommonDBTM {
          $header_bottom .= Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_end    .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
       $header_end .= "<th>"._n('Recipient', 'Recipients', Session::getPluralNumber())."</th>";
       $header_end .= "</tr>";
       echo $header_begin.$header_top.$header_end;
@@ -207,7 +208,7 @@ abstract class CommonDBVisible extends CommonDBTM {
                   Html::showMassiveActionCheckBox($this::getType() . '_User', $data["id"]);
                   echo "</td>";
                }
-               echo "<td>".__('User')."</td>";
+               echo "<td>".User::getTypeName(1)."</td>";
                echo "<td>".getUserName($data['users_id'])."</td>";
                echo "</tr>";
             }
@@ -224,7 +225,7 @@ abstract class CommonDBVisible extends CommonDBTM {
                   Html::showMassiveActionCheckBox('Group_' . $this::getType(), $data["id"]);
                   echo "</td>";
                }
-               echo "<td>".__('Group')."</td>";
+               echo "<td>".Group::getTypeName(1)."</td>";
 
                $names   = Dropdown::getDropdownName('glpi_groups', $data['groups_id'], 1);
                $entname = sprintf(__('%1$s %2$s'), $names["name"],
@@ -255,7 +256,7 @@ abstract class CommonDBVisible extends CommonDBTM {
                   Html::showMassiveActionCheckBox('Entity_' . $this::getType(), $data["id"]);
                   echo "</td>";
                }
-               echo "<td>".__('Entity')."</td>";
+               echo "<td>".Entity::getTypeName(1)."</td>";
                $names   = Dropdown::getDropdownName('glpi_entities', $data['entities_id'], 1);
                $tooltip = Html::showToolTip($names["comment"], ['display' => false]);
                $entname = sprintf(__('%1$s %2$s'), $names["name"], $tooltip);

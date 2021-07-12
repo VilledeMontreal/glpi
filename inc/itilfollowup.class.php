@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -135,10 +135,12 @@ class ITILFollowup  extends CommonDBChild {
       }
 
       $itilobject = new $this->fields['itemtype'];
+
       if (!$itilobject->can($this->getField('items_id'), READ)
-        // No validation for closed tickets
-          || in_array($itilobject->fields['status'], $itilobject->getClosedStatusArray())
-             && !$itilobject->isAllowedStatus($itilobject->fields['status'], CommonITILObject::INCOMING)) {
+         // No validation for closed tickets
+         || in_array($itilobject->fields['status'], $itilobject->getClosedStatusArray())
+         && !$itilobject->canReopen()
+      ) {
          return false;
       }
       return $itilobject->canAddFollowups();
@@ -203,8 +205,19 @@ class ITILFollowup  extends CommonDBChild {
 
       global $CFG_GLPI;
 
-      // Add document if needed, without notification
-      $this->input = $this->addFiles($this->input, ['force_update' => true]);
+      // Add screenshots if needed, without notification
+      $this->input = $this->addFiles($this->input, [
+         'force_update'  => true,
+         'name'          => 'content',
+         'content_field' => 'content',
+         'date' => $this->fields['date'],
+      ]);
+
+      // Add documents if needed, without notification
+      $this->input = $this->addFiles($this->input, [
+         'force_update'  => true,
+         'date' => $this->fields['date'],
+      ]);
 
       $donotif = !isset($this->input['_disablenotif']) && $CFG_GLPI["use_notifications"];
 
@@ -246,19 +259,36 @@ class ITILFollowup  extends CommonDBChild {
           && in_array($parentitem->fields["status"], $parentitem::getReopenableStatusArray())
           && $this->input['_status'] == $parentitem->fields["status"]) {
 
+         $needupdateparent = false;
          if (($parentitem->countUsers(CommonITILActor::ASSIGN) > 0)
              || ($parentitem->countGroups(CommonITILActor::ASSIGN) > 0)
              || ($parentitem->countSuppliers(CommonITILActor::ASSIGN) > 0)) {
-            $update['status'] = CommonITILObject::ASSIGNED;
+
+            //check if lifecycle allowed new status
+            if (Session::isCron()
+                || Session::getCurrentInterface() == "helpdesk"
+                || $parentitem::isAllowedStatus($parentitem->fields["status"], CommonITILObject::ASSIGNED)) {
+               $needupdateparent = true;
+               $update['status'] = CommonITILObject::ASSIGNED;
+            }
          } else {
-            $update['status'] = CommonITILObject::INCOMING;
+            //check if lifecycle allowed new status
+            if (Session::isCron()
+                || Session::getCurrentInterface() == "helpdesk"
+                || $parentitem::isAllowedStatus($parentitem->fields["status"], CommonITILObject::INCOMING)) {
+               $needupdateparent = true;
+               $update['status'] = CommonITILObject::INCOMING;
+            }
          }
 
-         $update['id'] = $parentitem->fields['id'];
+         if ($needupdateparent) {
+            $update['id'] = $parentitem->fields['id'];
 
-         // Use update method for history
-         $parentitem->update($update);
-         $reopened     = true;
+            // Use update method for history
+            $parentitem->update($update);
+            $reopened     = true;
+         }
+
       }
 
       //change ITILObject status only if imput change
@@ -397,8 +427,6 @@ class ITILFollowup  extends CommonDBChild {
          return false;
       }
 
-      $input = $this->addFiles($input);
-
       // update last editor if content change
       if (($uid = Session::getLoginUserID())
           && isset($input['content']) && ($input['content'] != $this->fields['content'])) {
@@ -414,52 +442,66 @@ class ITILFollowup  extends CommonDBChild {
 
       $job      = new $this->fields['itemtype']();
 
-      if ($job->getFromDB($this->fields['items_id'])) {
-         //Get user_id when not logged (from mailgate)
-         $uid = Session::getLoginUserID();
-         if ($uid === false) {
-            if (isset($this->fields['users_id_editor'])) {
-               $uid = $this->fields['users_id_editor'];
-            } else {
-               $uid = $this->fields['users_id'];
-            }
-         }
-         $job->updateDateMod($this->fields['items_id'], false, $uid);
-
-         if (count($this->updates)) {
-            if (!isset($this->input['_disablenotif'])
-                && $CFG_GLPI["use_notifications"]
-                && (in_array("content", $this->updates)
-                    || isset($this->input['_need_send_mail']))) {
-               //FIXME: _need_send_mail does not seems to be used
-
-               $options = ['followup_id' => $this->fields["id"],
-                                'is_private'  => $this->fields['is_private']];
-
-               NotificationEvent::raiseEvent("update_followup", $job, $options);
-            }
-         }
-
-         // change ITIL Object status (from splitted button)
-         if (isset($this->input['_status'])
-             && ($this->input['_status'] != $this->input['_job']->fields['status'])) {
-             $update = [
-                'status'        => $this->input['_status'],
-                'id'            => $this->input['_job']->fields['id'],
-                '_disablenotif' => true,
-             ];
-             $this->input['_job']->update($update);
-         }
-
-         // Add log entry in the ITIL Object
-         $changes = [
-            0,
-            '',
-            $this->fields['id'],
-         ];
-         Log::history($this->getField('items_id'), $this->fields['itemtype'], $changes, $this->getType(),
-                      Log::HISTORY_UPDATE_SUBITEM);
+      if (!$job->getFromDB($this->fields['items_id'])) {
+         return;
       }
+
+      // Add screenshots if needed, without notification
+      $this->input = $this->addFiles($this->input, [
+         'force_update' => true,
+         'name'          => 'content',
+         'content_field' => 'content',
+      ]);
+
+      // Add documents if needed, without notification
+      $this->input = $this->addFiles($this->input, [
+         'force_update' => true,
+      ]);
+
+      //Get user_id when not logged (from mailgate)
+      $uid = Session::getLoginUserID();
+      if ($uid === false) {
+         if (isset($this->fields['users_id_editor'])) {
+            $uid = $this->fields['users_id_editor'];
+         } else {
+            $uid = $this->fields['users_id'];
+         }
+      }
+      $job->updateDateMod($this->fields['items_id'], false, $uid);
+
+      if (count($this->updates)) {
+         if (!isset($this->input['_disablenotif'])
+             && $CFG_GLPI["use_notifications"]
+             && (in_array("content", $this->updates)
+                 || isset($this->input['_need_send_mail']))) {
+            //FIXME: _need_send_mail does not seems to be used
+
+            $options = ['followup_id' => $this->fields["id"],
+                             'is_private'  => $this->fields['is_private']];
+
+            NotificationEvent::raiseEvent("update_followup", $job, $options);
+         }
+      }
+
+      // change ITIL Object status (from splitted button)
+      if (isset($this->input['_status'])
+          && ($this->input['_status'] != $this->input['_job']->fields['status'])) {
+          $update = [
+             'status'        => $this->input['_status'],
+             'id'            => $this->input['_job']->fields['id'],
+             '_disablenotif' => true,
+          ];
+          $this->input['_job']->update($update);
+      }
+
+      // Add log entry in the ITIL Object
+      $changes = [
+         0,
+         '',
+         $this->fields['id'],
+      ];
+      Log::history($this->getField('items_id'), $this->fields['itemtype'], $changes, $this->getType(),
+                   Log::HISTORY_UPDATE_SUBITEM);
    }
 
 
@@ -470,7 +512,7 @@ class ITILFollowup  extends CommonDBChild {
    }
 
 
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       if (isset($this->fields['requesttypes_id'])) {
          if ($this->fields['requesttypes_id']) {
@@ -503,7 +545,7 @@ class ITILFollowup  extends CommonDBChild {
          'id'                 => '2',
          'table'              => 'glpi_requesttypes',
          'field'              => 'name',
-         'name'               => __('Request source'),
+         'name'               => RequestType::getTypeName(1),
          'forcegroupby'       => true,
          'datatype'           => 'dropdown'
       ];
@@ -512,7 +554,7 @@ class ITILFollowup  extends CommonDBChild {
          'id'                 => '3',
          'table'              => $this->getTable(),
          'field'              => 'date',
-         'name'               => __('Date'),
+         'name'               => _n('Date', 'Dates', 1),
          'datatype'           => 'datetime'
       ];
 
@@ -528,9 +570,17 @@ class ITILFollowup  extends CommonDBChild {
          'id'                 => '5',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'datatype'           => 'dropdown',
          'right'              => 'all'
+      ];
+
+      $tab[] = [
+         'id'                 => '6',
+         'table'              => $this->getTable(),
+         'field'              => 'itemtype',
+         'name'               => RequestType::getTypeName(1),
+         'datatype'           => 'dropdown'
       ];
 
       return $tab;
@@ -572,7 +622,7 @@ class ITILFollowup  extends CommonDBChild {
          'id'                 => '36',
          'table'              => static::getTable(),
          'field'              => 'date',
-         'name'               => __('Date'),
+         'name'               => _n('Date', 'Dates', 1),
          'datatype'           => 'datetime',
          'massiveaction'      => false,
          'forcegroupby'       => true,
@@ -601,7 +651,7 @@ class ITILFollowup  extends CommonDBChild {
          'id'                 => '29',
          'table'              => 'glpi_requesttypes',
          'field'              => 'name',
-         'name'               => __('Request source'),
+         'name'               => RequestType::getTypeName(1),
          'datatype'           => 'dropdown',
          'forcegroupby'       => true,
          'massiveaction'      => false,
@@ -718,6 +768,7 @@ class ITILFollowup  extends CommonDBChild {
          //when we came from aja/viewsubitem.php
          $options['item'] = $options['parent'];
       }
+      $options['formoptions'] = ($options['formoptions'] ?? '') . ' data-track-changes=true';
 
       $item = $options['item'];
       $this->item = $item;
@@ -775,7 +826,7 @@ class ITILFollowup  extends CommonDBChild {
                          'rows'              => $rows]);
 
          if ($this->fields["date"]) {
-            echo "</td><td>".__('Date')."</td>";
+            echo "</td><td>"._n('Date', 'Dates', 1)."</td>";
             echo "<td>".Html::convDateTime($this->fields["date"]);
          } else {
 
@@ -795,7 +846,7 @@ class ITILFollowup  extends CommonDBChild {
          echo "<td colspan='4'>";
          echo "<div class='fa-label'>
             <i class='fas fa-reply fa-fw'
-               title='"._n('Followup template', 'Followup templates', 2)."'></i>";
+               title='"._n('Followup template', 'Followup templates', Session::getPluralNumber())."'></i>";
          $this->fields['itilfollowuptemplates_id'] = 0;
          ITILFollowupTemplate::dropdown([
             'value'     => $this->fields['itilfollowuptemplates_id'],
@@ -819,8 +870,6 @@ class ITILFollowup  extends CommonDBChild {
                      : parseInt(data.requesttypes_id);
 
                   // set textarea content
-                  $("#{$content_id}").html(data.content);
-                  // set also tinmyce (if enabled)
                   if (tasktinymce = tinymce.get("{$content_id}")) {
                      tasktinymce.setContent(data.content);
                   }
@@ -965,8 +1014,11 @@ JAVASCRIPT;
    /**
     * @param $ID  integer  ID of the ITILObject
     * @param $itemtype  string   parent itemtype
+    *
+    * @deprecated 9.5.6
    **/
    static function showShortForITILObject($ID, $itemtype) {
+      Toolbox::deprecated();
 
       global $DB, $CFG_GLPI;
 
@@ -994,7 +1046,7 @@ JAVASCRIPT;
       $out = "";
       if (count($iterator)) {
          $out .= "<div class='center'><table class='tab_cadre' width='100%'>\n
-                  <tr><th>".__('Date')."</th><th>".__('Requester')."</th>
+                  <tr><th>"._n('Date', 'Dates', 1)."</th><th>"._n('Requester', 'Requesters', 1)."</th>
                   <th>".__('Description')."</th></tr>\n";
 
          $showuserlink = 0;
@@ -1015,11 +1067,6 @@ JAVASCRIPT;
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see commonDBTM::getRights()
-    **/
    function getRights($interface = 'central') {
 
       $values = parent::getRights();
@@ -1137,10 +1184,12 @@ JAVASCRIPT;
     */
    public static function buildParentCondition(
       $itemtype,
-      $target,
-      $user_table,
-      $group_table
+      $target = "",
+      $user_table = "",
+      $group_table = ""
    ) {
+      $itilfup_table = static::getTable();
+
       // An ITILFollowup parent can only by a CommonItilObject
       if (!is_a($itemtype, "CommonITILObject", true)) {
          throw new InvalidArgumentException(
@@ -1148,14 +1197,11 @@ JAVASCRIPT;
          );
       }
 
+      $rightname = $itemtype::$rightname;
       // Can see all items, no need to go further
-      if (Session::haveRight($itemtype, $itemtype::READALL)) {
-         return "(`itemtype` = '$itemtype') ";
+      if (Session::haveRight($rightname, $itemtype::READALL)) {
+         return "(`$itilfup_table`.`itemtype` = '$itemtype') ";
       }
-
-      $requester = CommonITILActor::REQUESTER;
-      $assign    = CommonITILActor::ASSIGN;
-      $obs       = CommonITILActor::OBSERVER;
 
       $user   = Session::getLoginUserID();
       $groups = "'" . implode("','", $_SESSION['glpigroups']) . "'";
@@ -1172,75 +1218,9 @@ JAVASCRIPT;
       if ($itemtype == "Ticket") {
          // Default condition
          $condition = "(`itemtype` = '$itemtype' AND (0 = 1 ";
-
-         if (Session::haveRight($itemtype, $itemtype::READMY)) {
-            // Add tickets where the users is requester, observer or recipient
-            // Subquery for requester/observer user
-            $user_query = "SELECT `$target`
-               FROM `$user_table`
-               WHERE `users_id` = '$user' AND type IN ($requester, $obs)";
-            $condition .= "OR `items_id` IN ($user_query) ";
-
-            // Subquery for recipient
-            $recipient_query = "SELECT `id`
-               FROM `$table`
-               WHERE `users_id_recipient` = '$user'";
-            $condition .= "OR `items_id` IN ($recipient_query) ";
-         }
-
-         if (Session::haveRight($itemtype, $itemtype::READGROUP)) {
-            // Add tickets where the users is in a requester or observer group
-            // Subquery for requester/observer group
-            $group_query = "SELECT `$target`
-               FROM `$group_table`
-               WHERE `groups_id` IN ($groups) AND type IN ($requester, $obs)";
-            $condition .= "OR `items_id` IN ($group_query) ";
-         }
-
-         if (Session::haveRightsOr($itemtype, [
-            $itemtype::OWN,
-            $itemtype::READASSIGN
-         ])) {
-            // Add tickets where the users is assigned
-            // Subquery for assigned user
-            $user_query = "SELECT `$target`
-               FROM `$user_table`
-               WHERE `users_id` = '$user' AND type = $assign";
-            $condition .= "OR `items_id` IN ($user_query) ";
-         }
-
-         if (Session::haveRight($itemtype, $itemtype::READASSIGN)) {
-            // Add tickets where the users is part of an assigned group
-            // Subquery for assigned group
-            $group_query = "SELECT `$target`
-               FROM `$group_table`
-               WHERE `groups_id` IN ($groups) AND type = $assign";
-            $condition .= "OR `items_id` IN ($group_query) ";
-
-            if (Session::haveRight('ticket', Ticket::ASSIGN)) {
-               // Add new tickets
-               $tickets_query = "SELECT `id`
-                  FROM `$table`
-                  WHERE `status` = '" . CommonITILObject::INCOMING . "'";
-               $condition .= "OR `items_id` IN ($tickets_query) ";
-            }
-         }
-
-         if (Session::haveRightsOr('ticketvalidation', [
-            TicketValidation::VALIDATEINCIDENT,
-            TicketValidation::VALIDATEREQUEST
-         ])) {
-            // Add tickets where the users is the validator
-            // Subquery for validator
-            $validation_query = "SELECT `$target`
-               FROM `glpi_ticketvalidations`
-               WHERE `users_id_validate` = '$user'";
-            $condition .= "OR `items_id` IN ($validation_query) ";
-         }
-
-         return $condition .= ")) ";
+         return $condition . Ticket::buildCanViewCondition("items_id") . ")) ";
       } else {
-         if (Session::haveRight($itemtype, $itemtype::READMY)) {
+         if (Session::haveRight($rightname, $itemtype::READMY)) {
             // Subquery for affected/assigned/observer user
             $user_query = "SELECT `$target`
                FROM `$user_table`
@@ -1257,16 +1237,74 @@ JAVASCRIPT;
                WHERE `users_id_recipient` = '$user'";
 
             return "(
-               `itemtype` = '$itemtype' AND (
-                  `items_id` IN ($user_query) OR
-                  `items_id` IN ($group_query) OR
-                  `items_id` IN ($recipient_query)
+               `$itilfup_table`.`itemtype` = '$itemtype' AND (
+                  `$itilfup_table`.`items_id` IN ($user_query) OR
+                  `$itilfup_table`.`items_id` IN ($group_query) OR
+                  `$itilfup_table`.`items_id` IN ($recipient_query)
                )
             ) ";
          } else {
             // Can't see any items
-            return "(`itemtype` = '$itemtype' AND 0 = 1) ";
+            return "(`$itilfup_table`.`itemtype` = '$itemtype' AND 0 = 1) ";
          }
+      }
+   }
+
+   public static function getNameField() {
+      return 'id';
+   }
+
+   /**
+    * Check if this item author is a support agent
+    *
+    * @return bool
+    */
+   public function isFromSupportAgent() {
+      global $DB;
+
+      // Get parent item
+      $commonITILObject = new $this->fields['itemtype']();
+      $commonITILObject->getFromDB($this->fields['items_id']);
+
+      $actors = $commonITILObject->getITILActors();
+      $user_id = $this->fields['users_id'];
+      $roles = $actors[$user_id] ?? [];
+
+      if (in_array(CommonITILActor::ASSIGN, $roles)) {
+         // The author is assigned -> support agent
+         return true;
+      } else if (in_array(CommonITILActor::OBSERVER, $roles)) {
+         // The author is an observer or a requester -> can be support agent OR
+         // requester depending on how GLPI is used so we must check the user's
+         // profiles
+         $central_profiles = $DB->request([
+            'COUNT' => 'total',
+            'FROM' => Profile::getTable(),
+            'WHERE' => [
+               'interface' => 'central',
+               'id' => new QuerySubQuery([
+                  'SELECT' => ['profiles_id'],
+                  'FROM' => Profile_User::getTable(),
+                  'WHERE' => [
+                     'users_id' => $user_id
+                  ]
+               ])
+            ]
+         ]);
+
+         // No profiles, let's assume it is a support agent to be safe
+         if (!count($central_profiles)) {
+            return false;
+         }
+
+         return $central_profiles->next()['total'] > 0;
+      } else if (in_array(CommonITILActor::REQUESTER, $roles)) {
+         // The author is a requester -> not from support agent
+         return false;
+      } else {
+         // The author is not an actor of the ticket -> he was most likely a
+         // support agent that is no longer assigned to the ticket
+         return true;
       }
    }
 }

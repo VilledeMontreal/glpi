@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -49,6 +49,16 @@ class NotificationTargetCertificate extends NotificationTarget {
       return ['alert' => __('Alarms on expired certificates')];
    }
 
+   function addAdditionalTargets($event = '') {
+      $this->addTarget(
+         Notification::ITEM_TECH_IN_CHARGE,
+         __('Technician in charge of the certificate')
+      );
+      $this->addTarget(
+         Notification::ITEM_TECH_GROUP_IN_CHARGE,
+         __('Group in charge of the certificate')
+      );
+   }
 
    function addDataForTemplate($event, $options = []) {
 
@@ -93,7 +103,7 @@ class NotificationTargetCertificate extends NotificationTarget {
                'certificate.name'           => __('Name'),
                'certificate.serial'         => __('Serial number'),
                'certificate.url'            => __('URL'),
-               'certificate.entity'         => __('Entity'),
+               'certificate.entity'         => Entity::getTypeName(1),
                ];
 
       foreach ($tags as $tag => $label) {

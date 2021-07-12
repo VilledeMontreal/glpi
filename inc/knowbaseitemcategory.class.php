@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -46,5 +46,13 @@ class KnowbaseItemCategory extends CommonTreeDropdown {
 
    static function getTypeName($nb = 0) {
       return _n('Knowledge base category', 'Knowledge base categories', $nb);
+   }
+
+   public static function canView() {
+      if (Session::getCurrentInterface() == "helpdesk") {
+         return true;
+      }
+
+      return parent::canView();
    }
 }

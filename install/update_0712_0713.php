@@ -4,7 +4,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,7 +34,7 @@
 
 /// Update from 0.71.2 to 0.71.3
 function update0712to0713() {
-   global $DB, $CFG_GLPI;
+   global $DB;
 
    if (!$DB->fieldExists("glpi_rule_cache_software", "ignore_ocs_import", false)) {
       $query = "ALTER TABLE `glpi_rule_cache_software`

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,6 +36,8 @@ if (!defined('GLPI_ROOT')) {
 
 /// Location class
 class Location extends CommonTreeDropdown {
+
+   use MapGeolocation;
 
    // From CommonDBTM
    public $dohistory          = true;
@@ -125,7 +127,7 @@ class Location extends CommonTreeDropdown {
          'id'                 => '3',
          'table'              => 'glpi_locations',
          'field'              => 'completename',
-         'name'               => __('Location'),
+         'name'               => Location::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -230,7 +232,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'building',
          'name'               => __('Building number'),
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -238,7 +241,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'room',
          'name'               => __('Room number'),
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -274,7 +278,8 @@ class Location extends CommonTreeDropdown {
          'field'              => 'latitude',
          'name'               => __('Latitude'),
          'massiveaction'      => false,
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -283,7 +288,8 @@ class Location extends CommonTreeDropdown {
          'field'              => 'longitude',
          'name'               => __('Longitude'),
          'massiveaction'      => false,
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -292,7 +298,8 @@ class Location extends CommonTreeDropdown {
          'field'              => 'altitude',
          'name'               => __('Altitude'),
          'massiveaction'      => false,
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -300,7 +307,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'address',
          'name'               => __('Address'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -308,7 +316,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'postcode',
          'name'               => __('Postal code'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -316,7 +325,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'town',
          'name'               => __('Town'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -324,7 +334,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'state',
          'name'               => _x('location', 'State'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -332,7 +343,8 @@ class Location extends CommonTreeDropdown {
          'table'              => 'glpi_locations',
          'field'              => 'country',
          'name'               => __('Country'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       return $tab;
@@ -342,6 +354,7 @@ class Location extends CommonTreeDropdown {
    function defineTabs($options = []) {
 
       $ong = parent::defineTabs($options);
+      $this->addImpactTab($ong, $options);
       $this->addStandardTab('Netpoint', $ong, $options);
       $this->addStandardTab('Document_Item', $ong, $options);
       $this->addStandardTab(__CLASS__, $ong, $options);
@@ -353,15 +366,10 @@ class Location extends CommonTreeDropdown {
    function cleanDBonPurge() {
 
       Rule::cleanForItemAction($this);
-      Rule::cleanForItemCriteria($this, 'users_locations');
+      Rule::cleanForItemCriteria($this, '_locations_id%');
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonTreeDropdown::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (!$withtemplate) {
@@ -377,9 +385,6 @@ class Location extends CommonTreeDropdown {
    }
 
 
-   /**
-    * @since 0.85
-   **/
    static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0) {
 
       if ($item->getType() == __CLASS__) {
@@ -401,21 +406,25 @@ class Location extends CommonTreeDropdown {
     *
     * @since 0.85
     *
-    * @return Nothing (display)
+    * @return void
    **/
    function showItems() {
       global $DB, $CFG_GLPI;
 
       $locations_id = $this->fields['id'];
-      $itemtype     = Session::getSavedOption(__CLASS__, 'criterion', '');
+      $current_itemtype     = Session::getSavedOption(__CLASS__, 'criterion', '');
 
       if (!$this->can($locations_id, READ)) {
          return false;
       }
 
       $queries = [];
-      $itemtypes = $itemtype ? [$itemtype] : $CFG_GLPI['location_types'];
+      $itemtypes = $current_itemtype ? [$current_itemtype] : $CFG_GLPI['location_types'];
       foreach ($itemtypes as $itemtype) {
+         $item = new $itemtype();
+         if (!$item->maybeLocated()) {
+            continue;
+         }
          $table = getTableForItemType($itemtype);
          $itemtype_criteria = [
             'SELECT' => [
@@ -427,7 +436,6 @@ class Location extends CommonTreeDropdown {
                "$table.locations_id"   => $locations_id,
             ] + getEntitiesRestrictCriteria($table, 'entities_id')
          ];
-         $item = new $itemtype();
          if ($item->maybeDeleted()) {
             $itemtype_criteria['WHERE']['is_deleted'] = 0;
          }
@@ -440,18 +448,27 @@ class Location extends CommonTreeDropdown {
       $criteria['LIMIT'] = $_SESSION['glpilist_limit'];
 
       $iterator = $DB->request($criteria);
-      $number = count($iterator);;
-      if ($start >= $number) {
-         $start = 0;
-      }
+
+      // Execute a second request to get the total number of rows
+      unset($criteria['SELECT']);
+      unset($criteria['START']);
+      unset($criteria['LIMIT']);
+
+      $criteria['COUNT'] = 'total';
+      $number = $DB->request($criteria)->next()['total'];
+
       // Mini Search engine
       echo "<table class='tab_cadre_fixe'>";
-      echo "<tr class='tab_bg_1'><th colspan='2'>".__('Type')."</th></tr>";
+      echo "<tr class='tab_bg_1'><th colspan='2'>"._n('Type', 'Types', 1)."</th></tr>";
       echo "<tr class='tab_bg_1'><td class='center'>";
-      echo __('Type')."&nbsp;";
-      Dropdown::showItemType($CFG_GLPI['location_types'],
-                             ['value'      => $itemtype,
-                                   'on_change'  => 'reloadTab("start=0&criterion="+this.value)']);
+      echo _n('Type', 'Types', 1)."&nbsp;";
+      $all_types = array_merge(['0' => '---'], $CFG_GLPI['location_types']);
+      Dropdown::showItemType(
+         $all_types, [
+            'value'      => $current_itemtype,
+            'on_change'  => 'reloadTab("start=0&criterion="+this.value)'
+         ]
+      );
       echo "</td></tr></table>";
 
       if ($number) {
@@ -459,8 +476,8 @@ class Location extends CommonTreeDropdown {
          Html::printAjaxPager('', $start, $number);
 
          echo "<table class='tab_cadre_fixe'>";
-         echo "<tr><th>".__('Type')."</th>";
-         echo "<th>".__('Entity')."</th>";
+         echo "<tr><th>"._n('Type', 'Types', 1)."</th>";
+         echo "<th>".Entity::getTypeName(1)."</th>";
          echo "<th>".__('Name')."</th>";
          echo "<th>".__('Serial number')."</th>";
          echo "<th>".__('Inventory number')."</th>";
@@ -490,103 +507,14 @@ class Location extends CommonTreeDropdown {
    function displaySpecificTypeField($ID, $field = []) {
       switch ($field['type']) {
          case 'setlocation':
-            echo "<div id='setlocation_container'></div>";
-            $js = "var map_elt, _marker;
-            var _setLocation = function(lat, lng) {
-               if (_marker) {
-                  map_elt.removeLayer(_marker);
-               }
-               _marker = L.marker([lat, lng]).addTo(map_elt);
-               map_elt.fitBounds(
-                  L.latLngBounds([_marker.getLatLng()]), {
-                     padding: [50, 50],
-                     maxZoom: 10
-                  }
-               );
-            };
-
-            var _autoSearch = function() {
-               var _tosearch = '';
-               var _address = $('*[name=address]').val();
-               var _town = $('*[name=town]').val();
-               var _country = $('*[name=country]').val();
-               if (_address != '') {
-                  _tosearch += _address;
-               }
-               if (_town != '') {
-                  if (_address != '') {
-                     _tosearch += ' ';
-                  }
-                  _tosearch += _town;
-               }
-               if (_country != '') {
-                  if (_address != '' || _town != '') {
-                     _tosearch += ' ';
-                  }
-                  _tosearch += _country;
-               }
-
-               $('.leaflet-control-geocoder-form > input[type=text]').val(_tosearch);
-            }
-
-            $(function(){
-               map_elt = initMap($('#setlocation_container'), 'setlocation', '200px');
-
-               var osmGeocoder = new L.Control.OSMGeocoder({
-                  collapsed: false,
-                  placeholder: '".__s('Search')."',
-                  text: '".__s('Search')."'
-               });
-               map_elt.addControl(osmGeocoder);
-               _autoSearch();
-
-               function onMapClick(e) {
-                  var popup = L.popup();
-                  popup
-                     .setLatLng(e.latlng)
-                     .setContent('SELECTPOPUP')
-                     .openOn(map_elt);
-               }
-
-               map_elt.on('click', onMapClick);
-
-               map_elt.on('popupopen', function(e){
-                  var _popup = e.popup;
-                  var _container = $(_popup._container);
-
-                  var _clat = _popup._latlng.lat.toString();
-                  var _clng = _popup._latlng.lng.toString();
-
-                  _popup.setContent('<p><a href=\'#\'>".__s('Set location here')."</a></p>');
-
-                  $(_container).find('a').on('click', function(e){
-                     e.preventDefault();
-                     _popup.remove();
-                     $('*[name=latitude]').val(_clat);
-                     $('*[name=longitude]').val(_clng).trigger('change');
-                  });
-               });
-
-               var _curlat = $('*[name=latitude]').val();
-               var _curlng = $('*[name=longitude]').val();
-
-               if (_curlat && _curlng) {
-                  _setLocation(_curlat, _curlng);
-               }
-
-               $('*[name=latitude],*[name=longitude]').on('change', function(){
-                  var _curlat = $('*[name=latitude]').val();
-                  var _curlng = $('*[name=longitude]').val();
-
-                  if (_curlat && _curlng) {
-                     _setLocation(_curlat, _curlng);
-                  }
-               });
-            });";
-            echo Html::scriptBlock($js);
+            $this->showMap();
             break;
          default:
             throw new \RuntimeException("Unknown {$field['type']}");
       }
+   }
+
+   static function getIcon() {
+      return "fas fa-map-marker-alt";
    }
 }

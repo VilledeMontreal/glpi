@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -56,7 +56,7 @@ class DeviceControl extends CommonDevice {
                                      'label' => __('Interface'),
                                      'type'  => 'dropdownValue'],
                                ['name'  => 'devicecontrolmodels_id',
-                                     'label' => __('Model'),
+                                     'label' => _n('Model', 'Models', 1),
                                      'type'  => 'dropdownValue'],
                                ['name'  => 'none',
                                      'label' => RegisteredID::getTypeName(Session::getPluralNumber()).
@@ -90,7 +90,7 @@ class DeviceControl extends CommonDevice {
          'id'                 => '15',
          'table'              => 'glpi_devicecontrolmodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -98,11 +98,6 @@ class DeviceControl extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableHeader()
-   **/
    static function getHTMLTableHeader($itemtype, HTMLTableBase $base,
                                       HTMLTableSuperHeader $super = null,
                                       HTMLTableHeader $father = null, array $options = []) {
@@ -123,11 +118,6 @@ class DeviceControl extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableCellForItem()
-   **/
    function getHTMLTableCellForItem(HTMLTableRow $row = null, CommonDBTM $item = null,
                                     HTMLTableCell $father = null, array $options = []) {
 
@@ -142,5 +132,10 @@ class DeviceControl extends CommonDevice {
             Manufacturer::getHTMLTableCellsForItem($row, $this, null, $options);
             InterfaceType::getHTMLTableCellsForItem($row, $this, null, $options);
       }
+   }
+
+
+   static function getIcon() {
+      return "fas fa-microchip";
    }
 }

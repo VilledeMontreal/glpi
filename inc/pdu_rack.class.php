@@ -7,7 +7,7 @@ if (!defined('GLPI_ROOT')) {
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -203,7 +203,7 @@ class PDU_Rack extends CommonDBRelation {
    }
 
    function showForm($ID, $options = []) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       // search used racked (or sided mounted) pdus
       $used = [];
@@ -233,7 +233,7 @@ class PDU_Rack extends CommonDBRelation {
       $rand = mt_rand();
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_pdus_id$rand'>".__('PDU')."</label></td>";
+      echo "<td><label for='dropdown_pdus_id$rand'>".PDU::getTypeName(1)."</label></td>";
       echo "<td>";
       PDU::dropdown([
          'value'       => $this->fields["pdus_id"],
@@ -256,7 +256,7 @@ class PDU_Rack extends CommonDBRelation {
       echo "</tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_racks_id$rand'>".__('Rack')."</label></td>";
+      echo "<td><label for='dropdown_racks_id$rand'>".Rack::getTypeName(1)."</label></td>";
       echo "<td>";
       Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
       echo "</td>";
@@ -326,7 +326,7 @@ class PDU_Rack extends CommonDBRelation {
             $header .= Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
             $header .= "</th>";
          }
-         $header .= "<th>".__('Item')."</th>";
+         $header .= "<th>"._n('Item', 'Items', 1)."</th>";
          $header .= "<th>".__('Side')."</th>";
          $header .= "<th>".__('Position')."</th>";
          $header .= "</tr>";
@@ -554,8 +554,8 @@ JAVASCRIPT;
          if ($float) {
             echo "<div class='side_pdus_graph grid-stack grid-stack-1'
                        id='side_pdus_$rand'
-                       data-gs-width='1'
-                       data-gs-height='".($rack->fields['number_units'] + 1)."'>";
+                       data-gs-column='1'
+                       data-gs-max-row='".($rack->fields['number_units'] + 1)."'>";
          }
 
          foreach ($found_pdus_side as $current) {
@@ -580,7 +580,7 @@ JAVASCRIPT;
 
                $tip = "<span class='tipcontent'>";
                $tip.= "<span>
-                        <label>".__('Type').":</label>".
+                        <label>"._n('Type', 'Types', 1).":</label>".
                         $pdu->getTypeName()."
                      </span>
                      <span>

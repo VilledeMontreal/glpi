@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -181,7 +181,7 @@ abstract class CommonITILActor extends CommonDBRelation {
          $emails        = $user->getAllEmails();
       }
 
-      echo "<tr class='tab_bg_2'><td>".__('User')."</td>";
+      echo "<tr class='tab_bg_2'><td>".User::getTypeName(1)."</td>";
       echo "<td>".$user->getName()."</td></tr>";
 
       echo "<tr class='tab_bg_1'><td>".__('Email Followup')."</td>";
@@ -189,7 +189,7 @@ abstract class CommonITILActor extends CommonDBRelation {
       Dropdown::showYesNo('use_notification', $this->fields['use_notification']);
       echo "</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Email')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Email', 'Emails', 1)."</td>";
       echo "<td>";
       if ((count($emails) ==  1)
           && !empty($default_email)
@@ -256,7 +256,7 @@ abstract class CommonITILActor extends CommonDBRelation {
          $default_email = $supplier->fields['email'];
       }
 
-      echo "<tr class='tab_bg_2'><td>".__('Supplier')."</td>";
+      echo "<tr class='tab_bg_2'><td>".Supplier::getTypeName(1)."</td>";
       echo "<td>".$supplier->getName()."</td></tr>";
 
       echo "<tr class='tab_bg_1'><td>".__('Email Followup')."</td>";
@@ -264,7 +264,7 @@ abstract class CommonITILActor extends CommonDBRelation {
       Dropdown::showYesNo('use_notification', $this->fields['use_notification']);
       echo "</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Email')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Email', 'Emails', 1)."</td>";
       echo "<td>";
       if (empty($this->fields['alternative_email'])) {
          $this->fields['alternative_email'] = $default_email;
@@ -342,7 +342,7 @@ abstract class CommonITILActor extends CommonDBRelation {
    }
 
    function prepareInputForUpdate($input) {
-      if ($input['alternative_email'] == '') {
+      if (isset($input['alternative_email']) && $input['alternative_email'] == '') {
          if (isset($input['users_id'])) {
             $actor = new User();
             if ($actor->getFromDB($input["users_id"])) {
@@ -356,7 +356,8 @@ abstract class CommonITILActor extends CommonDBRelation {
             }
          }
       }
-      if (isset($input['alternative_email']) && !NotificationMailing::isUserAddressValid($input['alternative_email'])) {
+      if (isset($input['alternative_email']) && $input['alternative_email'] != ''
+          && !NotificationMailing::isUserAddressValid($input['alternative_email'])) {
          Session::addMessageAfterRedirect(
             __('Invalid email address'),
             false,

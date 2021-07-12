@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -106,7 +106,7 @@ if (isset($_POST["type"])
                   echo __('Email followup').'&nbsp;';
                   $rand = Dropdown::showYesNo('_itil_'.$_POST["actortype"].'[use_notification]', $_POST["use_notif"]);
                   echo '<br>';
-                  printf(__('%1$s: %2$s'), __('Email'),
+                  printf(__('%1$s: %2$s'), _n('Email', 'Emails', 1),
                          "<input type='text' size='25' name='_itil_".$_POST["actortype"].
                            "[alternative_email]'>");
                }
@@ -194,7 +194,7 @@ if (isset($_POST["type"])
                   echo __('Email followup').'&nbsp;';
                   $rand = Dropdown::showYesNo('_itil_'.$_POST["actortype"].'[use_notification]', $_POST['use_notif']);
                   echo '<br>';
-                  printf(__('%1$s: %2$s'), __('Email'),
+                  printf(__('%1$s: %2$s'), _n('Email', 'Emails', 1),
                          "<input type='text' size='25' name='_itil_".$_POST["actortype"].
                            "[alternative_email]'>");
                }

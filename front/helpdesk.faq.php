@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,21 +37,17 @@ if (isset($_GET["redirect"])) {
    Toolbox::manageRedirect($_GET["redirect"]);
 }
 
-//*******************
-// Affichage Module FAQ
-//******************
-
 Session::checkFaqAccess();
 Html::requireJs('jstree');
 
 if (Session::getLoginUserID()) {
    Html::helpHeader(__('FAQ'), $_SERVER['PHP_SELF'], $_SESSION["glpiname"]);
 } else {
-   $_SESSION["glpilanguage"] = $CFG_GLPI['language'];
+   $_SESSION["glpilanguage"] = $_SESSION['glpilanguage'] ?? $CFG_GLPI['language'];
    // Anonymous FAQ
-   Html::simpleHeader(__('FAQ'),
-                      [__('Authentication') => $CFG_GLPI['root_doc'].'/',
-                            __('FAQ')            => $CFG_GLPI['root_doc'].'/front/helpdesk.faq.php']);
+   Html::simpleHeader(__('FAQ'), [
+      __('FAQ') => $CFG_GLPI['root_doc'].'/front/helpdesk.faq.php'
+   ]);
 }
 
 if (isset($_GET["id"])) {

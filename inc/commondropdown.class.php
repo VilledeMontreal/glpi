@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -46,7 +46,7 @@ abstract class CommonDropdown extends CommonDBTM {
 
    //Menu & navigation
    public $first_level_menu  = "config";
-   public $second_level_menu = "CommonDropdown";
+   public $second_level_menu = "commondropdown";
    public $third_level_menu  = "";
 
    public $display_dropdowntitle  = true;
@@ -101,6 +101,7 @@ abstract class CommonDropdown extends CommonDBTM {
          $menu['title']             = static::getTypeName(Session::getPluralNumber());
          $menu['shortcut']          = 'n';
          $menu['page']              = '/front/dropdown.php';
+         $menu['icon']              = self::getIcon();
          $menu['config']['default'] = '/front/dropdown.php';
 
          $dps = Dropdown::getStandardDropdownItemTypes();
@@ -111,6 +112,7 @@ abstract class CommonDropdown extends CommonDBTM {
                if ($tmp = getItemForItemtype($key)) {
                   $menu['options'][$key]['title']           = $val;
                   $menu['options'][$key]['page']            = $tmp->getSearchURL(false);
+                  $menu['options'][$key]['icon']            = $tmp->getIcon();
                   $menu['options'][$key]['links']['search'] = $tmp->getSearchURL(false);
                   if ($tmp->canCreate()) {
                      $menu['options'][$key]['links']['add'] = $tmp->getFormURL(false);
@@ -259,7 +261,9 @@ abstract class CommonDropdown extends CommonDBTM {
       echo "<td rowspan='".($nb+1)."'>". __('Comments')."</td>";
       echo "<td rowspan='".($nb+1)."'>
             <textarea cols='45' rows='".($nb+2)."' name='comment' >".$this->fields["comment"];
-      echo "</textarea></td></tr>\n";
+      echo "</textarea></td>";
+
+      echo "</tr>\n";
 
       foreach ($fields as $field) {
          if (($field['name'] == 'entities_id')
@@ -426,8 +430,49 @@ abstract class CommonDropdown extends CommonDBTM {
                break;
 
             case 'password':
-               echo "<input type='password' name='password' value='' size='20' autocomplete='off'>";
+               echo "<input type='password' name='password' value='' size='20' autocomplete='new-password'>";
                break;
+
+            case 'tinymce':
+               Html::textarea([
+                  'name'            => $field['name'],
+                  'value'           => $this->fields[$field['name']],
+                  'enable_richtext' => true,
+               ]);
+               break;
+
+            case 'duration' :
+               $toadd = [];
+               for ($i=9; $i<=100; $i++) {
+                  $toadd[] = $i*HOUR_TIMESTAMP;
+               }
+               Dropdown::showTimeStamp($field['name'], [
+                  'min'             => 0,
+                  'max'             => 8*HOUR_TIMESTAMP,
+                  'value'           => $this->fields[$field['name']],
+                  'addfirstminutes' => true,
+                  'inhours'         => true,
+                  'toadd'           => $toadd
+               ]);
+               break;
+
+            case 'itemtypename':
+               $options = [
+                  'value'  => $this->fields[$field['name']]
+               ];
+
+               if (isset($field['itemtype_list'])) {
+                  $options['types'] = $CFG_GLPI[$field['itemtype_list']];
+               }
+
+               if (isset($options['types'])) {
+                  Dropdown::showItemTypes(
+                     $field['name'],
+                     $options['types'],
+                     $options
+                  );
+               }
+               return false;
 
             default:
                $this->displaySpecificTypeField($ID, $field);
@@ -481,7 +526,8 @@ abstract class CommonDropdown extends CommonDBTM {
          'field'             => 'name',
          'name'              => __('Name'),
          'datatype'          => 'itemlink',
-         'massiveaction'     => false
+         'massiveaction'     => false,
+         'autocomplete'      => true,
       ];
 
       $tab[] = [
@@ -498,7 +544,8 @@ abstract class CommonDropdown extends CommonDBTM {
             'id'  => '3',
             'table'  => $this->getTable(),
             'field'  => 'product_number',
-            'name'   => __('Product number')
+            'name'   => __('Product number'),
+            'autocomplete' => true,
          ];
       }
 
@@ -515,7 +562,7 @@ abstract class CommonDropdown extends CommonDBTM {
             'id'             => '80',
             'table'          => 'glpi_entities',
             'field'          => 'completename',
-            'name'           => __('Entity'),
+            'name'           => Entity::getTypeName(1),
             'massiveaction'  => false,
             'datatype'       => 'dropdown'
          ];
@@ -828,7 +875,7 @@ abstract class CommonDropdown extends CommonDBTM {
           &&  $this->maybeRecursive()
           && (count($_SESSION['glpiactiveentities']) > 1)
           && !in_array('merge', $forbidden_actions)) {
-         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'merge'] = __('Transfer and merge');
+         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'merge'] = __('Merge and assign to current entity');
       }
 
       return $actions;
@@ -939,7 +986,7 @@ abstract class CommonDropdown extends CommonDBTM {
          $rand = mt_rand();
          $kbitem = new KnowbaseItem;
          $found_kbitem = $kbitem->find([
-            'knowbaseitemcategories_id' => $this->fields['knowbaseitemcategories_id']
+            KnowbaseItem::getTable() . '.id'  => KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id'])
          ]);
 
          $kbitem->getFromDB(reset($found_kbitem)['id']);
@@ -974,7 +1021,7 @@ abstract class CommonDropdown extends CommonDBTM {
                   'display'   => false,
                   'rand'      => $rand,
                   'condition' => [
-                     'knowbaseitemcategories_id' => $this->fields['knowbaseitemcategories_id']
+                     KnowbaseItem::getTable() . '.id' => KnowbaseItem::getForCategory($this->fields['knowbaseitemcategories_id'])
                   ],
                   'on_change' => "getKnowbaseItemAnswer$rand()"
                ]);
@@ -987,5 +1034,16 @@ abstract class CommonDropdown extends CommonDBTM {
          }
       }
       return $ret;
+   }
+
+   public function getForbiddenSingleMassiveActions() {
+      $excluded = parent::getForbiddenSingleMassiveActions();
+      $excluded[] = '*:merge';
+      return $excluded;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-edit";
    }
 }

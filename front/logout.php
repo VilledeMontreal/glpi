@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,6 +37,11 @@
 include ('../inc/includes.php');
 
 //@session_start();
+
+if ($CFG_GLPI["ssovariables_id"] > 0
+    && strlen($CFG_GLPI['ssologout_url']) > 0) {
+   Html::redirect($CFG_GLPI["ssologout_url"]);
+}
 
 if (!isset($_SESSION["noAUTO"])
     && isset($_SESSION["glpiauthtype"])

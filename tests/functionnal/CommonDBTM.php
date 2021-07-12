@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +33,8 @@
 namespace tests\units;
 
 use \DbTestCase;
+use SoftwareVersion;
+use TicketTask;
 
 /* Test for inc/commondbtm.class.php */
 
@@ -178,19 +180,13 @@ class CommonDBTM extends DbTestCase {
       $this->array($comp->fields)->isEmpty();
 
       $this->boolean($comp->getEmpty())->isTrue();
-      $this->array($comp->fields)
-         ->string['entities_id']->isIdenticalTo('');
+      $this->array($comp->fields)->integer['entities_id']->isEqualTo(0);
 
       $_SESSION["glpiactive_entity"] = 12;
       $this->boolean($comp->getEmpty())->isTrue();
       unset($_SESSION['glpiactive_entity']);
       $this->array($comp->fields)
          ->integer['entities_id']->isIdenticalTo(12);
-
-      /* do not work
-      $_SESSION['glpi_table_of']['Computer'] = '';
-      $this->boolean($comp->getEmpty())->isFalse();
-      unset($_SESSION['glpi_table_of']);*/
    }
 
    /**
@@ -820,12 +816,13 @@ class CommonDBTM extends DbTestCase {
       $_SESSION['glpi_currenttime'] = '2000-01-01 00:00:00';
 
       //test with date set
-      $computerID = $computer->add([
-         'name'            => 'Computer01',
+      $computerID = $computer->add(\Toolbox::addslashes_deep([
+         'name'            => 'Computer01 \'',
          'date_creation'   => '2018-01-01 11:22:33',
          'date_mod'        => '2018-01-01 22:33:44',
          'entities_id'     => $ent0
-      ]);
+      ]));
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
       $this->integer($computerID)->isGreaterThan(0);
       $this->boolean(
@@ -834,12 +831,14 @@ class CommonDBTM extends DbTestCase {
       // Verify you can override creation and modifcation dates from add
       $this->string($computer->fields['date_creation'])->isEqualTo('2018-01-01 11:22:33');
       $this->string($computer->fields['date_mod'])->isEqualTo('2018-01-01 22:33:44');
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
       //test with default date
-      $computerID = $computer->add([
-         'name'            => 'Computer01',
+      $computerID = $computer->add(\Toolbox::addslashes_deep([
+         'name'            => 'Computer01 \'',
          'entities_id'     => $ent0
-      ]);
+      ]));
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
       $this->integer($computerID)->isGreaterThan(0);
       $this->boolean(
@@ -848,9 +847,40 @@ class CommonDBTM extends DbTestCase {
       // Verify default date has been used
       $this->string($computer->fields['date_creation'])->isEqualTo('2000-01-01 00:00:00');
       $this->string($computer->fields['date_mod'])->isEqualTo('2000-01-01 00:00:00');
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
       $_SESSION['glpi_currenttime'] = $bkp_current;
    }
+
+   public function testUpdate() {
+      $computer = new \Computer();
+      $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
+      $bkp_current = $_SESSION['glpi_currenttime'];
+      $_SESSION['glpi_currenttime'] = '2000-01-01 00:00:00';
+
+      //test with date set
+      $computerID = $computer->add(\Toolbox::addslashes_deep([
+         'name'            => 'Computer01',
+         'date_creation'   => '2018-01-01 11:22:33',
+         'date_mod'        => '2018-01-01 22:33:44',
+         'entities_id'     => $ent0
+      ]));
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01");
+
+      $this->integer($computerID)->isGreaterThan(0);
+      $this->boolean(
+         $computer->getFromDB($computerID)
+      )->isTrue();
+      $this->string($computer->fields['name'])->isIdenticalTo("Computer01");
+
+      $this->boolean(
+         $computer->update(['id' => $computerID, 'name' => \Toolbox::addslashes_deep('Computer01 \'')])
+      )->isTrue();
+      $this->string($computer->fields['name'])->isIdenticalTo('Computer01 \'');
+      $this->boolean($computer->getFromDB($computerID))->isTrue();
+      $this->string($computer->fields['name'])->isIdenticalTo('Computer01 \'');
+   }
+
 
    public function testTimezones() {
       global $DB;
@@ -884,5 +914,232 @@ class CommonDBTM extends DbTestCase {
       $this->login('glpi', 'glpi');
       $this->boolean($comp->getFromDB($cid));
       $this->string($comp->fields['date_creation'])->matches('/2019-03-04 1[12]:00:00/');
+   }
+
+   public function testCircularRelation() {
+      $project = new \Project();
+      $project_id_1 = $project->add([
+         'name' => 'Project 1',
+         'auto_percent_done' => 1
+      ]);
+      $this->integer((int) $project_id_1)->isGreaterThan(0);
+      $project_id_2 = $project->add([
+         'name' => 'Project 2',
+         'auto_percent_done' => 1,
+         'projects_id' => $project_id_1
+      ]);
+      $this->integer((int) $project_id_2)->isGreaterThan(0);
+      $project_id_3 = $project->add([
+         'name' => 'Project 3',
+         'projects_id' => $project_id_2
+      ]);
+      $this->integer((int) $project_id_3)->isGreaterThan(0);
+      $project_id_4 = $project->add([
+         'name' => 'Project 4',
+      ]);
+      $this->integer((int) $project_id_4)->isGreaterThan(0);
+
+      // This should evaluate as a circular relation
+      $this->boolean(\Project::checkCircularRelation($project_id_1, $project_id_3))->isTrue();
+      // This should not evaluate as a circular relation
+      $this->boolean(\Project::checkCircularRelation($project_id_4, $project_id_3))->isFalse();
+   }
+
+   protected function relationConfigProvider() {
+
+      return [
+         [
+            'relation_itemtype' => \Infocom::getType(),
+            'config_name'       => 'infocom_types',
+         ],
+         [
+            'relation_itemtype' => \ReservationItem::getType(),
+            'config_name'       => 'reservation_types',
+         ],
+         [
+            'relation_itemtype' => \Contract_Item::getType(),
+            'config_name'       => 'contract_types',
+            'linked_itemtype'   => \Contract::class,
+         ],
+         [
+            'relation_itemtype' => \Document_Item::getType(),
+            'config_name'       => 'document_types',
+            'linked_itemtype'   => \Document::class,
+         ],
+         [
+            'relation_itemtype' => \KnowbaseItem_Item::getType(),
+            'config_name'       => 'kb_types',
+            'linked_itemtype'   => \KnowbaseItem::class,
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider relationConfigProvider
+    */
+   public function testCleanRelationTableBasedOnConfiguredTypes(
+      $relation_itemtype,
+      $config_name,
+      $linked_itemtype = null
+   ) {
+      global $CFG_GLPI;
+
+      $entity_id = getItemByTypeName('Entity', '_test_root_entity', true);
+
+      $this->login(); // must be logged as Document_Item uses Session::getLoginUserID()
+
+      $computer = new \Computer();
+      $relation_item = new $relation_itemtype();
+
+      $linked_item_input = [];
+      if ($linked_itemtype !== null) {
+         $linked_item = new $linked_itemtype();
+         $linked_item_id = $linked_item->add(
+            [
+               'name'        => 'Linked item',
+               'entities_id' => $entity_id,
+            ]
+         );
+         $this->integer($linked_item_id)->isGreaterThan(0);
+         $linked_item_input = [$linked_item->getForeignKeyField() => $linked_item_id];
+      }
+
+      // Create computer for which cleaning will be done.
+      $computer_1_id = $computer->add(
+         [
+            'name'        => 'Computer 1',
+            'entities_id' => $entity_id,
+         ]
+      );
+      $this->integer($computer_1_id)->isGreaterThan(0);
+      $relation_item_1_id = $relation_item->add(
+         [
+            'itemtype' => $computer->getType(),
+            'items_id' => $computer_1_id,
+         ] + $linked_item_input
+      );
+      $this->integer($relation_item_1_id)->isGreaterThan(0);
+      $this->boolean($relation_item->getFromDB($relation_item_1_id))->isTrue();
+
+      // Create witness computer.
+      $computer_2_id = $computer->add(
+         [
+            'name'        => 'Computer 2',
+            'entities_id' => $entity_id,
+         ]
+      );
+      $this->integer($computer_2_id)->isGreaterThan(0);
+      $relation_item_2_id = $relation_item->add(
+         [
+            'itemtype' => $computer->getType(),
+            'items_id' => $computer_2_id,
+         ] + $linked_item_input
+      );
+      $this->integer($relation_item_2_id)->isGreaterThan(0);
+      $this->boolean($relation_item->getFromDB($relation_item_2_id))->isTrue();
+
+      $cfg_backup = $CFG_GLPI;
+      $CFG_GLPI[$config_name] = [$computer->getType()];
+      $computer->delete(['id' => $computer_1_id], true);
+      $CFG_GLPI = $cfg_backup;
+
+      // Relation with deleted item has been cleaned
+      $this->boolean($relation_item->getFromDB($relation_item_1_id))->isFalse();
+      // Relation with witness object is still present
+      $this->boolean($relation_item->getFromDB($relation_item_2_id))->isTrue();
+   }
+
+
+   protected function testCheckTemplateEntityProvider() {
+      $sv1 = getItemByTypeName('SoftwareVersion', '_test_softver_1');
+
+      $sv2 = getItemByTypeName('SoftwareVersion', '_test_softver_1');
+      $sv2->fields['entities_id'] = 99999;
+
+      $sv3 = getItemByTypeName('SoftwareVersion', '_test_softver_1');
+      $sv3->fields['entities_id'] = 99999;
+
+      return [
+         [
+            // Case 1: no entites field -> no change
+            'data'            => ['test' => "test"],
+            'parent_id'       => 999,
+            'parent_itemtype' => SoftwareVersion::class,
+            'active_entities' => [],
+            'expected'        => ['test' => "test"],
+         ],
+         [
+            // Case 2: entity is allowed -> no change
+            'data'            => $sv1->fields,
+            'parent_id'       => $sv1->fields['softwares_id'],
+            'parent_itemtype' => SoftwareVersion::class,
+            'active_entities' => [$sv1->fields['entities_id']],
+            'expected'        => $sv1->fields,
+         ],
+         [
+            // Case 3: entity is not allowed -> change to parent entity
+            'data'            => $sv2->fields, // SV with modified entity
+            'parent_id'       => $sv2->fields['softwares_id'],
+            'parent_itemtype' => SoftwareVersion::class,
+            'active_entities' => [],
+            'expected'        => $sv1->fields, // SV with correct entity
+         ],
+         [
+            // Case 4: can't load parent -> no change
+            'data'            => $sv3->fields,
+            'parent_id'       => 99999,
+            'parent_itemtype' => SoftwareVersion::class,
+            'active_entities' => [],
+            'expected'        => $sv3->fields,
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider testCheckTemplateEntityProvider
+    */
+   public function testCheckTemplateEntity(
+      array $data,
+      $parent_id,
+      $parent_itemtype,
+      array $active_entities,
+      array $expected
+   ) {
+      $_SESSION['glpiactiveentities'] = $active_entities;
+
+      $res = \CommonDBTM::checkTemplateEntity($data, $parent_id, $parent_itemtype);
+      $this->array($res)->isEqualTo($expected);
+
+      // Reset session
+      unset($_SESSION['glpiactiveentities']);
+   }
+
+   public function testGetById() {
+      $itemtype = \Computer::class;
+
+      // test existing item
+      $instance = new $itemtype();
+      $instance->getFromDBByRequest([
+         'WHERE' => ['name' => '_test_pc01'],
+      ]);
+      $this->boolean($instance->isNewItem())->isFalse();
+      $output = $itemtype::getById($instance->getID());
+      $this->object($output)->isInstanceOf($itemtype);
+
+      // test non-existing item
+      $instance = new $itemtype();
+      $instance->add([
+         'name' => 'to be deleted',
+         'entities_id' => 0,
+      ]);
+      $this->boolean($instance->isNewItem())->isFalse();
+      $nonExistingId = $instance->getID();
+      $instance->delete([
+         'id' => $nonExistingId,
+      ], 1);
+      $this->boolean($instance->getFromDB($nonExistingId))->isFalse();
+
+      $output = $itemtype::getById($nonExistingId);
+      $this->boolean($output)->isFalse();
    }
 }

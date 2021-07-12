@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -88,6 +88,11 @@ class ProfileRight extends CommonDBChild {
    **/
    static function getProfileRights($profiles_id, array $rights = []) {
       global $DB;
+
+      if (!version_compare(Config::getCurrentDBVersion(), '0.84', '>=')) {
+         //table does not exists.
+         return [];
+      }
 
       $query = [
          'FROM'   => 'glpi_profilerights',
@@ -204,17 +209,19 @@ class ProfileRight extends CommonDBChild {
     *
     * @return boolean
    **/
-   static function updateProfileRightsAsOtherRights($newright, $initialright, $condition = '') {
+   static function updateProfileRightsAsOtherRights($newright, $initialright, array $condition = []) {
       global $DB;
 
       $profiles = [];
       $ok       = true;
-      if (empty($condition)) {
-         $condition = "`name` = '$initialright'";
-      } else {
-         $condition = "`name` = '$initialright' AND $condition";
-      }
-      foreach ($DB->request('glpi_profilerights', $condition) as $data) {
+
+      $criteria = [
+         'FROM'   => self::getTable(),
+         'WHERE'  => ['name' => $initialright] + $condition
+      ];
+      $iterator = $DB->request($criteria);
+
+      while ($data = $iterator->next()) {
          $profiles[$data['profiles_id']] = $data['rights'];
       }
       if (count($profiles)) {
@@ -241,20 +248,39 @@ class ProfileRight extends CommonDBChild {
    static function fillProfileRights($profiles_id) {
       global $DB;
 
-      $query = "SELECT DISTINCT POSSIBLE.`name` AS NAME
-                FROM `glpi_profilerights` AS POSSIBLE
-                WHERE NOT EXISTS (SELECT *
-                                  FROM `glpi_profilerights` AS CURRENT
-                                  WHERE CURRENT.`profiles_id` = '$profiles_id'
-                                        AND CURRENT.`NAME` = POSSIBLE.`NAME`)";
+      $subq =new \QuerySubQuery([
+         'FROM'   => 'glpi_profilerights AS CURRENT',
+         'WHERE'  => [
+            'CURRENT.profiles_id'   => $profiles_id,
+            'CURRENT.NAME'          => new \QueryExpression('POSSIBLE.NAME')
+         ]
+      ]);
 
-      foreach ($DB->request($query) as $right) {
-         $DB->insert(
-            self::getTable(), [
-               'profiles_id'  => $profiles_id,
-               'name'         => $right['NAME']
-            ]
-         );
+      $expr = 'NOT EXISTS ' . $subq->getQuery();
+      $iterator = $DB->request([
+         'SELECT'          => 'POSSIBLE.name AS NAME',
+         'DISTINCT'        => true,
+         'FROM'            => 'glpi_profilerights AS POSSIBLE',
+         'WHERE'           => [
+            new \QueryExpression($expr)
+         ]
+      ]);
+
+      if ($iterator->count() === 0) {
+         return;
+      }
+
+      $query = $DB->buildInsert(
+         self::getTable(),
+         [
+            'profiles_id' => new QueryParam(),
+            'name'        => new QueryParam(),
+         ]
+      );
+      $stmt = $DB->prepare($query);
+      while ($right = $iterator->next()) {
+         $stmt->bind_param('ss', $profiles_id, $right['NAME']);
+         $stmt->execute();
       }
    }
 

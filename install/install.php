@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -35,10 +35,11 @@ define('GLPI_ROOT', realpath('..'));
 include_once (GLPI_ROOT . "/inc/based_config.php");
 include_once (GLPI_ROOT . "/inc/db.function.php");
 
-Config::detectRootDoc();
-
 $GLPI = new GLPI();
 $GLPI->initLogger();
+$GLPI->initErrorHandler();
+
+Config::detectRootDoc();
 
 //Print a correct  Html header for application
 function header_html($etape) {
@@ -56,12 +57,7 @@ function header_html($etape) {
    echo "<title>Setup GLPI</title>";
 
    // CFG
-   echo Html::scriptBlock("
-      var CFG_GLPI  = {
-         'url_base': '".(isset($CFG_GLPI['url_base']) ? $CFG_GLPI["url_base"] : '')."',
-         'root_doc': '".$CFG_GLPI["root_doc"]."',
-      };
-   ");
+   echo Html::getCoreVariablesForJavascript();
 
     // LIBS
    echo Html::script("public/lib/base.js");
@@ -97,7 +93,7 @@ function choose_language() {
    // fix missing param for js drodpown
    $CFG_GLPI['ajax_limit_count'] = 15;
 
-   Dropdown::showLanguages("language", ['value' => "en_GB"]);
+   Dropdown::showLanguages("language", ['value' => $_SESSION['glpilanguage']]);
    echo "</p>";
    echo "";
    echo "<p class='submit'><input type='hidden' name='install' value='lang_select'>";
@@ -372,6 +368,19 @@ function step4 ($databasename, $newdatabasename) {
       Html::closeForm();
    }
 
+   //create security key
+   $glpikey = new GLPIKey();
+   $secured = $glpikey->keyExists();
+   if (!$secured) {
+      $secured = $glpikey->generate();
+   }
+
+   if (!$secured) {
+      echo "<p><strong>".__('Security key cannot be generated!')."</strong></p>";
+      prev_form($host, $user, $password);
+      return;
+   }
+
    //Check if the port is in url
    $hostport = explode(":", $host);
    if (count($hostport) < 2) {
@@ -452,7 +461,7 @@ function step4 ($databasename, $newdatabasename) {
 
 }
 
-//send telemetry informations
+//send telemetry information
 function step6() {
    global $DB;
    echo "<h3>".__('Collect data')."</h3>";
@@ -478,7 +487,7 @@ function step7() {
    echo "<form action='install.php' method='post'>";
    echo "<input type='hidden' name='install' value='Etape_6'>";
 
-   echo GlpiNetwork::showInstallMessage();
+   echo GLPINetwork::showInstallMessage();
 
    echo "<p class='submit'>";
    echo "<a href='".GLPI_NETWORK_SERVICES."' target='_blank' class='vsubmit'>".
@@ -491,8 +500,6 @@ function step7() {
 
 // finish installation
 function step8() {
-   global $CFG_GLPI;
-
    include_once(GLPI_ROOT . "/inc/dbmysql.class.php");
    include_once(GLPI_CONFIG_DIR . "/config_db.php");
    $DB = new DB();
@@ -524,7 +531,10 @@ function step8() {
       ]
    );
 
+   Session::destroy(); // Remove session data (debug mode for instance) set by web installation
+
    echo "<h2>".__('The installation is finished')."</h2>";
+
    echo "<p>".__('Default logins / passwords are:')."</p>";
    echo "<p><ul><li> ".__('glpi/glpi for the administrator account')."</li>";
    echo "<li>".__('tech/tech for the technician account')."</li>";
@@ -588,11 +598,20 @@ function checkConfigFile() {
    }
 }
 
-if (!isset($_POST["install"])) {
+if (!isset($_SESSION['can_process_install']) || !isset($_POST["install"])) {
    $_SESSION = [];
 
+   $_SESSION["glpilanguage"] = Session::getPreferredLanguage();
+
    checkConfigFile();
-   header_html("Select your language");
+
+   // Add a flag that will be used to validate that installation can be processed.
+   // This flag is put here just after checking that DB config file does not exist yet.
+   // It is mandatory to validate that `Etape_4` to `Etape_6` are not used outside installation process
+   // to change GLPI base URL without even being authenticated.
+   $_SESSION['can_process_install'] = true;
+
+   header_html(__("Select your language"));
    choose_language();
 
 } else {
@@ -611,7 +630,7 @@ if (!isset($_POST["install"])) {
    switch ($_POST["install"]) {
       case "lang_select" : // lang ok, go accept licence
          checkConfigFile();
-         header_html(__('License'));
+         header_html(SoftwareLicense::getTypeName(1));
          acceptLicense();
          break;
 
@@ -657,7 +676,7 @@ if (!isset($_POST["install"])) {
                $_POST["newdatabasename"]);
          break;
 
-      case "Etape_4" : // send telemetry informations
+      case "Etape_4" : // send telemetry information
          header_html(sprintf(__('Step %d'), 4));
          step6();
          break;

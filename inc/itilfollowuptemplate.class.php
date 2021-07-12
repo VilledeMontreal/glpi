@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -99,17 +99,5 @@ class ITILFollowupTemplate extends CommonDropdown {
       ];
 
       return $tab;
-   }
-
-   function displaySpecificTypeField($ID, $field = []) {
-      switch ($field['type']) {
-         case 'tinymce' :
-            Html::textarea([
-               'name'            => 'content',
-               'value'           => $this->fields["content"],
-               'enable_richtext' => true,
-            ]);
-            break;
-      }
    }
 }

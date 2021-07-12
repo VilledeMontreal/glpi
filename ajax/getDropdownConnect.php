@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@
 
 if (strpos($_SERVER['PHP_SELF'], "getDropdownConnect.php")) {
    include ('../inc/includes.php');
-   header("Content-Type: text/html; charset=UTF-8");
+   header("Content-Type: application/json; charset=UTF-8");
    Html::header_nocache();
 } else if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");

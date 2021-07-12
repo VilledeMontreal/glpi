@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -69,7 +69,7 @@ class DeviceNetworkCard extends CommonDevice {
                                      'label' => __('Flow'),
                                      'type'  => 'text'],
                                ['name'  => 'devicenetworkcardmodels_id',
-                                     'label' => __('Model'),
+                                     'label' => _n('Model', 'Models', 1),
                                      'type'  => 'dropdownValue'],
                                ['name'  => 'none',
                                      'label' => RegisteredID::getTypeName(Session::getPluralNumber()).
@@ -88,7 +88,8 @@ class DeviceNetworkCard extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'mac_default',
          'name'               => __('MAC address by default'),
-         'datatype'           => 'mac'
+         'datatype'           => 'mac',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -96,14 +97,15 @@ class DeviceNetworkCard extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'bandwidth',
          'name'               => __('Flow'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '13',
          'table'              => 'glpi_devicenetworkcardmodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -145,11 +147,6 @@ class DeviceNetworkCard extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableHeader()
-   **/
    static function getHTMLTableHeader($itemtype, HTMLTableBase $base,
                                       HTMLTableSuperHeader $super = null,
                                       HTMLTableHeader $father = null, array $options = []) {
@@ -173,11 +170,6 @@ class DeviceNetworkCard extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableCellForItem()
-   **/
    static function getHTMLTableCellsForItem(HTMLTableRow $row = null, CommonDBTM $item = null,
                                             HTMLTableCell $father = null, array $options = []) {
 
@@ -233,7 +225,7 @@ class DeviceNetworkCard extends CommonDevice {
          'id'                 => '112',
          'table'              => 'glpi_devicenetworkcards',
          'field'              => 'designation',
-         'name'               => __('Network interface'),
+         'name'               => NetworkInterface::getTypeName(1),
          'forcegroupby'       => true,
          'massiveaction'      => false,
          'datatype'           => 'string',
@@ -257,5 +249,10 @@ class DeviceNetworkCard extends CommonDevice {
       ];
 
       return $tab;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-network-wired";
    }
 }

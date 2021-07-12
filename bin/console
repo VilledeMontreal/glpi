@@ -3,7 +3,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -43,12 +43,11 @@ if (isset($_SERVER['argv'])) {
 
 // Handle specific dependencies update command that cannot be made upon symfony console
 if (isset($_SERVER['argv']) && ['dependencies', 'install'] === array_slice($_SERVER['argv'], 1, 2)) {
-   $composer_command = 'composer install --optimize-autoloader --no-interaction --no-suggest';
+   $composer_command = 'composer install --ansi --no-interaction';
    $npm_command = 'npm install';
 
-   if (array_key_exists('ci', $options) && true === $options['ci']) {
-      $composer_command .= ' --prefer-dist --no-progress';
-      $npm_command = 'npm ci';
+   if (array_key_exists('composer-options', $options) && is_string($options['composer-options'])) {
+      $composer_command .= ' ' . $options['composer-options'];
    }
 
    chdir(dirname(__FILE__, 2));
@@ -67,7 +66,7 @@ if (isset($_SERVER['argv']) && ['dependencies', 'install'] === array_slice($_SER
 
    file_put_contents('.package.hash', sha1_file('package-lock.json'));
 
-   passthru('npm run-script build-dev', $exit_code);
+   passthru('npm run-script build', $exit_code);
    exit($exit_code);
 }
 

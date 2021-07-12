@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -40,7 +40,18 @@ if (Session::getCurrentInterface() == "helpdesk") {
    Html::header(Ticket::getTypeName(Session::getPluralNumber()), '', "helpdesk", "ticket");
 }
 
-echo Html::manageRefreshPage();
+$callback = <<<JS
+   if ($('div[role="dialog"]:visible').length === 0) {
+      window.location.reload();
+   }
+JS;
+
+echo Html::manageRefreshPage(false, $callback);
+
+if ($default = Glpi\Dashboard\Grid::getDefaultDashboardForMenu('mini_ticket', true)) {
+   $dashboard = new Glpi\Dashboard\Grid($default, 33, 2, 'mini_core');
+   $dashboard->show(true);
+}
 
 Search::show('Ticket');
 

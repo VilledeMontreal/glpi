@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -50,9 +50,10 @@ class Item_DeviceSimcard extends Item_Devices {
 
    static $undisclosedFields      = ['pin', 'pin2', 'puk', 'puk2'];
 
-   /**
-    * @since 0.85
-    **/
+   static function getTypeName($nb = 0) {
+      return _n('Simcard', 'Simcards', $nb);
+   }
+
    static function getSpecificities($specif = '') {
       return [
              'serial'         => parent::getSpecificities('serial'),
@@ -95,8 +96,8 @@ class Item_DeviceSimcard extends Item_Devices {
                                   'nosearch'   => true,
                                   'nodisplay'  => true,
                                   'protected'  => true],
-             'lines_id'        => ['long name'  => __('Line'),
-                                  'short name' => __('Line'),
+             'lines_id'        => ['long name'  => Line::getTypeName(1),
+                                  'short name' => Line::getTypeName(1),
                                   'size'       => 20,
                                   'id'         => 19,
                                   'datatype'   => 'dropdown'],
@@ -105,7 +106,23 @@ class Item_DeviceSimcard extends Item_Devices {
                                   'size'       => 20,
                                   'id'         => 20,
                                   'datatype'   => 'string',
-                                  'tooltip'    => __('MSIN is the last 8 or 10 digits of IMSI')],
+                                  'tooltip'    => __('MSIN is the last 8 or 10 digits of IMSI'),
+                                  'autocomplete' => true,],
+             'users_id'        => ['long name'  => User::getTypeName(1),
+                                  'short name' => User::getTypeName(1),
+                                  'size'       => 20,
+                                  'id'         => 21,
+                                  'datatype'   => 'dropdown',
+                                  'dropdown_options' => ['right' => 'all']],
+             'groups_id'        => ['long name'  => Group::getTypeName(1),
+                                  'short name' => Group::getTypeName(1),
+                                  'size'       => 20,
+                                  'id'         => 22,
+                                  'datatype'   => 'dropdown'],
       ];
+   }
+
+   static function getNameField() {
+      return 'serial';
    }
 }

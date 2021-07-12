@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,6 +38,11 @@ if (!defined('GLPI_ROOT')) {
 abstract class CommonDCModelDropdown extends CommonDropdown {
 
    public $additional_fields_for_dictionnary = ['manufacturer'];
+
+
+   static function getFieldLabel() {
+      return _n('Model', 'Models', 1);
+   }
 
    /**
     * Return Additional Fields for this type
@@ -148,6 +153,7 @@ abstract class CommonDCModelDropdown extends CommonDropdown {
             'table' => $table,
             'field' => 'product_number',
             'name'  => __('Product Number'),
+            'autocomplete' => true,
          ];
       }
 

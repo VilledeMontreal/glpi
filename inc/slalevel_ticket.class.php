@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -94,7 +94,7 @@ class SlaLevel_Ticket extends CommonDBTM {
     *
     * @since 9.1 2 parameters mandatory
     *
-    * @return nothing
+    * @return void
    **/
    function deleteForTicket($tickets_id, $slaType) {
       global $DB;
@@ -133,7 +133,7 @@ class SlaLevel_Ticket extends CommonDBTM {
     *
     * @param $name : task's name
     *
-    * @return arrray of information
+    * @return array of information
    **/
    static function cronInfo($name) {
 
@@ -200,7 +200,7 @@ class SlaLevel_Ticket extends CommonDBTM {
     *
     * @since 9.1   2 parameters mandatory
     *
-    * @return nothing
+    * @return void
    **/
    static function doLevelForTicket(array $data, $slaType) {
 

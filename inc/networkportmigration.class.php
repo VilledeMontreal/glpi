@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -72,7 +72,7 @@ class NetworkPortMigration extends CommonDBChild {
       }
 
       if (countElementsInTable($this->getTable()) == 0) {
-         $query = "DROP TABLE `".$this->getTable()."`";
+         $query = "DROP TABLE ".$DB->quoteName($this->getTable());
          $DB->query($query);
       }
 
@@ -92,11 +92,6 @@ class NetworkPortMigration extends CommonDBChild {
       parent::post_deleteItem();
    }
 
-   /**
-    * @see CommonGLPI::defineTabs()
-    *
-    * @since 0.85
-   **/
    function defineTabs($options = []) {
 
       $ong = [];
@@ -119,7 +114,7 @@ class NetworkPortMigration extends CommonDBChild {
 
 
    function showForm($ID, $options = []) {
-      global $CFG_GLPI, $DB;
+      global $DB;
 
       if (!self::canView()) {
          return false;
@@ -292,13 +287,14 @@ class NetworkPortMigration extends CommonDBChild {
       echo "<td>". __('Gateway') ."</td>\n";
       echo "<$gateway_cell>" . $this->fields['gateway'] . "</$gateway_cell></tr>\n";
 
-      echo "<tr class='tab_bg_1'><td>". __('Network interface') ."</td><$interface_cell>\n";
-      $query = "SELECT `name`
-                FROM `glpi_networkinterfaces`
-                WHERE `id`='".$this->fields['networkinterfaces_id']."'";
-      $result = $DB->query($query);
-      if ($DB->numrows($result) > 0) {
-         $row = $DB->fetchAssoc($result);
+      echo "<tr class='tab_bg_1'><td>". NetworkInterface::getTypeName(1) ."</td><$interface_cell>\n";
+      $iterator = $DB->request([
+         'SELECT' => 'name',
+         'FROM'   => 'glpi_networkinterfaces',
+         'WHERE'  => ['id' => $this->fields['networkinterfaces_id']]
+      ]);
+      if (count($iterator)) {
+         $row = $iterator->next();
          echo $row['name'];
       } else {
          echo __('Unknown interface');
@@ -311,9 +307,6 @@ class NetworkPortMigration extends CommonDBChild {
    }
 
 
-   /**
-    * @see CommonDBTM::getSpecificMassiveActions()
-   **/
    function getSpecificMassiveActions($checkitem = null) {
 
       $isadmin = static::canUpdate();
@@ -326,14 +319,7 @@ class NetworkPortMigration extends CommonDBChild {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
-      global $CFG_GLPI;
-
       switch ($ma->getAction()) {
          case 'transform_to' :
             Dropdown::showItemTypes('transform_to', NetworkPort::getNetworkPortInstantiations(),
@@ -346,15 +332,8 @@ class NetworkPortMigration extends CommonDBChild {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
-      global $DB;
-
       switch ($ma->getAction()) {
          case 'transform_to':
             $input = $ma->getInput();
@@ -399,7 +378,6 @@ class NetworkPortMigration extends CommonDBChild {
 
 
    function rawSearchOptions() {
-      global $DB;
       $tab = parent::rawSearchOptions();
 
       $optionIndex = 10;
@@ -453,7 +431,7 @@ class NetworkPortMigration extends CommonDBChild {
          'table'              => 'glpi_networkinterfaces',
          'field'              => 'name',
          'datatype'           => 'dropdown',
-         'name'               => __('Network interface')
+         'name'               => NetworkInterface::getTypeName(1)
       ];
 
       return $tab;
@@ -472,7 +450,7 @@ class NetworkPortMigration extends CommonDBChild {
                                                              HTMLTableSuperHeader $internet_super = null,
                                                              HTMLTableHeader $father = null,
                                                              array $options = []) {
-      // TODO : study to display the correct informations for this undefined NetworkPort
+      // TODO : study to display the correct information for this undefined NetworkPort
       return null;
    }
 

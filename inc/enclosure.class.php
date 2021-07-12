@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,11 +38,20 @@ if (!defined('GLPI_ROOT')) {
  * Enclosure Class
 **/
 class Enclosure extends CommonDBTM {
-   use DCBreadcrumb;
+   use Glpi\Features\DCBreadcrumb;
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    public $dohistory                   = true;
    static $rightname                   = 'datacenter';
+
+   public function getCloneRelations() :array {
+      return [
+         Item_Enclosure::class,
+         Item_Devices::class,
+         NetworkPort::class
+      ];
+   }
 
    static function getTypeName($nb = 0) {
       return _n('Enclosure', 'Enclosures', $nb);
@@ -51,6 +60,7 @@ class Enclosure extends CommonDBTM {
    function defineTabs($options = []) {
       $ong = [];
       $this->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('Item_Enclosure', $ong, $options)
          ->addStandardTab('Item_Devices', $ong, $options)
          ->addStandardTab('NetworkPort', $ong, $options)
@@ -61,7 +71,6 @@ class Enclosure extends CommonDBTM {
          ->addStandardTab('Item_Problem', $ong, $options)
          ->addStandardTab('Change_Item', $ong, $options)
          ->addStandardTab('Log', $ong, $options);
-      ;
       return $ong;
    }
 
@@ -103,7 +112,7 @@ class Enclosure extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_power_supplies$rand'>".__('Power supplies')."</label></td>";
+      echo "<td><label for='dropdown_power_supplies$rand'>".DevicePowerSupply::getTypeName(Session::getPluralNumber())."</label></td>";
       echo "<td>";
       Dropdown::showNumber(
          "power_supplies", [
@@ -114,12 +123,17 @@ class Enclosure extends CommonDBTM {
             'rand'   => $rand
          ]
       );
-      echo "</td></tr>\n";
+      echo "</td>";
+      echo "<td><label for='dropdown_manufacturers_id$rand'>".Manufacturer::getTypeName(1)."</label></td>";
+      echo "<td>";
+      Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"], 'rand' => $rand]);
+      echo "</td>";
+      echo "</tr>\n";
 
       $this->showDcBreadcrumb();
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_locations_id$rand'>".__('Location')."</label></td>";
+      echo "<td><label for='dropdown_locations_id$rand'>".Location::getTypeName(1)."</label></td>";
       echo "<td>";
       Location::dropdown([
          'value'  => $this->fields["locations_id"],
@@ -127,7 +141,7 @@ class Enclosure extends CommonDBTM {
          'rand'   => $rand
       ]);
       echo "</td>";
-      echo "<td><label for='dropdown_enclosuremodels_id$rand'>".__('Model')."</label></td>";
+      echo "<td><label for='dropdown_enclosuremodels_id$rand'>"._n('Model', 'Models', 1)."</label></td>";
       echo "<td>";
       EnclosureModel::dropdown([
          'value'  => $this->fields["enclosuremodels_id"],
@@ -181,40 +195,21 @@ class Enclosure extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_manufacturers_id$rand'>".__('Manufacturer')."</label></td>";
-      echo "<td>";
-      Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"], 'rand' => $rand]);
+
       echo "<td><label for='comment'>".__('Comments')."</label></td>";
       echo "<td class='middle'>";
 
       echo "<textarea cols='45' rows='3' id='comment' name='comment' >".
            $this->fields["comment"];
-      echo "</textarea></td></tr>";
-
-      echo "</td></tr>\n";
+      echo "</textarea></td>";
+      echo "<td colspan='2'></td></tr>";
 
       $this->showFormButtons($options);
       return true;
    }
 
    function rawSearchOptions() {
-      global $CFG_GLPI;
-
-      $tab = [];
-
-      $tab[] = [
-         'id'                 => 'common',
-         'name'               => __('Characteristics')
-      ];
-
-      $tab[] = [
-         'id'                 => '1',
-         'table'              => $this->getTable(),
-         'field'              => 'name',
-         'name'               => __('Name'),
-         'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
-      ];
+      $tab = parent::rawSearchOptions();
 
       $tab[] = [
          'id'                 => '2',
@@ -231,7 +226,7 @@ class Enclosure extends CommonDBTM {
          'id'                 => '40',
          'table'              => 'glpi_enclosuremodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -249,7 +244,8 @@ class Enclosure extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'serial',
          'name'               => __('Serial number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -257,7 +253,8 @@ class Enclosure extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -290,7 +287,7 @@ class Enclosure extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -315,10 +312,22 @@ class Enclosure extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '61',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -332,7 +341,8 @@ class Enclosure extends CommonDBTM {
    /**
     * Get already filled places
     *
-    * @param string $current Current position to exclude; defaults to null
+    * @param string  $itemtype  The item type
+    * @param integer $items_id  The item's ID
     *
     * @return array [x => ['depth' => 1, 'orientation' => 0, 'width' => 1, 'hpos' =>0]]
     *               orientation will not be available if depth is > 0.5; hpos will not be available
@@ -376,5 +386,10 @@ class Enclosure extends CommonDBTM {
       unset($input['id']);
       unset($input['withtemplate']);
       return $input;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-th";
    }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -102,7 +102,7 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField {
     * @param $ID                    integer  the template ID
     * @param $withtypeandcategory   boolean  with type and category (false by default)
     *
-    * @return an array of hidden fields
+    * @return array of hidden fields
    **/
    function getHiddenFields($ID, $withtypeandcategory = false) {
       global $DB;
@@ -146,10 +146,10 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField {
     *
     * @since 0.83
     *
-    * @param $tt                       ITIL Template
-    * @param $withtemplate    boolean  Template or basic item (default 0)
+    * @param ITILTemplate $tt            ITIL Template
+    * @param boolean      $withtemplate  Template or basic item (default 0)
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForITILTemplate(ITILTemplate $tt, $withtemplate = 0) {
       global $DB;

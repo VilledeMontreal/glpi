@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -193,13 +193,8 @@ abstract class CommonDropdown extends DbTestCase {
       $this->string($this->testedInstance->fields['name'])->isIdenticalTo('Changed name');
 
       //cannot update if id is missing
-      $this->when(
-         function () {
-            $this->testedInstance->update(['name' => 'Will not change']);
-         }
-      )->error()
-         ->withType(E_NOTICE)
-         ->withMessage('Undefined index: id')
-         ->exists();
+      $this->boolean(
+         $this->testedInstance->update(['name' => 'Will not change'])
+      )->isFalse();
    }
 }

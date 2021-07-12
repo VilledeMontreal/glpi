@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -51,6 +51,7 @@ class Datacenter extends CommonDBTM {
    function defineTabs($options = []) {
       $ong = [];
       $this->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('DCRoom', $ong, $options);
       return $ong;
    }
@@ -67,7 +68,7 @@ class Datacenter extends CommonDBTM {
       Html::autocompletionTextField($this, "name", ['rand' => $rand]);
       echo "</td>";
 
-      echo "<td><label for='dropdown_locations_id$rand'>".__('Location')."</label></td>";
+      echo "<td><label for='dropdown_locations_id$rand'>".Location::getTypeName(1)."</label></td>";
       echo "<td>";
       Location::dropdown([
          'value'  => $this->fields["locations_id"],
@@ -96,7 +97,8 @@ class Datacenter extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
+         'massiveaction'      => false, // implicit key==1
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -132,7 +134,7 @@ class Datacenter extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -157,6 +159,7 @@ class Datacenter extends CommonDBTM {
             'name'               => __('Data center position'),
             'datatype'           => 'specific',
             'nosearch'           => true,
+            'nosort'             => true,
             'massiveaction'      => false
          ],
       ];
@@ -191,4 +194,8 @@ class Datacenter extends CommonDBTM {
       }
    }
 
+
+   static function getIcon() {
+      return "fas fa-warehouse";
+   }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -104,29 +104,28 @@ class ProjectTaskTeam extends CommonDBRelation {
       }
    }
 
+   public function post_addItem() {
+      if (!isset($this->input['_disablenotif'])) {
+         // Read again to be sure that the data is up to date
+         $this->getFromDB($this->fields['id']);
+         // Get linked task
+         $task = new ProjectTask();
+         $task->getFromDB($this->fields['projecttasks_id']);
+         // Raise update event on task
+         NotificationEvent::raiseEvent("update", $task);
+      }
+   }
+
 
    /**
-    * Get team for a project
+    * Get team for a project task
     *
-    * @param $projects_id
+    * @param $tasks_id
    **/
-   static function getTeamFor($projects_id) {
+   static function getTeamFor($tasks_id) {
       global $DB;
 
       $team = [];
-
-      $iterator = $DB->request([
-         'FROM'   => self::getTable(),
-         'WHERE'  => ['projecttasks_id' => $projects_id]
-      ]);
-
-      while ($data = $iterator->next()) {
-         if (!isset($team[$data['itemtype']])) {
-            $team[$data['itemtype']] = [];
-         }
-         $team[$data['itemtype']][] = $data;
-      }
-
       // Define empty types
       foreach (static::$available_types as $type) {
          if (!isset($team[$type])) {
@@ -134,7 +133,81 @@ class ProjectTaskTeam extends CommonDBRelation {
          }
       }
 
+      $iterator = $DB->request([
+         'FROM'   => self::getTable(),
+         'WHERE'  => ['projecttasks_id' => $tasks_id]
+      ]);
+
+      while ($data = $iterator->next()) {
+         $team[$data['itemtype']][] = $data;
+      }
+
       return $team;
    }
 
+
+   function prepareInputForAdd($input) {
+      global $DB;
+
+      if (!isset($input['itemtype'])) {
+         Session::addMessageAfterRedirect(
+            __('An item type is mandatory'),
+            false,
+            ERROR
+         );
+         return false;
+      }
+
+      if (!isset($input['items_id'])) {
+         Session::addMessageAfterRedirect(
+            __('An item ID is mandatory'),
+            false,
+            ERROR
+         );
+         return false;
+      }
+
+      if (!isset($input['projecttasks_id'])) {
+         Session::addMessageAfterRedirect(
+            __('A project task is mandatory'),
+            false,
+            ERROR
+         );
+         return false;
+      }
+
+      $task = new ProjectTask();
+      $task->getFromDB($input['projecttasks_id']);
+      switch ($input['itemtype']) {
+         case User::getType():
+            Planning::checkAlreadyPlanned(
+               $input['items_id'],
+               $task->fields['plan_start_date'],
+               $task->fields['plan_end_date']
+            );
+            break;
+         case Group::getType():
+            $group_iterator = $DB->request([
+               'SELECT' => 'users_id',
+               'FROM'   => Group_User::getTable(),
+               'WHERE'  => ['groups_id' => $input['items_id']]
+            ]);
+            while ($row = $group_iterator->next()) {
+               Planning::checkAlreadyPlanned(
+                  $row['users_id'],
+                  $task->fields['plan_start_date'],
+                  $task->fields['plan_end_date']
+               );
+            }
+            break;
+         case Supplier::getType():
+         case Contact::getType():
+            //only Users can be checked for planning conflicts
+            break;
+         default:
+            throw new \RuntimeException($input['itemtype'] . " is not (yet?) handled.");
+      }
+
+      return $input;
+   }
 }

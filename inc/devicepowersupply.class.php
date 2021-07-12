@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -54,7 +54,7 @@ class DevicePowerSupply extends CommonDevice {
                                      'label' => __('Power'),
                                      'type'  => 'text'],
                                ['name'  => 'devicepowersupplymodels_id',
-                                     'label' => __('Model'),
+                                     'label' => _n('Model', 'Models', 1),
                                      'type'  => 'dropdownValue']]);
    }
 
@@ -75,14 +75,15 @@ class DevicePowerSupply extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'power',
          'name'               => __('Power'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '13',
          'table'              => 'glpi_devicepowersupplymodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -90,11 +91,6 @@ class DevicePowerSupply extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableHeader()
-   **/
    static function getHTMLTableHeader($itemtype, HTMLTableBase $base,
                                       HTMLTableSuperHeader $super = null,
                                       HTMLTableHeader $father = null, array $options = []) {
@@ -113,11 +109,6 @@ class DevicePowerSupply extends CommonDevice {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDevice::getHTMLTableCellForItem()
-   **/
    function getHTMLTableCellForItem(HTMLTableRow $row = null, CommonDBTM $item = null,
                                     HTMLTableCell $father = null, array $options = []) {
 
@@ -134,13 +125,13 @@ class DevicePowerSupply extends CommonDevice {
    }
 
    public static function rawSearchOptionsToAdd($itemtype, $main_joinparams) {
-      $tb = [];
+      $tab = [];
 
       $tab[] = [
          'id'                 => '39',
          'table'              => 'glpi_devicepowersupplies',
          'field'              => 'designation',
-         'name'               => __('Power supply'),
+         'name'               => static::getTypeName(1),
          'forcegroupby'       => true,
          'usehaving'          => true,
          'massiveaction'      => false,
@@ -154,5 +145,10 @@ class DevicePowerSupply extends CommonDevice {
       ];
 
       return $tab;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-bolt";
    }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -893,7 +893,7 @@ function update084to085() {
                          "`name` = 'check_update' AND `rights` = '1'") as $profrights) {
 
       $query  = "UPDATE `glpi_profilerights`
-                 SET `rights` = `rights` | " . Backup::CHECKUPDATE ."
+                 SET `rights` = `rights` | " . 1024 /*Backup::CHECKUPDATE*/ ."
                  WHERE `profiles_id` = '".$profrights['profiles_id']."'
                       AND `name` = 'backup'";
          $DB->queryOrDie($query, "0.85 update backup with check_update");
@@ -2379,11 +2379,11 @@ function update084to085() {
       }
    }
 
-   $migration->addField('glpi_deviceprocessors', 'nbcores_default', 'int');
-   $migration->addField('glpi_deviceprocessors', 'nbthreads_default', 'int');
+   $migration->addField('glpi_deviceprocessors', 'nbcores_default', 'int(11) DEFAULT NULL');
+   $migration->addField('glpi_deviceprocessors', 'nbthreads_default', 'int(11) DEFAULT NULL');
 
-   $migration->addField('glpi_items_deviceprocessors', 'nbcores', 'int');
-   $migration->addField('glpi_items_deviceprocessors', 'nbthreads', 'int');
+   $migration->addField('glpi_items_deviceprocessors', 'nbcores', 'int(11) DEFAULT NULL');
+   $migration->addField('glpi_items_deviceprocessors', 'nbthreads', 'int(11) DEFAULT NULL');
    $migration->addKey('glpi_items_deviceprocessors', 'nbcores');
    $migration->addKey('glpi_items_deviceprocessors', 'nbthreads');
 
@@ -2634,7 +2634,7 @@ function update084to085() {
 
       foreach ($DB->request($queryl) AS $datal) {
          if (($datal['number'] >= 0)
-             && ($datal['number'] < Computer_SoftwareLicense::countForLicense($datal['id'], -1))) {
+             && ($datal['number'] < Item_SoftwareLicense::countForLicense($datal['id'], -1, 'Computer'))) {
 
             $queryl2 = "UPDATE `glpi_softwarelicenses`
                         SET `is_valid` = 0

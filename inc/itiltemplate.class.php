@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -74,24 +74,10 @@ abstract class ITILTemplate extends CommonDropdown {
     * @return true if succeed else false
    **/
    function getFromDBWithData($ID, $withtypeandcategory = true) {
-      global $DB;
-
       if ($this->getFromDB($ID)) {
          $itiltype = str_replace('Template', '', static::getType());
          $itil_object  = new $itiltype;
-         switch ($itiltype) {
-            case 'Change':
-               $itemstable = 'glpi_changes_items';
-               break;
-            case 'Problem':
-               $itemstable = 'glpi_items_problems';
-               break;
-            case 'Ticket':
-               $itemstable = 'glpi_items_tickets';
-               break;
-            default:
-               throw new \RuntimeException('Unknown ITIL type ' . itiltype);
-         }
+         $itemstable = $itil_object->getItemsTable();
          $tth_class = $itiltype . 'TemplateHiddenField';
          $tth          = new $tth_class;
          $this->hidden = $tth->getHiddenFields($ID, $withtypeandcategory);
@@ -182,21 +168,7 @@ abstract class ITILTemplate extends CommonDropdown {
       if (!isset($allowed_fields[$withtypeandcategory][$withitemtype])) {
          $itiltype = str_replace('Template', '', static::getType());
          $itil_object = new $itiltype;
-
-         $itemstable = null;
-         switch ($itiltype) {
-            case 'Change':
-               $itemstable = 'glpi_changes_items';
-               break;
-            case 'Problem':
-               $itemstable = 'glpi_items_problems';
-               break;
-            case 'Ticket':
-               $itemstable = 'glpi_items_tickets';
-               break;
-            default:
-               throw new \RuntimeException('Unknown ITIL type ' . $itiltype);
-         }
+         $itemstable = $itil_object->getItemsTable();
 
          // SearchOption ID => name used for options
          $allowed_fields[$withtypeandcategory][$withitemtype] = [
@@ -271,7 +243,7 @@ abstract class ITILTemplate extends CommonDropdown {
     *
     * @return array
     *
-    * @see getAllowedFields
+    * @see self::getAllowedFields()
     */
    public static function getExtraAllowedFields($withtypeandcategory = 0, $withitemtype = 0) {
       return [];
@@ -359,7 +331,7 @@ abstract class ITILTemplate extends CommonDropdown {
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
-      if (Session::haveRight(self::$rightname, READ)) {
+      if (Session::haveRight(static::$rightname, READ)) {
          switch ($item->getType()) {
             case 'TicketTemplate':
                return [
@@ -551,7 +523,7 @@ abstract class ITILTemplate extends CommonDropdown {
     *
     * @param $tt ITILTemplate object
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showCentralPreview(ITILTemplate $tt) {
 
@@ -566,11 +538,6 @@ abstract class ITILTemplate extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.90
-    *
-    * @see CommonDBTM::getSpecificMassiveActions()
-   **/
    function getSpecificMassiveActions($checkitem = null) {
 
       $isadmin = static::canUpdate();
@@ -579,18 +546,13 @@ abstract class ITILTemplate extends CommonDropdown {
       if ($isadmin
           &&  $this->maybeRecursive()
           && (count($_SESSION['glpiactiveentities']) > 1)) {
-         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'merge'] = __('Transfer and merge');
+         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'merge'] = __('Merge and assign to current entity');
       }
 
       return $actions;
    }
 
 
-   /**
-    * @since 0.90
-    *
-    * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
 
       switch ($ma->getAction()) {
@@ -604,11 +566,6 @@ abstract class ITILTemplate extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.90
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -738,10 +695,10 @@ abstract class ITILTemplate extends CommonDropdown {
       }
 
       // Merge
-      $temtplate = new self();
+      $template = new static();
       foreach ($source as $merge => $data) {
          foreach ($data as $key => $val) {
-            $temtplate->getFromDB($target_id);
+            $template->getFromDB($target_id);
             if (!array_key_exists($key, $target[$merge])
                 && in_array($val['entities_id'], $_SESSION['glpiactiveentities'])) {
                $DB->update(
@@ -780,9 +737,9 @@ abstract class ITILTemplate extends CommonDropdown {
     *
     * @since 0.90
     *
-    * @param $input  array of value to import (name, ...)
+    * @param array $input  array of value to import (name, ...)
     *
-    * @return the ID of the new or existing dropdown
+    * @return integer|boolean true in case of success, -1 otherwise
    **/
    function import(array $input) {
 
@@ -829,5 +786,10 @@ abstract class ITILTemplate extends CommonDropdown {
       $forbidden[] = 'merge';
 
       return $forbidden;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-layer-group";
    }
 }

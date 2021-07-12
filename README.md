@@ -1,6 +1,6 @@
 ![GLPI Logo](https://raw.githubusercontent.com/glpi-project/glpi/master/pics/logos/logo-GLPI-250-black.png)
 
-[![CircleCI](https://img.shields.io/circleci/project/github/glpi-project/glpi/9.4/bugfixes.svg)](https://circleci.com/gh/glpi-project)
+![GLPI CI](https://github.com/glpi-project/glpi/workflows/GLPI%20CI/badge.svg?branch=9.5%2Fbugfixes)
 [![Github All Releases](https://img.shields.io/github/downloads/glpi-project/glpi/total.svg)](#download)
 [![Twitter Follow](https://img.shields.io/twitter/follow/GLPI_PROJECT.svg?style=social&label=Follow)](https://twitter.com/GLPI_PROJECT)
 
@@ -10,7 +10,7 @@
 GLPI stands for **Gestionnaire Libre de Parc Informatique** is a Free Asset and IT Management Software package, that provides ITIL Service Desk features, licenses tracking and software auditing.
 
 GLPI features:
-* Inventory of computers, peripherals, network printers and any associated components through an interface, with inventory tools such as: [FusionInventory](http://fusioninventory.org/) or [OCS Inventory](https://www.ocsinventory-ng.org/fr/)
+* Inventory of computers, peripherals, network printers and any associated components through an interface, with inventory tools such as: [FusionInventory](http://fusioninventory.org/) or [OCS Inventory](https://www.ocsinventory-ng.org/)
 * Data Center Infrastructure Management (DCIM)
 * Item lifecycle management
 * Licenses management (ITIL compliant)
@@ -21,6 +21,10 @@ GLPI features:
 * Asset reservation
 
 Moreover, GLPI supports many [plugins](http://plugins.glpi-project.org) that provide additional features.
+
+## Demonstration
+
+Check GLPI features by asking a free personnal demonstration on **[glpi-network.cloud](https://www.glpi-network.cloud)**
 
 ## License
 
@@ -46,24 +50,29 @@ It is distributed under the GNU GENERAL PUBLIC LICENSE Version 2 - please consul
 
 * A web server (Apache, Nginx, IIS, etc.)
 * MariaDB >= 10.0 or MySQL >= 5.6
-* PHP 5.6 or higher
+* PHP 7.2 or higher
 * Mandatory PHP extensions:
+    - ctype
+    - curl
+    - gd (picture generation)
+    - iconv
+    - intl
     - json
     - mbstring
-    - iconv
     - mysqli
     - session
-    - gd (picture generation)
-    - curl (CAS authentication)
+    - simplexml
+    - zlib
 
 * Recommended PHP extensions (to enable optional features)
-    - domxml (CAS authentication)
+    - exif (security enhancement on images validation)
     - imap (mail collector and users authentication)
     - ldap (users authentication)
     - openssl (encrypted communication)
+    - sodium (performances enhancement on sensitive data encryption/decryption)
+    - zip and bz2 (installation of zip and bz2 packages from marketplace)
 
  * Supported browsers:
-    - IE 11+
     - Edge
     - Firefox (including 2 latests ESR version)
     - Chrome
@@ -90,7 +99,7 @@ We are working on a [markdown version](https://github.com/glpi-project/doc)
 ## Additional resources
 
 * [Official website](http://glpi-project.org)
-* [Demo](http://demo.glpi-project.org/)
+* [Demo](https://www.glpi-network.cloud)
 * [Translations on transifex service](https://www.transifex.com/glpi/public/)
 * [Issues](https://github.com/glpi-project/glpi/issues)
 * [Suggestions](http://suggest.glpi-project.org)

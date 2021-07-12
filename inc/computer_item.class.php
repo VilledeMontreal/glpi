@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -220,7 +220,8 @@ class Computer_Item extends CommonDBRelation{
       $specificities = self::getRelationMassiveActionsSpecificities();
 
       if (in_array($itemtype, $specificities['itemtypes'])) {
-         $actions[$action_prefix.'add']    = _x('button', 'Connect');
+         $actions[$action_prefix.'add']    = "<i class='ma-icon fas fa-plug'></i>".
+                                             _x('button', 'Connect');
          $actions[$action_prefix.'remove'] = _x('button', 'Disconnect');
       }
       parent::getMassiveActionsForItemtype($actions, $itemtype, $is_deleted, $checkitem);
@@ -362,12 +363,12 @@ class Computer_Item extends CommonDBRelation{
             $header_bottom .=  "</th>";
          }
 
-         $header_end .= "<th>".__('Type')."</th>";
+         $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
          $header_end .= "<th>".__('Name')."</th>";
          if (Plugin::haveImport()) {
             $header_end .= "<th>".__('Automatic inventory')."</th>";
          }
-         $header_end .= "<th>".__('Entity')."</th>";
+         $header_end .= "<th>".Entity::getTypeName(1)."</th>";
          $header_end .= "<th>".__('Serial number')."</th>";
          $header_end .= "<th>".__('Inventory number')."</th>";
          $header_end .= "</tr>";
@@ -389,19 +390,20 @@ class Computer_Item extends CommonDBRelation{
                Html::showMassiveActionCheckBox(__CLASS__, $data["linkid"]);
                echo "</td>";
             }
-            echo "<td class='center'>".$data['assoc_itemtype']::getTypeName(1)."</td>";
+            echo "<td>".$data['assoc_itemtype']::getTypeName(1)."</td>";
             echo "<td ".
                   ((isset($data['is_deleted']) && $data['is_deleted'])?"class='tab_bg_2_2'":"").
                  ">".$name."</td>";
             if (Plugin::haveImport()) {
-               echo "<td>".Dropdown::getYesNo($data['is_dynamic'])."</td>";
+               $dynamic_field = static::getTable() . '_is_dynamic';
+               echo "<td>".Dropdown::getYesNo($data[$dynamic_field])."</td>";
             }
-            echo "<td class='center'>".Dropdown::getDropdownName("glpi_entities",
+            echo "<td>".Dropdown::getDropdownName("glpi_entities",
                                                                $data['entities_id']);
             echo "</td>";
-            echo "<td class='center'>".
+            echo "<td>".
                    (isset($data["serial"])? "".$data["serial"]."" :"-")."</td>";
-            echo "<td class='center'>".
+            echo "<td>".
                    (isset($data["otherserial"])? "".$data["otherserial"]."" :"-")."</td>";
             echo "</tr>";
          }
@@ -521,7 +523,7 @@ class Computer_Item extends CommonDBRelation{
          if (Plugin::haveImport()) {
             $header_end .= "<th>".__('Automatic inventory')."</th>";
          }
-         $header_end .= "<th>".__('Entity')."</th>";
+         $header_end .= "<th>".Entity::getTypeName(1)."</th>";
          $header_end .= "<th>".__('Serial number')."</th>";
          $header_end .= "<th>".__('Inventory number')."</th>";
          $header_end .= "</tr>";
@@ -674,11 +676,16 @@ class Computer_Item extends CommonDBRelation{
       $rand     = mt_rand();
 
       $field_id = Html::cleanId("dropdown_".$myname.$rand);
-      $param    = ['entity_restrict' => $entity_restrict,
-                        'fromtype'        => $fromtype,
-                        'itemtype'        => $itemtype,
-                        'onlyglobal'      => $onlyglobal,
-                        'used'            => $used];
+      $param    = [
+         'entity_restrict' => $entity_restrict,
+         'fromtype'        => $fromtype,
+         'itemtype'        => $itemtype,
+         'onlyglobal'      => $onlyglobal,
+         'used'            => $used,
+         '_idor_token'     => Session::getNewIDORToken($itemtype, [
+            'entity_restrict' => $entity_restrict,
+         ]),
+      ];
 
       echo Html::jsAjaxDropdown($myname, $field_id,
                                 $CFG_GLPI['root_doc']."/ajax/getDropdownConnect.php",
@@ -745,6 +752,7 @@ class Computer_Item extends CommonDBRelation{
    /**
     * Duplicate connected items to computer from an item template to its clone
     *
+    * @deprecated 9.5
     * @since 0.84
     *
     * @param integer $oldid ID of the item to clone
@@ -753,6 +761,7 @@ class Computer_Item extends CommonDBRelation{
    static function cloneComputer($oldid, $newid) {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       $iterator = $DB->request([
          'FROM'   => self::getTable(),
          'WHERE'  => ['computers_id' => $oldid]
@@ -770,6 +779,7 @@ class Computer_Item extends CommonDBRelation{
    /**
     * Duplicate connected items to item from an item template to its clone
     *
+    * @deprecated 9.5
     * @since 0.83.3
     *
     * @param string  $itemtype type of the item to clone
@@ -779,6 +789,7 @@ class Computer_Item extends CommonDBRelation{
    static function cloneItem($itemtype, $oldid, $newid) {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       $iterator = $DB->request([
          'FROM'   => self::getTable(),
          'WHERE'  => [
@@ -837,5 +848,20 @@ class Computer_Item extends CommonDBRelation{
       $params = parent::getListForItemParams($item, $noent);
       $params['WHERE'][self::getTable() . '.is_deleted'] = 0;
       return $params;
+   }
+
+   /**
+    * Get SELECT param for getTypeItemsQueryParams
+    *
+    * @param CommonDBTM $item
+    *
+    * @return array
+    */
+   public static function getTypeItemsQueryParams_Select(CommonDBTM $item): array {
+      $table = static::getTable();
+      $select = parent::getTypeItemsQueryParams_Select($item);
+      $select[] = "$table.is_dynamic AS {$table}_is_dynamic";
+
+      return $select;
    }
 }

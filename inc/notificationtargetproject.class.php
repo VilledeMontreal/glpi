@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -144,12 +144,16 @@ class NotificationTargetProject extends NotificationTarget {
    function addTeamUsers() {
       global $DB;
 
-      $query = "SELECT `items_id`
-                FROM `glpi_projectteams`
-                WHERE `glpi_projectteams`.`itemtype` = 'User'
-                      AND `glpi_projectteams`.`projects_id` = '".$this->obj->fields["id"]."'";
+      $iterator = $DB->request([
+         'SELECT' => 'items_id',
+         'FROM'   => 'glpi_projectteams',
+         'WHERE'  => [
+            'itemtype'     => 'User',
+            'projects_id'  => $this->obj->fields['id']
+         ]
+      ]);
       $user = new User;
-      foreach ($DB->request($query) as $data) {
+      while ($data = $iterator->next()) {
          if ($user->getFromDB($data['items_id'])) {
             $this->addToRecipientsList(['language' => $user->getField('language'),
                                             'users_id' => $user->getField('id')]);
@@ -168,11 +172,16 @@ class NotificationTargetProject extends NotificationTarget {
    function addTeamGroups($manager) {
       global $DB;
 
-      $query = "SELECT `items_id`
-                FROM `glpi_projectteams`
-                WHERE `glpi_projectteams`.`itemtype` = 'Group'
-                      AND `glpi_projectteams`.`projects_id` = '".$this->obj->fields["id"]."'";
-      foreach ($DB->request($query) as $data) {
+      $iterator = $DB->request([
+         'SELECT' => 'items_id',
+         'FROM'   => 'glpi_projectteams',
+         'WHERE'  => [
+            'itemtype'     => 'Group',
+            'projects_id'  => $this->obj->fields['id']
+         ]
+      ]);
+
+      while ($data = $iterator->next()) {
          $this->addForGroup($manager, $data['items_id']);
       }
    }
@@ -186,12 +195,17 @@ class NotificationTargetProject extends NotificationTarget {
    function addTeamContacts() {
       global $DB, $CFG_GLPI;
 
-      $query = "SELECT `items_id`
-                FROM `glpi_projectteams`
-                WHERE `glpi_projectteams`.`itemtype` = 'Contact'
-                      AND `glpi_projectteams`.`projects_id` = '".$this->obj->fields["id"]."'";
+      $iterator = $DB->request([
+         'SELECT' => 'items_id',
+         'FROM'   => 'glpi_projectteams',
+         'WHERE'  => [
+            'itemtype'     => 'Contact',
+            'projects_id'  => $this->obj->fields['id']
+         ]
+      ]);
+
       $contact = new Contact();
-      foreach ($DB->request($query) as $data) {
+      while ($data = $iterator->next()) {
          if ($contact->getFromDB($data['items_id'])) {
             $this->addToRecipientsList(["email"    => $contact->fields["email"],
                                             "name"     => $contact->getName(),
@@ -210,12 +224,17 @@ class NotificationTargetProject extends NotificationTarget {
    function addTeamSuppliers() {
       global $DB, $CFG_GLPI;
 
-      $query = "SELECT `items_id`
-                FROM `glpi_projectteams`
-                WHERE `glpi_projectteams`.`itemtype` = 'Supplier'
-                      AND `glpi_projectteams`.`projects_id` = '".$this->obj->fields["id"]."'";
+      $iterator = $DB->request([
+         'SELECT' => 'items_id',
+         'FROM'   => 'glpi_projectteams',
+         'WHERE'  => [
+            'itemtype'     => 'Supplier',
+            'projects_id'  => $this->obj->fields['id']
+         ]
+      ]);
+
       $supplier = new Supplier();
-      foreach ($DB->request($query) as $data) {
+      while ($data = $iterator->next()) {
          if ($supplier->getFromDB($data['items_id'])) {
             $this->addToRecipientsList(["email"    => $supplier->fields["email"],
                                             "name"     => $supplier->getName(),
@@ -415,7 +434,7 @@ class NotificationTargetProject extends NotificationTarget {
 
       $this->data["##project.numberoflogs##"] = count($this->data['log']);
 
-      // ITIL items informations
+      // ITIL items information
       foreach ([Change::class, Problem::class, Ticket::class] as $itemtype) {
          $values = [];
 
@@ -581,7 +600,7 @@ class NotificationTargetProject extends NotificationTarget {
                         'project.father'              => __('Father'),
                         'project.manager'             => __('Manager'),
                         'project.managergroup'        => __('Manager group'),
-                        'project.type'                => __('Type'),
+                        'project.type'                => _n('Type', 'Types', 1),
                         'project.state'               => _x('item', 'State'),
                         'project.percent'             => __('Percent done'),
                         'project.plannedduration'     => __('Planned duration'),
@@ -594,7 +613,7 @@ class NotificationTargetProject extends NotificationTarget {
                         'task.comments'               => __('Comments'),
                         'task.creationdate'           => __('Creation date'),
                         'task.lastupdatedate'         => __('Last update'),
-                        'task.type'                   => __('Type'),
+                        'task.type'                   => _n('Type', 'Types', 1),
                         'task.state'                  => _x('item', 'State'),
                         'task.percent'                => __('Percent done'),
                         'task.planstartdate'          => __('Planned start date'),
@@ -606,26 +625,26 @@ class NotificationTargetProject extends NotificationTarget {
                         'project.numberoflogs'        => sprintf(__('%1$s: %2$s'), __('Historical'),
                                                                  _x('quantity', 'Number of items')),
                         'project.log.date'            => sprintf(__('%1$s: %2$s'), __('Historical'),
-                                                                 __('Date')),
+                                                                 _n('Date', 'Dates', 1)),
                         'project.log.user'            => sprintf(__('%1$s: %2$s'), __('Historical'),
-                                                                 __('User')),
+                                                                 User::getTypeName(1)),
                         'project.log.field'           => sprintf(__('%1$s: %2$s'), __('Historical'),
-                                                                 __('Field')),
+                                                                 _n('Field', 'Fields', 1)),
                         'project.log.content'         => sprintf(__('%1$s: %2$s'), __('Historical'),
                                                                  _x('name', 'Update')),
                         'project.numberofchanges'     => _x('quantity', 'Number of changes'),
                         'project.numberofproblems'    => _x('quantity', 'Number of problems'),
                         'project.numberoftickets'     => _x('quantity', 'Number of tickets'),
                         'project.numberofdocuments'   => _x('quantity', 'Number of documents'),
-                        'item.name'                   => __('Associated item'),
+                        'item.name'                   => _n('Associated item', 'Associated items', 1),
                         'item.serial'                 => __('Serial number'),
                         'item.otherserial'            => __('Inventory number'),
-                        'item.location'               => __('Location'),
-                        'item.model'                  => __('Model'),
+                        'item.location'               => Location::getTypeName(1),
+                        'item.model'                  => _n('Model', 'Models', 1),
                         'item.contact'                => __('Alternate username'),
                         'item.contactnumber'          => __('Alternate username number'),
-                        'item.user'                   => __('User'),
-                        'item.group'                  => __('Group')
+                        'item.user'                   => User::getTypeName(1),
+                        'item.group'                  => Group::getTypeName(1)
                      ];
 
       foreach ($tags_all as $tag => $label) {
@@ -636,47 +655,47 @@ class NotificationTargetProject extends NotificationTarget {
 
       //Tags without lang
       $tags = [
-         'change.id'            => sprintf(__('%1$s: %2$s'), __('Change'), __('ID')),
-         'change.date'          => sprintf(__('%1$s: %2$s'), __('Change'), __('Date')),
-         'change.url'           => sprintf(__('%1$s: %2$s'), __('Change'), ('URL')),
-         'change.title'         => sprintf(__('%1$s: %2$s'), __('Change'), __('Title')),
-         'change.content'       => sprintf(__('%1$s: %2$s'), __('Change'), __('Description')),
-         'problem.id'           => sprintf(__('%1$s: %2$s'), __('Problem'), __('ID')),
-         'problem.date'         => sprintf(__('%1$s: %2$s'), __('Problem'), __('Date')),
-         'problem.url'          => sprintf(__('%1$s: %2$s'), __('Problem'), ('URL')),
-         'problem.title'        => sprintf(__('%1$s: %2$s'), __('Problem'), __('Title')),
-         'problem.content'      => sprintf(__('%1$s: %2$s'), __('Problem'), __('Description')),
-         'ticket.id'            => sprintf(__('%1$s: %2$s'), __('Ticket'), __('ID')),
-         'ticket.date'          => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Date')),
-         'ticket.url'           => sprintf(__('%1$s: %2$s'), __('Ticket'), ('URL')),
-         'ticket.title'         => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Title')),
-         'ticket.content'       => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Description')),
-         'cost.name'            => sprintf(__('%1$s: %2$s'), __('Cost'), __('Name')),
-         'cost.comment'         => sprintf(__('%1$s: %2$s'), __('Cost'), __('Comments')),
-         'cost.datebegin'       => sprintf(__('%1$s: %2$s'), __('Cost'), __('Begin date')),
-         'cost.dateend'         => sprintf(__('%1$s: %2$s'), __('Cost'), __('End date')),
-         'cost.cost'            => __('Cost'),
-         'cost.budget'          => sprintf(__('%1$s: %2$s'), __('Cost'), __('Budget')),
-         'document.url'         => sprintf(__('%1$s: %2$s'), __('Document'), __('URL')),
-         'document.downloadurl' => sprintf(__('%1$s: %2$s'), __('Document'), __('Download URL')),
-         'document.heading'     => sprintf(__('%1$s: %2$s'), __('Document'), __('Heading')),
-         'document.id'          => sprintf(__('%1$s: %2$s'), __('Document'), __('ID')),
-         'document.filename'    => sprintf(__('%1$s: %2$s'), __('Document'), __('File')),
-         'document.weblink'     => sprintf(__('%1$s: %2$s'), __('Document'), __('Web link')),
-         'document.name'        => sprintf(__('%1$s: %2$s'), __('Document'), __('Name')),
+         'change.id'            => sprintf(__('%1$s: %2$s'), Change::getTypeName(1), __('ID')),
+         'change.date'          => sprintf(__('%1$s: %2$s'), Change::getTypeName(1), _n('Date', 'Dates', 1)),
+         'change.url'           => sprintf(__('%1$s: %2$s'), Change::getTypeName(1), ('URL')),
+         'change.title'         => sprintf(__('%1$s: %2$s'), Change::getTypeName(1), __('Title')),
+         'change.content'       => sprintf(__('%1$s: %2$s'), Change::getTypeName(1), __('Description')),
+         'problem.id'           => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('ID')),
+         'problem.date'         => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), _n('Date', 'Dates', 1)),
+         'problem.url'          => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), ('URL')),
+         'problem.title'        => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('Title')),
+         'problem.content'      => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('Description')),
+         'ticket.id'            => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('ID')),
+         'ticket.date'          => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), _n('Date', 'Dates', 1)),
+         'ticket.url'           => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), ('URL')),
+         'ticket.title'         => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('Title')),
+         'ticket.content'       => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('Description')),
+         'cost.name'            => sprintf(__('%1$s: %2$s'), _n('Cost', 'Costs', 1), __('Name')),
+         'cost.comment'         => sprintf(__('%1$s: %2$s'), _n('Cost', 'Costs', 1), __('Comments')),
+         'cost.datebegin'       => sprintf(__('%1$s: %2$s'), _n('Cost', 'Costs', 1), __('Begin date')),
+         'cost.dateend'         => sprintf(__('%1$s: %2$s'), _n('Cost', 'Costs', 1), __('End date')),
+         'cost.cost'            => _n('Cost', 'Costs', 1),
+         'cost.budget'          => sprintf(__('%1$s: %2$s'), _n('Cost', 'Costs', 1), Budget::getTypeName(1)),
+         'document.url'         => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('URL')),
+         'document.downloadurl' => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('Download URL')),
+         'document.heading'     => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('Heading')),
+         'document.id'          => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('ID')),
+         'document.filename'    => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('File')),
+         'document.weblink'     => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('Web link')),
+         'document.name'        => sprintf(__('%1$s: %2$s'), Document::getTypeName(1), __('Name')),
          'project.urldocument'  => sprintf(
             __('%1$s: %2$s'),
-            _n('Document', 'Documents', Session::getPluralNumber()), __('URL')
+            Document::getTypeName(Session::getPluralNumber()), __('URL')
          ),
-         'project.entity'      => sprintf(__('%1$s (%2$s)'), __('Entity'), __('Complete name')),
-         'project.shortentity' => sprintf(__('%1$s (%2$s)'), __('Entity'), __('Name')),
+         'project.entity'      => sprintf(__('%1$s (%2$s)'), Entity::getTypeName(1), __('Complete name')),
+         'project.shortentity' => sprintf(__('%1$s (%2$s)'), Entity::getTypeName(1), __('Name')),
          'teammember.name'     => sprintf(
             __('%1$s: %2$s'),
             _n('Team member', 'Team members', 1), __('Name')
          ),
          'teammember.itemtype' => sprintf(
             __('%1$s: %2$s'),
-            _n('Team member', 'Team members', 1), __('Type')
+            _n('Team member', 'Team members', 1), _n('Type', 'Types', 1)
          ),
       ];
 
@@ -688,13 +707,13 @@ class NotificationTargetProject extends NotificationTarget {
       }
 
       //Tags with just lang
-      $tags = ['project.entity'   => __('Entity'),
+      $tags = ['project.entity'   => Entity::getTypeName(1),
                     'project.log'      => __('Historical'),
                     'project.tasks'    => _n('Task', 'Tasks', Session::getPluralNumber()),
-                    'project.team'     => __('Project team'),
+                    'project.team'     => ProjectTeam::getTypeName(1),
                     'project.costs'    => _n('Cost', 'Costs', Session::getPluralNumber()),
                     'project.changes'  => _n('Change', 'Changes', Session::getPluralNumber()),
-                    'project.problems' => _n('Problem', 'Problems', Session::getPluralNumber()),
+                    'project.problems' => Problem::getTypeName(Session::getPluralNumber()),
                     'project.tickets'  => _n('Ticket', 'Tickets', Session::getPluralNumber()),
                     'project.items'    => _n('Item', 'Items', Session::getPluralNumber())];
 
@@ -710,7 +729,7 @@ class NotificationTargetProject extends NotificationTarget {
                     'tasks'       => _n('Task', 'Tasks', Session::getPluralNumber()),
                     'costs'       => _n('Cost', 'Costs', Session::getPluralNumber()),
                     'changes'     => _n('Change', 'Changes', Session::getPluralNumber()),
-                    'problems'    => _n('Problem', 'Problems', Session::getPluralNumber()),
+                    'problems'    => Problem::getTypeName(Session::getPluralNumber()),
                     'tickets'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
                     'teammembers' => _n('Team member', 'Team members', Session::getPluralNumber()),
                     'items'       => _n('Item', 'Items', Session::getPluralNumber())];

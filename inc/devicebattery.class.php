@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -49,7 +49,7 @@ class DeviceBattery extends CommonDevice {
          [
             [
                'name'  => 'devicebatterytypes_id',
-               'label' => __('Type'),
+               'label' => _n('Type', 'Types', 1),
                'type'  => 'dropdownValue'
             ],
             [
@@ -77,7 +77,8 @@ class DeviceBattery extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'capacity',
          'name'               => __('Capacity'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -85,14 +86,15 @@ class DeviceBattery extends CommonDevice {
          'table'              => $this->getTable(),
          'field'              => 'voltage',
          'name'               => __('Voltage'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '13',
          'table'              => 'glpi_devicebatterytypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -110,7 +112,7 @@ class DeviceBattery extends CommonDevice {
       }
 
       Manufacturer::getHTMLTableHeader(__CLASS__, $base, $super, $father, $options);
-      $base->addHeader('devicebattery_type', __('Type'), $super, $father);
+      $base->addHeader('devicebattery_type', _n('Type', 'Types', 1), $super, $father);
       $base->addHeader('voltage', sprintf('%1$s (%2$s)', __('Voltage'), __('mV')), $super, $father);
       $base->addHeader('capacity', sprintf('%1$s (%2$s)', __('Capacity'), __('mWh')), $super, $father);
    }
@@ -163,5 +165,10 @@ class DeviceBattery extends CommonDevice {
          'capacity'              => 'delta:10',
          'voltage'               => 'delta:10'
       ];
+   }
+
+
+   static function getIcon() {
+      return "fas fa-battery-half";
    }
 }

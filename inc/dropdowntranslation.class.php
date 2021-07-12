@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -63,9 +63,6 @@ class DropdownTranslation extends CommonDBChild {
    }
 
 
-   /**
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (self::canBeTranslated($item)) {
@@ -185,7 +182,7 @@ class DropdownTranslation extends CommonDBChild {
     * @param field
     * @param language
     *
-    * @return the number of translations for this field
+    * @return integer the number of translations for this field
    **/
    static function getNumberOfTranslations($itemtype, $items_id, $field, $language) {
 
@@ -202,7 +199,7 @@ class DropdownTranslation extends CommonDBChild {
     *
     * @param item
     *
-    * @return the number of translations for this item
+    * @return integer the number of translations for this item
    **/
    static function getNumberOfTranslationsForItem($item) {
 
@@ -222,8 +219,6 @@ class DropdownTranslation extends CommonDBChild {
     * @return true if translation can be added/update, false otherwise
    **/
    function checkBeforeAddorUpdate($input, $add = true) {
-      global $DB;
-
       $number = $this->getNumberOfTranslations($input['itemtype'], $input['items_id'],
                                                $input['field'], $input['language']);
       if ($add) {
@@ -239,7 +234,7 @@ class DropdownTranslation extends CommonDBChild {
     * @param $input array    of user values
     * @param $add   boolean  true if translation is added, false if update (tgrue by default)
     *
-    * @return nothing
+    * @return void
    **/
    function generateCompletename($input, $add = true) {
       global $DB;
@@ -314,7 +309,7 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Display all translated field for a dropdown
     *
-    * @param $item a Dropdown item
+    * @param CommonDropdown $item  A Dropdown item
     *
     * @return true;
    **/
@@ -368,7 +363,7 @@ class DropdownTranslation extends CommonDBChild {
             echo "</th>";
          }
          echo "<th>".__("Language")."</th>";
-         echo "<th>".__("Field")."</th>";
+         echo "<th>"._n('Field', 'Fields', 1)."</th>";
          echo "<th>".__("Value")."</th></tr>";
          while ($data = $iterator->next()) {
             $onhover = '';
@@ -421,8 +416,8 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Display translation form
     *
-    * @param $ID               field (default -1)
-    * @param $options   array
+    * @param integer $ID       field (default -1)
+    * @param array   $options
     */
    function showForm($ID = -1, $options = []) {
       global $CFG_GLPI;
@@ -463,7 +458,7 @@ class DropdownTranslation extends CommonDBChild {
       }
       echo "</td><td colspan='2'>&nbsp;</td></tr>";
 
-      echo "<tr class='tab_bg_1'><td>".__('Field')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Field', 'Fields', 1)."</td>";
       echo "<td>";
       if ($ID > 0) {
          echo "<input type='hidden' name='field' value='".$this->fields['field']."'>";
@@ -487,11 +482,11 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Display a dropdown with fields that can be translated for an itemtype
     *
-    * @param $item       a Dropdown item
-    * @param $language   language to look for translations (default '')
-    * @param $value      field which must be selected by default (default '')
+    * @param CommonDBTM $item      a Dropdown item
+    * @param string     $language  language to look for translations (default '')
+    * @param string     $value     field which must be selected by default (default '')
     *
-    * @return the dropdown's random identifier
+    * @return integer the dropdown's random identifier
    **/
    static function dropdownFields(CommonDBTM $item, $language = '', $value = '') {
       global $DB;
@@ -534,13 +529,13 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Get translated value for a field in a particular language
     *
-    * @param $ID          dropdown item's id
-    * @param $itemtype    dropdown itemtype
-    * @param $field       the field to look for (default 'name')
-    * @param $language    get translation for this language
-    * @param $value       default value for the field (default '')
+    * @param integer $ID        dropdown item's id
+    * @param string  $itemtype  dropdown itemtype
+    * @param string  $field     the field to look for (default 'name')
+    * @param string  $language  get translation for this language
+    * @param string  $value     default value for the field (default '')
     *
-    * @return the translated value of the value in the default language
+    * @return string the translated value of the value in the default language
    **/
    static function getTranslatedValue($ID, $itemtype, $field = 'name', $language = '', $value = '') {
       global $DB;
@@ -595,12 +590,12 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Get the id of a translated string
     *
-    * @param $ID          item id
-    * @param $itemtype    item type
-    * @param $field       the field for which the translation is needed
-    * @param $language    the target language
+    * @param integer $ID          item id
+    * @param string  $itemtype    item type
+    * @param string  $field       the field for which the translation is needed
+    * @param string  $language    the target language
     *
-    * @return the row id or 0 if not translation found
+    * @return integer the row id or 0 if not translation found
    **/
    static function getTranslationID($ID, $itemtype, $field, $language) {
       global $DB;
@@ -628,9 +623,9 @@ class DropdownTranslation extends CommonDBChild {
     * It be translated if translation if globally on and item is an instance of CommonDropdown
     * or CommonTreeDropdown and if translation is enabled for this class
     *
-    * @param $item the item to check
+    * @param CommonGLPI $item the item to check
     *
-    * @return true if item can be translated, false otherwise
+    * @return boolean true if item can be translated, false otherwise
    **/
    static function canBeTranslated(CommonGLPI $item) {
 
@@ -655,11 +650,11 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Get a translation for a value
     *
-    * @param $itemtype    itemtype
-    * @param $field       field to query
-    * @param $value       value to translate
+    * @param string $itemtype  itemtype
+    * @param string $field     field to query
+    * @param string $value     value to translate
     *
-    * @return the value translated if a translation is available, or the same value if not
+    * @return string the value translated if a translation is available, or the same value if not
    **/
    static function getTranslationByName($itemtype, $field, $value) {
       global $DB;
@@ -682,11 +677,11 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Get translations for an item
     *
-    * @param $itemtype    itemtype
-    * @param $field       the field for which the translation is needed
-    * @param $items_id    item ID
+    * @param string  $itemtype  itemtype
+    * @param integer $items_id  item ID
+    * @param string  $field     the field for which the translation is needed
     *
-    * @return the value translated if a translation is available, or the same value if not
+    * @return string the value translated if a translation is available, or the same value if not
    **/
    static function getTranslationsForAnItem($itemtype, $items_id, $field) {
       global $DB;
@@ -709,10 +704,10 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Regenerate all completename translations for an item
     *
-    * @param $itemtype    itemtype
-    * @param $items_id    item ID
+    * @param string  $itemtype    itemtype
+    * @param integer $items_id    item ID
     *
-    * @return the value translated if a translation is available, or the same value if not
+    * @return string the value translated if a translation is available, or the same value if not
    **/
    static function regenerateAllCompletenameTranslationsFor($itemtype, $items_id) {
       foreach (self::getTranslationsForAnItem($itemtype, $items_id, 'completename') as $data) {
@@ -724,9 +719,9 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Check if there's at least one translation for this itemtype
     *
-    * @param $itemtype itemtype to check
+    * @param string $itemtype itemtype to check
     *
-    * @return true if there's at least one translation, otherwise false
+    * @return boolean true if there's at least one translation, otherwise false
    **/
    static function hasItemtypeATranslation($itemtype) {
       return countElementsInTable(self::getTable(), ['itemtype'=> $itemtype ]);
@@ -736,7 +731,7 @@ class DropdownTranslation extends CommonDBChild {
    /**
     * Get available translations for a language
     *
-    * @param $language language
+    * @param string $language language
     *
     * @return array of table / field translated item
    **/

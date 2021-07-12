@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,8 +45,6 @@ class ITILCategory extends CommonTreeDropdown {
 
    static $rightname          = 'itilcategory';
 
-
-
    function getAdditionalFields() {
 
       $tab = [['name'      => $this->getForeignKeyField(),
@@ -67,6 +65,10 @@ class ITILCategory extends CommonTreeDropdown {
                          'label'     => __('Knowledge base'),
                          'type'      => 'dropdownValue',
                          'list'      => true],
+                   ['name'      => 'code',
+                         'label'     => __('Code representing the ticket category'),
+                         'type'      => 'text',
+                         'list'      => false],
                    ['name'      => 'is_helpdeskvisible',
                          'label'     => __('Visible in the simplified interface'),
                          'type'      => 'bool',
@@ -131,7 +133,7 @@ class ITILCategory extends CommonTreeDropdown {
          'id'                 => '71',
          'table'              => 'glpi_groups',
          'field'              => 'completename',
-         'name'               => __('Group'),
+         'name'               => Group::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -258,6 +260,15 @@ class ITILCategory extends CommonTreeDropdown {
          'datatype'           => 'dropdown'
       ];
 
+      $tab[] = [
+         'id'                 => '99',
+         'table'              => $this->getTable(),
+         'field'              => 'code',
+         'name'               => __('Code representing the ticket category'),
+         'massiveaction'      => false,
+         'datatype'           => 'string'
+      ];
+
       return $tab;
    }
 
@@ -281,6 +292,63 @@ class ITILCategory extends CommonTreeDropdown {
       Rule::cleanForItemCriteria($this);
    }
 
+   /**
+    * @since 9.5.0
+    *
+    * @param $value
+   **/
+   static function getITILCategoryIDByCode($value) {
+      return self::getITILCategoryIDByField("code", $value);
+   }
+
+   /**
+    * @since 9.5.0
+    *
+    * @param string $field
+    * @param mixed  $value must be addslashes
+   **/
+   private static function getITILCategoryIDByField($field, $value) {
+      global $DB;
+
+      $iterator = $DB->request([
+         'SELECT' => 'id',
+         'FROM'   => self::getTable(),
+         'WHERE'  => [$field => $value]
+      ]);
+
+      if (count($iterator) == 1) {
+         $result = $iterator->next();
+         return $result['id'];
+      }
+      return -1;
+   }
+
+   function prepareInputForAdd($input) {
+      $input = parent::prepareInputForAdd($input);
+
+      $input['code'] = isset($input['code']) ? trim($input['code']) : '';
+      if (!empty($input["code"])
+            && ITILCategory::getITILCategoryIDByCode($input["code"]) != -1) {
+         Session::addMessageAfterRedirect(__("Code representing the ticket category is already used"),
+                                          false, ERROR);
+         return false;
+      }
+      return $input;
+   }
+
+
+   function prepareInputForUpdate($input) {
+      $input = parent::prepareInputForUpdate($input);
+
+      $input['code'] = isset($input['code']) ? trim($input['code']) : '';
+      if (!empty($input["code"])
+            && !in_array(ITILCategory::getITILCategoryIDByCode($input["code"]), [$input['id'],-1])) {
+         Session::addMessageAfterRedirect(__("Code representing the ticket category is already used"),
+                                          false, ERROR);
+         return false;
+      }
+      return $input;
+   }
 
    /**
     * @since 0.84
@@ -350,8 +418,8 @@ class ITILCategory extends CommonTreeDropdown {
          echo "<th>".__('Name')."</th>";
          echo "<th>".__('Incident')."</th>";
          echo "<th>".__('Request')."</th>";
-         echo "<th>".__('Change')."</th>";
-         echo "<th>".__('Problem')."</th>";
+         echo "<th>".Change::getTypeName(1)."</th>";
+         echo "<th>".Problem::getTypeName(1)."</th>";
          echo "</tr>";
 
          while ($data = $iterator->next()) {

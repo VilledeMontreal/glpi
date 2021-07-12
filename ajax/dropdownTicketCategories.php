@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,7 +45,7 @@ if (Session::getCurrentInterface() == "helpdesk") {
    $condition['is_helpdeskvisible'] = 1;
 }
 
-$currentcateg = new ItilCategory();
+$currentcateg = new ITILCategory();
 $currentcateg->getFromDB($_POST['value']);
 
 if ($_POST["type"]) {
@@ -67,4 +67,4 @@ if ($_POST["type"]) {
 }
 
 $opt['condition'] = $condition;
-ItilCategory::dropdown($opt);
+ITILCategory::dropdown($opt);

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -52,9 +52,6 @@ class Document_Item extends CommonDBRelation{
    static public $take_entity_2 = false;
 
 
-   /**
-    * @since 0.84
-   **/
    function getForbiddenStandardMassiveAction() {
 
       $forbidden   = parent::getForbiddenStandardMassiveAction();
@@ -63,10 +60,6 @@ class Document_Item extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85.5
-    * @see CommonDBRelation::canCreateItem()
-   **/
    function canCreateItem() {
 
       if ($this->fields['itemtype'] == 'Ticket') {
@@ -113,15 +106,6 @@ class Document_Item extends CommonDBRelation{
          return false;
       }
 
-      // Avoid duplicate entry
-      if (countElementsInTable($this->getTable(),
-                              ['documents_id' => $input['documents_id'],
-                               'itemtype'     => $input['itemtype'],
-                               'items_id'     => $input['items_id']]) > 0) {
-         Toolbox::logError('Duplicated document item relation');
-         return false;
-      }
-
       // #1476 - Inject ID of the actual user to known who attach an already existing document
       // to another item
       if (!isset($input['users_id'])) {
@@ -129,14 +113,42 @@ class Document_Item extends CommonDBRelation{
       }
 
       /** FIXME: should not this be handled on CommonITILObject side? */
-      if (is_subclass_of($input['itemtype'], 'CommonITILObject')) {
+      if (is_subclass_of($input['itemtype'], 'CommonITILObject') && !isset($input['timeline_position'])) {
          $input['timeline_position'] = CommonITILObject::TIMELINE_LEFT;
          if (isset($input["users_id"])) {
             $input['timeline_position'] = $input['itemtype']::getTimelinePosition($input['items_id'], $this->getType(), $input["users_id"]);
          }
       }
 
+      // Avoid duplicate entry
+      if ($this->alreadyExists($input)) {
+         Toolbox::logError('Duplicated document item relation');
+         return false;
+      }
+
       return parent::prepareInputForAdd($input);
+   }
+
+   /**
+    * Check if relation already exists.
+    *
+    * @param array $input
+    *
+    * @return boolean
+    *
+    * @since 9.5.0
+    */
+   public function alreadyExists(array $input): bool {
+      $criteria = [
+         'documents_id'      => $input['documents_id'],
+         'itemtype'          => $input['itemtype'],
+         'items_id'          => $input['items_id'],
+         'timeline_position' => $input['timeline_position'] ?? null
+      ];
+      if (array_key_exists('timeline_position', $input) && !empty($input['timeline_position'])) {
+         $criteria['timeline_position'] = $input['timeline_position'];
+      }
+      return countElementsInTable($this->getTable(), $criteria) > 0;
    }
 
 
@@ -146,8 +158,6 @@ class Document_Item extends CommonDBRelation{
     * @see CommonDBTM::pre_deleteItem()
    **/
    function pre_deleteItem() {
-      global $DB;
-
       // fordocument mandatory
       if ($this->fields['itemtype'] == 'Ticket') {
          $ticket = new Ticket();
@@ -163,7 +173,7 @@ class Document_Item extends CommonDBRelation{
                                     ['items_id' => $this->fields['items_id'],
                                      'itemtype' => 'Ticket' ]) == 1) {
                $message = sprintf(__('Mandatory fields are not filled. Please correct: %s'),
-                                  _n('Document', 'Documents', 2));
+                                  Document::getTypeName(Session::getPluralNumber()));
                Session::addMessageAfterRedirect($message, false, ERROR);
                return false;
             }
@@ -175,7 +185,7 @@ class Document_Item extends CommonDBRelation{
 
    function post_addItem() {
 
-      if ($this->fields['itemtype'] == 'Ticket') {
+      if ($this->fields['itemtype'] == 'Ticket' && ($this->input['_do_update_ticket'] ?? true)) {
          $ticket = new Ticket();
          $input  = [
             'id'              => $this->fields['items_id'],
@@ -290,16 +300,18 @@ class Document_Item extends CommonDBRelation{
    /**
     * Duplicate documents from an item template to its clone
     *
+    * @deprecated 9.5
     * @since 0.84
     *
-    * @param $itemtype     itemtype of the item
-    * @param $oldid        ID of the item to clone
-    * @param $newid        ID of the item cloned
-    * @param $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
+    * @param string  $itemtype     itemtype of the item
+    * @param integer $oldid        ID of the item to clone
+    * @param integer $newid        ID of the item cloned
+    * @param string  $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
    **/
    static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '') {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       if (empty($newitemtype)) {
          $newitemtype = $itemtype;
       }
@@ -330,11 +342,9 @@ class Document_Item extends CommonDBRelation{
     *
     * @param $doc Document object
     *
-    * @return nothing (HTML display)
+    * @return void
    **/
    static function showForDocument(Document $doc) {
-      global $DB, $CFG_GLPI;
-
       $instID = $doc->fields['id'];
       if (!$doc->can($instID, READ)) {
          return false;
@@ -394,9 +404,9 @@ class Document_Item extends CommonDBRelation{
          $header_bottom .= "</th>";
       }
 
-      $header_end .= "<th>".__('Type')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
       $header_end .= "<th>".__('Name')."</th>";
-      $header_end .= "<th>".__('Entity')."</th>";
+      $header_end .= "<th>".Entity::getTypeName(1)."</th>";
       $header_end .= "<th>".__('Serial number')."</th>";
       $header_end .= "<th>".__('Inventory number')."</th>";
       $header_end .= "</tr>";
@@ -416,8 +426,25 @@ class Document_Item extends CommonDBRelation{
             }
 
             while ($data = $iterator->next()) {
-               if ($itemtype == 'Ticket') {
-                  $data["name"] = sprintf(__('%1$s: %2$s'), __('Ticket'), $data["id"]);
+               $linkname_extra = "";
+               if ($item instanceof ITILFollowup || $item instanceof ITILSolution) {
+                  $linkname_extra = "(" . $item::getTypeName(1) . ")";
+                  $itemtype = $data['itemtype'];
+                  $item = new $itemtype();
+                  $item->getFromDB($data['items_id']);
+                  $data['id'] = $item->fields['id'];
+                  $data['entity'] = $item->fields['entities_id'];
+               } else if ($item instanceof CommonITILTask) {
+                  $linkname_extra = "(" . CommonITILTask::getTypeName(1) . ")";
+                  $itemtype = $item->getItilObjectItemType();
+                  $item = new $itemtype();
+                  $item->getFromDB($data[$item->getForeignKeyField()]);
+                  $data['id'] = $item->fields['id'];
+                  $data['entity'] = $item->fields['entities_id'];
+               }
+
+               if ($item instanceof CommonITILObject) {
+                  $data["name"] = sprintf(__('%1$s: %2$s'), $item->getTypeName(1), $data["id"]);
                }
 
                if ($itemtype == 'SoftwareLicense') {
@@ -442,8 +469,9 @@ class Document_Item extends CommonDBRelation{
                      $linkname = $tmpitem->getLink();
                   }
                }
+
                $link     = $itemtype::getFormURLWithID($data['id']);
-               $name = "<a href=\"".$link."\">".$linkname."</a>";
+               $name = "<a href='$link'>$linkname $linkname_extra</a>";
 
                echo "<tr class='tab_bg_1'>";
 
@@ -685,7 +713,7 @@ class Document_Item extends CommonDBRelation{
     * @param $options        array
     */
    static function showListForItem(CommonDBTM $item, $withtemplate = 0, $options = []) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       //default options
       $params['rand'] = mt_rand();
@@ -700,13 +728,13 @@ class Document_Item extends CommonDBRelation{
 
       $columns = [
          'name'      => __('Name'),
-         'entity'    => __('Entity'),
+         'entity'    => Entity::getTypeName(1),
          'filename'  => __('File'),
          'link'      => __('Web link'),
          'headings'  => __('Heading'),
          'mime'      => __('MIME type'),
          'tag'       => __('Tag'),
-         'assocdate' => __('Date')
+         'assocdate' => _n('Date', 'Dates', 1)
       ];
 
       if (isset($_GET["order"]) && ($_GET["order"] == "ASC")) {
@@ -717,9 +745,9 @@ class Document_Item extends CommonDBRelation{
 
       if ((isset($_GET["sort"]) && !empty($_GET["sort"]))
          && isset($columns[$_GET["sort"]])) {
-         $sort = "`".$_GET["sort"]."`";
+         $sort = $_GET["sort"];
       } else {
-         $sort = "`assocdate`";
+         $sort = "assocdate";
       }
 
       if (empty($withtemplate)) {
@@ -828,7 +856,7 @@ class Document_Item extends CommonDBRelation{
       }
 
       foreach ($columns as $key => $val) {
-         $header_end .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+         $header_end .= "<th".($sort == "$key" ? " class='order_$order'" : '').">".
                         "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                           (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
       }
@@ -908,11 +936,6 @@ class Document_Item extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBRelation::getRelationMassiveActionsPeerForSubForm()
-   **/
    static function getRelationMassiveActionsPeerForSubForm(MassiveAction $ma) {
 
       switch ($ma->getAction()) {
@@ -928,14 +951,7 @@ class Document_Item extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBRelation::getRelationMassiveActionsSpecificities()
-   **/
    static function getRelationMassiveActionsSpecificities() {
-      global $CFG_GLPI;
-
       $specificities              = parent::getRelationMassiveActionsSpecificities();
       $specificities['itemtypes'] = Document::getItemtypesThatCanHave();
 
@@ -957,10 +973,10 @@ class Document_Item extends CommonDBRelation{
     *
     * @param integer $items_id Object id to restrict on
     * @param string  $itemtype Type for items to retrieve
-    * @param boolean $noent    Flag to not compute enitty informations (see Document_Item::getTypeItemsQueryParams)
+    * @param boolean $noent    Flag to not compute enitty information (see Document_Item::getTypeItemsQueryParams)
     * @param array   $where    Inital WHERE clause. Defaults to []
     *
-    * @return DBMysqlIterator
+    * @return DBmysqlIterator
     */
    protected static function getTypeItemsQueryParams($items_id, $itemtype, $noent = false, $where = []) {
       $commonwhere = ['OR'  => [
@@ -999,7 +1015,7 @@ class Document_Item extends CommonDBRelation{
     * @since 9.3.1
     *
     * @param CommonDBTM $item  Item instance
-    * @param boolean    $noent Flag to not compute entity informations (see Document_Item::getTypeItemsQueryParams)
+    * @param boolean    $noent Flag to not compute entity information (see Document_Item::getTypeItemsQueryParams)
     *
     * @return array
     */
@@ -1042,5 +1058,39 @@ class Document_Item extends CommonDBRelation{
       }
 
       return $params;
+   }
+
+   /**
+    * Check if this item author is a support agent
+    *
+    * @return bool
+    */
+   public function isFromSupportAgent() {
+      // If not a CommonITILObject
+      if (!is_a($this->fields['itemtype'], 'CommonITILObject', true)) {
+         return true;
+      }
+
+      // Get parent item
+      $commonITILObject = new $this->fields['itemtype']();
+      $commonITILObject->getFromDB($this->fields['items_id']);
+
+      $actors = $commonITILObject->getITILActors();
+      $user_id = $this->fields['users_id'];
+      $roles = $actors[$user_id] ?? [];
+
+      if (in_array(CommonITILActor::ASSIGN, $roles)) {
+         // The author is assigned -> support agent
+         return true;
+      } else if (in_array(CommonITILActor::OBSERVER, $roles)
+         || in_array(CommonITILActor::REQUESTER, $roles)
+      ) {
+         // The author is an observer or a requester -> not a support agent
+         return false;
+      } else {
+         // The author is not an actor of the ticket -> he was most likely a
+         // support agent that is no longer assigned to the ticket
+         return true;
+      }
    }
 }

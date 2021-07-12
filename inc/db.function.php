@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -405,6 +405,8 @@ function contructListFromTree($tree, $parent = 0) {
  * @param $reallink  string   real field to link ($table.id if not set) (default ='')
  *
  * @return string the query
+ *
+ * @deprecated 9.5.0
 **/
 function getRealQueryForTreeItem($table, $IDf, $reallink = "") {
    $dbu = new DbUtils();
@@ -500,31 +502,14 @@ function closeDBConnections() {
    return $dbu->closeDBConnections();
 }
 
-
 /**
  * Add dates for request
  *
- * @deprecated 9.4
+ * @param string $field  table.field to request
+ * @param string $begin  begin date
+ * @param string $end    end date
  *
- * @param string $field table.field to request
- * @param string $begin begin date
- * @param string $end   end date
- *
- * @return string SQL
- */
-function getDateRequest($field, $begin, $end) {
-   $dbu = new DbUtils();
-   return $dbu->getDateRequest($field, $begin, $end);
-}
-
-/**
- * Add dates for request
- *
- * @param $field        table.field to request
- * @param $begin  date  begin date
- * @param $end    date  end date
- *
- * @return sql
+ * @return string
 **/
 function getDateCriteria($field, $begin, $end) {
    $dbu = new DbUtils();

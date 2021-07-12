@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 class RuleCriteria extends CommonDBChild {
 
    // From CommonDBChild
+   static public $itemtype        = 'Rule';
    static public $items_id        = 'rules_id';
    public $dohistory              = true;
    public $auto_message_on_action = false;
@@ -91,18 +92,13 @@ class RuleCriteria extends CommonDBChild {
       return _n('Criterion', 'Criteria', $nb);
    }
 
-
-   /**
-    * @see CommonDBTM::getRawName()
-   **/
-   function getRawName() {
+   protected function computeFriendlyName() {
 
       if ($rule = getItemForItemtype(static::$itemtype)) {
          return Html::clean($rule->getMinimalCriteriaText($this->fields));
       }
       return '';
    }
-
 
    /**
     * @since 0.84
@@ -178,7 +174,8 @@ class RuleCriteria extends CommonDBChild {
          'name'               => __('Reason'),
          'massiveaction'      => false,
          'datatype'           => 'specific',
-         'additionalfields'   => ['rules_id', 'criteria', 'condition']
+         'additionalfields'   => ['rules_id', 'criteria', 'condition'],
+         'autocomplete'       => true,
       ];
 
       return $tab;
@@ -204,7 +201,7 @@ class RuleCriteria extends CommonDBChild {
                 && !empty($values['rules_id'])
                 && $generic_rule->getFromDB($values['rules_id'])) {
                if ($rule = getItemForItemtype($generic_rule->fields["sub_type"])) {
-                  return $rule->getCriteria($values[$field]);
+                  return $rule->getCriteriaName($values[$field]);
                }
             }
             break;
@@ -217,7 +214,7 @@ class RuleCriteria extends CommonDBChild {
                if (isset($values['criteria']) && !empty($values['criteria'])) {
                   $criterion = $values['criteria'];
                }
-               return $rule->getConditionByID($values[$field], $generic_rule->fields["sub_type"], $criterion);
+               return self::getConditionByID($values[$field], $generic_rule->fields["sub_type"], $criterion);
             }
             break;
 
@@ -249,8 +246,6 @@ class RuleCriteria extends CommonDBChild {
     * @param $options      array
    **/
    static function getSpecificValueToSelect($field, $name = '', $values = '', array $options = []) {
-      global $DB;
-
       if (!is_array($values)) {
          $values = [$field => $values];
       }
@@ -455,7 +450,9 @@ class RuleCriteria extends CommonDBChild {
                // And add to $regex_result array
                $res = [];
                foreach ($results as $data) {
-                  $res[] = $data[0];
+                  foreach ($data as $val) {
+                     $res[] = $val;
+                  }
                }
                $regex_result[]               = $res;
                $criterias_results[$criteria] = $pattern;
@@ -530,7 +527,7 @@ class RuleCriteria extends CommonDBChild {
          $crit = $item->getCriteria($criterion);
 
          if (isset($crit['type']) && ($crit['type'] == 'dropdown')) {
-            $crititemtype = getItemtypeForTable($crit['table']);
+            $crititemtype = getItemTypeForTable($crit['table']);
 
             if (($item = getItemForItemtype($crititemtype))
                 && $item instanceof CommonTreeDropdown) {

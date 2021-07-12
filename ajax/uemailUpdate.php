@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -115,7 +115,7 @@ if ((isset($_POST['field']) && ($_POST["value"] > 0))
    }
 
    echo '<br>';
-   printf(__('%1$s: %2$s'), __('Email'), $email_string);
+   printf(__('%1$s: %2$s'), _n('Email', 'Emails', 1), $email_string);
 
 }
 

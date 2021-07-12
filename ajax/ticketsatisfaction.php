@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -88,12 +88,10 @@ if (isset($_POST['inquest_config']) && isset($_POST['entities_id'])) {
                                  'unit'  => 'day']);
       echo "</td></tr>";
 
-      if ($max_closedate != '') {
-         echo "<tr class='tab_bg_1'><td>". __('For tickets closed after')."</td><td>";
-         Html::showDateTimeField("max_closedate", ['value'      => $max_closedate,
-                                                        'timestep'   => 1]);
-         echo "</td></tr>";
-      }
+      echo "<tr class='tab_bg_1'><td>". __('For tickets closed after')."</td><td>";
+      Html::showDateTimeField("max_closedate", ['value'      => $max_closedate,
+                                                      'timestep'   => 1]);
+      echo "</td></tr>";
 
       if ($_POST['inquest_config'] == 2) {
          echo "<tr class='tab_bg_1'>";

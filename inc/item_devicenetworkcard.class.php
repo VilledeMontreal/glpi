@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -49,16 +49,14 @@ class Item_DeviceNetworkCard extends Item_Devices {
    static protected $notable = false;
 
 
-   /**
-    * @since 0.85
-   **/
    static function getSpecificities($specif = '') {
 
       return ['mac'    => ['long name'  => __('MAC address'),
                                      'short name' => __('MAC address'),
                                      'size'       => 18,
                                      'id'         => 20,
-                                     'datatype'   => 'mac'],
+                                     'datatype'   => 'mac',
+                                     'autocomplete' => true,],
                    'serial' => parent::getSpecificities('serial'),
                    'otherserial' => parent::getSpecificities('otherserial'),
                    'locations_id' => parent::getSpecificities('locations_id'),

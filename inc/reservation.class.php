@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -275,7 +275,7 @@ class Reservation extends CommonDBChild {
     * @param $type   error type : date / is_res / other
     * @param $ID     ID of the item
     *
-    * @return nothing
+    * @return void
    **/
    function displayError($type, $ID) {
 
@@ -355,12 +355,15 @@ class Reservation extends CommonDBChild {
       global $DB;
 
       if (isset($this->input['_delete_group']) && $this->input['_delete_group']) {
-         $query = "SELECT *
-                   FROM `glpi_reservations`
-                   WHERE `reservationitems_id` = '".$this->fields['reservationitems_id']."'
-                         AND `group` = '".$this->fields['group']."' ";
+         $iterator = $DB->request([
+            'FROM'   => 'glpi_reservations',
+            'WHERE'  => [
+               'reservationitems_id'   => $this->fields['reservationitems_id'],
+               'group'                 => $this->fields['group']
+            ]
+         ]);
          $rr = clone $this;
-         foreach ($DB->request($query) as $data) {
+         while ($data = $iterator->next()) {
             $rr->delete(['id' => $data['id']]);
          }
       }
@@ -651,7 +654,7 @@ class Reservation extends CommonDBChild {
       // Add Hardware name
       $r = new ReservationItem();
 
-      echo "<tr class='tab_bg_1'><td>".__('Item')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Item', 'Items', 1)."</td>";
       echo "<td>";
       foreach ($options['item'] as $itemID) {
          $r->getFromDB($itemID);
@@ -699,7 +702,6 @@ class Reservation extends CommonDBChild {
       echo "<tr class='tab_bg_2'><td>".__('Start date')."</td><td>";
       $rand_begin = Html::showDateTimeField("resa[begin]",
                                             ['value'      => $resa->fields["begin"],
-                                                  'timestep'   => -1,
                                                   'maybeempty' => false]);
       echo "</td></tr>\n";
       $default_delay = floor((strtotime($resa->fields["end"])-strtotime($resa->fields["begin"]))
@@ -1020,7 +1022,7 @@ class Reservation extends CommonDBChild {
 
             if ((strcmp($heure_debut, "00:00") == 0)
                   && (strcmp($heure_fin, "24:00") == 0)) {
-               $display = __('Day');
+               $display = _n('Day', 'Days', 1);
 
             } else if (strcmp($heure_debut, "00:00") == 0) {
                $display = sprintf(__('To %s'), $heure_fin);
@@ -1126,8 +1128,7 @@ class Reservation extends CommonDBChild {
                         $ri->fields['id']."&amp;mois_courant=$mois&amp;annee_courante=$annee' title=\"".
                         __s('See planning')."\">";
                   echo "<i class='far fa-calendar-alt'></i>";
-                  echo "<span class='sr-only'>".__('See planning')."</span>";
-                       "</a>";
+                  echo "<span class='sr-only'>".__('See planning')."</span></a>";
                } else {
                   echo "&nbsp;";
                }
@@ -1262,8 +1263,8 @@ class Reservation extends CommonDBChild {
       } else {
          echo "<tr><th>".__('Start date')."</th>";
          echo "<th>".__('End date')."</th>";
-         echo "<th>".__('Item')."</th>";
-         echo "<th>".__('Entity')."</th>";
+         echo "<th>"._n('Item', 'Items', 1)."</th>";
+         echo "<th>".Entity::getTypeName(1)."</th>";
          echo "<th>".__('By')."</th>";
          echo "<th>".__('Comments')."</th><th>&nbsp;</th></tr>\n";
 
@@ -1346,8 +1347,8 @@ class Reservation extends CommonDBChild {
       } else {
          echo "<tr><th>".__('Start date')."</th>";
          echo "<th>".__('End date')."</th>";
-         echo "<th>".__('Item')."</th>";
-         echo "<th>".__('Entity')."</th>";
+         echo "<th>"._n('Item', 'Items', 1)."</th>";
+         echo "<th>".Entity::getTypeName(1)."</th>";
          echo "<th>".__('By')."</th>";
          echo "<th>".__('Comments')."</th><th>&nbsp;</th></tr>\n";
 
@@ -1386,5 +1387,9 @@ class Reservation extends CommonDBChild {
       echo "</table></div>\n";
    }
 
+
+   static function getIcon() {
+      return "fas fa-calendar-check";
+   }
 
 }

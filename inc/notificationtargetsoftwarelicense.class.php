@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -82,7 +82,7 @@ class NotificationTargetSoftwareLicense extends NotificationTarget {
                     'license.item'           => _n('Software', 'Software', 1),
                     'license.name'           => __('Name'),
                     'license.serial'         => __('Serial number'),
-                    'license.entity'         => __('Entity'),
+                    'license.entity'         => Entity::getTypeName(1),
                     'license.url'            => __('URL'),
                     'license.action'         => _n('Event', 'Events', 1)];
 

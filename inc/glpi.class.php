@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,6 +30,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Application\ErrorHandler;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\TestHandler;
@@ -44,6 +45,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class GLPI {
 
+   private $error_handler;
    private $loggers;
    private $log_level;
 
@@ -75,14 +77,14 @@ class GLPI {
                GLPI_LOG_DIR . "/{$type}-errors.log",
                $this->log_level
             );
-            $formatter = new LineFormatter(null, null, true, true);
+            $formatter = new LineFormatter(null, 'Y-m-d H:i:s', true, true);
             $handler->setFormatter($formatter);
          }
          $logger->pushHandler($handler);
          $this->loggers[$type] = $logger;
-         $var = strtoupper($type . 'logger');
-         $$var = $this->loggers[$type];
       }
+      $PHPLOGGER = $this->loggers['php'];
+      $SQLLOGGER = $this->loggers['sql'];
    }
 
    /**
@@ -92,5 +94,28 @@ class GLPI {
     */
    public function getLogLevel() {
       return $this->log_level;
+   }
+
+   /**
+    * Init and register error handler.
+    *
+    * @return ErrorHandler
+    */
+   public function initErrorHandler() {
+      global $PHPLOGGER;
+
+      $this->error_handler = new ErrorHandler($PHPLOGGER);
+      $this->error_handler->register();
+
+      return $this->error_handler;
+   }
+
+   /**
+    * Get registered error handler.
+    *
+    * @return null|ErrorHandler
+    */
+   public function getErrorHandler() {
+      return $this->error_handler;
    }
 }

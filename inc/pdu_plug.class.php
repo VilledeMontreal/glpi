@@ -7,7 +7,7 @@ if (!defined('GLPI_ROOT')) {
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,7 +37,7 @@ if (!defined('GLPI_ROOT')) {
 
 class Pdu_Plug extends CommonDBRelation {
 
-   static public $itemtype_1 = 'Pdu';
+   static public $itemtype_1 = 'PDU';
    static public $items_id_1 = 'pdus_id';
    static public $itemtype_2 = 'Plug';
    static public $items_id_2 = 'plugs_id';
@@ -78,7 +78,7 @@ class Pdu_Plug extends CommonDBRelation {
     * @return void
     */
    static function showItems(PDU $pdu) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID = $pdu->getID();
       $rand = mt_rand();
@@ -187,4 +187,12 @@ class Pdu_Plug extends CommonDBRelation {
          }
       }
    }
+
+   function getForbiddenStandardMassiveAction() {
+      $forbidden   = parent::getForbiddenStandardMassiveAction();
+      $forbidden[] = 'CommonDBConnexity:affect';
+      $forbidden[] = 'CommonDBConnexity:unaffect';
+      return $forbidden;
+   }
+
 }

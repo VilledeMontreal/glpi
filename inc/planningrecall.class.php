@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -74,7 +74,7 @@ class PlanningRecall extends CommonDBChild {
 
       $_SESSION['glpiplanningreminder_isavailable'] = 0;
       if ($CFG_GLPI["use_notifications"]) {
-         $task = new Crontask();
+         $task = new CronTask();
          if ($task->getFromDBbyName('PlanningRecall', 'planningrecall')) {
             // Only disabled by config
             if ($task->isDisabled() != 1) {
@@ -127,7 +127,7 @@ class PlanningRecall extends CommonDBChild {
    **/
    static function manageDatas(array $data) {
 
-      // Check data informations
+      // Check data information
       if (!isset($data['itemtype'])
           || !isset($data['items_id'])
           || !isset($data['users_id'])
@@ -229,17 +229,16 @@ class PlanningRecall extends CommonDBChild {
     *    - value    : integer preselected value for before_time
     *    - field    : string  field used as time mark (default begin)
     *
-    * @return nothing (print out an HTML select box) / return false if mandatory fields are not ok
+    * @return void|boolean print out an HTML select box or return false if mandatory fields are not ok
    **/
    static function dropdown($options = []) {
-      global $DB, $CFG_GLPI;
-
       // Default values
       $p['itemtype'] = '';
       $p['items_id'] = 0;
       $p['users_id'] = Session::getLoginUserID();
       $p['value']    = Entity::CONFIG_NEVER;
       $p['field']    = 'begin';
+      $p['rand']     = mt_rand();
 
       if (is_array($options) && count($options)) {
          foreach ($options as $key => $val) {
@@ -280,8 +279,10 @@ class PlanningRecall extends CommonDBChild {
 
       ksort($possible_values);
 
-      Dropdown::showFromArray('_planningrecall[before_time]', $possible_values,
-                              ['value' => $p['value']]);
+      Dropdown::showFromArray('_planningrecall[before_time]', $possible_values, [
+         'value' => $p['value'],
+         'rand'  => $p['rand'],
+      ]);
       echo "<input type='hidden' name='_planningrecall[itemtype]' value='".$p['itemtype']."'>";
       echo "<input type='hidden' name='_planningrecall[items_id]' value='".$p['items_id']."'>";
       echo "<input type='hidden' name='_planningrecall[users_id]' value='".$p['users_id']."'>";
@@ -302,11 +303,9 @@ class PlanningRecall extends CommonDBChild {
     *    - value    : integer preselected value for before_time
     *    - field    : string  field used as time mark (default begin)
     *
-    * @return nothing (print out an HTML select box) / return false if mandatory fields are not ok
+    * @return void|boolean print out an HTML select box or return false if mandatory fields are not ok
    **/
    static function specificForm($options = []) {
-      global $CFG_GLPI;
-
       // Default values
       $p['itemtype'] = '';
       $p['items_id'] = 0;
@@ -338,7 +337,7 @@ class PlanningRecall extends CommonDBChild {
     *
     * @param $name : task's name
     *
-    * @return arrray of information
+    * @return array of information
    **/
    static function cronInfo($name) {
 
@@ -363,20 +362,48 @@ class PlanningRecall extends CommonDBChild {
       }
 
       $cron_status = 0;
-      $query       = "SELECT `glpi_planningrecalls`.*
-                      FROM `glpi_planningrecalls`
-                      LEFT JOIN `glpi_alerts`
-                           ON (`glpi_planningrecalls`.`id` = `glpi_alerts`.`items_id`
-                               AND `glpi_alerts`.`itemtype` = 'PlanningRecall'
-                               AND `glpi_alerts`.`type`='".Alert::ACTION."')
-                      WHERE `glpi_planningrecalls`.`when` IS NOT NULL
-                            AND `glpi_planningrecalls`.`when` < NOW()
-                            AND `glpi_alerts`.`date` IS NULL";
+      $iterator = $DB->request([
+         'SELECT'    => 'glpi_planningrecalls.*',
+         'FROM'      => 'glpi_planningrecalls',
+         'LEFT JOIN' => [
+            'glpi_alerts'  => [
+               'ON' => [
+                  'glpi_planningrecalls'  => 'id',
+                  'glpi_alerts'           => 'items_id', [
+                     'AND' => [
+                        'glpi_alerts.itemtype'  => 'PlanningRecall',
+                        'glpi_alerts.type'      => Alert::ACTION
+                     ]
+                  ]
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            'NOT'                         => ['glpi_planningrecalls.when' => null],
+            'glpi_planningrecalls.when'   => ['<', new \QueryExpression('NOW()')],
+            'glpi_alerts.date'            => null
+         ]
+      ]);
 
       $pr = new self();
-      foreach ($DB->request($query) as $data) {
+      while ($data = $iterator->next()) {
          if ($pr->getFromDB($data['id']) && $pr->getItem()) {
-            if (NotificationEvent::raiseEvent('planningrecall', $pr)) {
+
+            $options = [];
+
+            //retrieve entities id from parent linked item
+            //planningrecall -> TicketTask ->  Ticket which have entity notion
+            //               -> ChangeTask ->  Change which have entity notion
+            //               -> ProblemTask -> Problem which have entity notion
+            $itemToNotify = $pr->getItem();
+            if ($itemToNotify instanceof \CommonITILTask) {
+               $linkedItem = $itemToNotify->getItem();
+               if ($linkedItem && $linkedItem->isEntityAssign()) {
+                  $options['entities_id'] = $linkedItem->getEntityID();
+               }
+            }
+
+            if (NotificationEvent::raiseEvent('planningrecall', $pr, $options)) {
 
                $cron_status         = 1;
                $task->addVolume(1);

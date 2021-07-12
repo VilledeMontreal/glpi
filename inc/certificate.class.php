@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -42,10 +42,20 @@ if (!defined('GLPI_ROOT')) {
  * Class to declare a certificate
  */
 class Certificate extends CommonDBTM {
+   use Glpi\Features\Clonable;
 
    public $dohistory           = true;
    static $rightname           = "certificate";
    protected $usenotepad       = true;
+
+   public function getCloneRelations() :array {
+      return [
+         Infocom::class,
+         Contract_Item::class,
+         Document_Item::class,
+         KnowbaseItem_Item::class
+      ];
+   }
 
    static function getTypeName($nb = 0) {
       return _n('Certificate', 'Certificates', $nb);
@@ -78,7 +88,8 @@ class Certificate extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
+         'massiveaction'      => false, // implicit key==1
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -95,7 +106,8 @@ class Certificate extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'serial',
          'name'               => __('Serial number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -103,7 +115,8 @@ class Certificate extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
@@ -112,7 +125,7 @@ class Certificate extends CommonDBTM {
          'id'                 => '7',
          'table'              => 'glpi_certificatetypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -121,6 +134,7 @@ class Certificate extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'dns_suffix',
          'name'               => __('DNS suffix'),
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -136,7 +150,8 @@ class Certificate extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'date_expiration',
          'name'               => __('Expiration date'),
-         'datatype'           => 'date'
+         'datatype'           => 'date',
+         'maybefuture'        => true,
       ];
 
       $tab[] = [
@@ -167,7 +182,7 @@ class Certificate extends CommonDBTM {
          'id'                 => '14',
          'table'              => 'glpi_certificates_items',
          'field'              => 'items_id',
-         'name'               => _n('Associated item', 'Associated items', 2),
+         'name'               => _n('Associated item', 'Associated items', Session::getPluralNumber()),
          'nosearch'           => true,
          'massiveaction'      => false,
          'forcegroupby'       => true,
@@ -184,6 +199,32 @@ class Certificate extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '16',
+         'table'              => $this->getTable(),
+         'field'              => 'contact',
+         'name'               => __('Alternate username'),
+         'datatype'           => 'string',
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '17',
+         'table'              => $this->getTable(),
+         'field'              => 'contact_num',
+         'name'               => __('Alternate username number'),
+         'datatype'           => 'string',
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '18',
+         'table'              => $this->getTable(),
+         'field'              => 'dns_name',
+         'name'               => __('DNS name'),
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '19',
          'table'              => $this->getTable(),
          'field'              => 'date_mod',
@@ -196,7 +237,7 @@ class Certificate extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -230,10 +271,22 @@ class Certificate extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '61',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '70',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'datatype'           => 'dropdown',
          'right'              => 'all'
       ];
@@ -242,7 +295,7 @@ class Certificate extends CommonDBTM {
          'id'                 => '71',
          'table'              => 'glpi_groups',
          'field'              => 'completename',
-         'name'               => __('Group'),
+         'name'               => Group::getTypeName(1),
          'condition'          => ['is_itemgroup' => 1],
          'datatype'           => 'dropdown'
       ];
@@ -265,7 +318,7 @@ class Certificate extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -302,6 +355,7 @@ class Certificate extends CommonDBTM {
       $this->addDefaultFormTab($ong)
          ->addStandardTab(__CLASS__, $ong, $options)
          ->addStandardTab('Certificate_Item', $ong, $options)
+         ->addStandardTab('Domain_Item', $ong, $options)
          ->addStandardTab('Infocom', $ong, $options)
          ->addStandardTab('Contract_Item', $ong, $options)
          ->addStandardTab('Document_Item', $ong, $options)
@@ -317,9 +371,6 @@ class Certificate extends CommonDBTM {
       return $ong;
    }
 
-   /**
-    * @see CommonDBTM::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
 
       if (isset($input["id"]) && ($input["id"] > 0)) {
@@ -331,24 +382,6 @@ class Certificate extends CommonDBTM {
       return $input;
    }
 
-   function post_addItem() {
-
-      // Manage add from template
-      if (isset($this->input["_oldID"])) {
-
-         // ADD Infocoms
-         Infocom::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Contract
-         Contract_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         // ADD Documents
-         Document_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         //Add KB links
-         KnowbaseItem_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-      }
-   }
 
    /**
     * @param $ID
@@ -383,12 +416,12 @@ class Certificate extends CommonDBTM {
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Location')."</td>";
+      echo "<td>".Location::getTypeName(1)."</td>";
       echo "<td>";
       Location::dropdown(['value'  => $this->fields["locations_id"],
                           'entity' => $this->fields["entities_id"]]);
       echo "</td>";
-      echo "<td>".__('Type')."</td>";
+      echo "<td>"._n('Type', 'Types', 1)."</td>";
       echo "<td>";
       Dropdown::show('CertificateType',
                      ['name'   => "certificatetypes_id",
@@ -405,7 +438,7 @@ class Certificate extends CommonDBTM {
                       'right'  => 'own_ticket',
                       'entity' => $this->fields["entities_id"]]);
       echo "</td>";
-      echo "<td>".__('Manufacturer')." (" . __('Root CA') . ")";
+      echo "<td>".Manufacturer::getTypeName(1)." (" . __('Root CA') . ")";
       echo "<td>";
       Manufacturer::dropdown(['value' => $this->fields["manufacturers_id"]]);
       echo "</td></tr>\n";
@@ -437,13 +470,13 @@ class Certificate extends CommonDBTM {
       echo "</td><td colspan='2'></td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('User')."</td>";
+      echo "<td>".User::getTypeName(1)."</td>";
       echo "<td>";
       User::dropdown(['value'  => $this->fields["users_id"],
                       'entity' => $this->fields["entities_id"],
                       'right'  => 'all']);
       echo "</td>";
-      echo "<td>".__('Group')."</td>";
+      echo "<td>".Group::getTypeName(1)."</td>";
       echo "<td>";
       Group::dropdown([
          'value'     => $this->fields["groups_id"],
@@ -617,8 +650,7 @@ class Certificate extends CommonDBTM {
             $input = $ma->getInput();
             foreach ($ids as $key) {
                if ($item->can($key, UPDATE)) {
-                  $values = ['plugin_certificates_certificates_id'
-                                        => $key,
+                  $values = ['certificates_id' => $key,
                              'items_id' => $input["item_item"],
                              'itemtype' => $input['typeitem']];
                   if ($certif_item->add($values)) {
@@ -650,7 +682,7 @@ class Certificate extends CommonDBTM {
    /**
     * Type than could be linked to a certificate
     *
-    * @param $all boolean, all type, or only allowed ones
+    * @param boolean $all Get all possible types or only allowed ones
     *
     * @return array of types
     **/
@@ -684,7 +716,7 @@ class Certificate extends CommonDBTM {
    /**
     * Cron action on certificates : alert on expired certificates
     *
-    * @param CronTask $task to log, if NULL display (default NULL)
+    * @param CronTask $task CronTask to log, if NULL display (default NULL)
     *
     * @return integer 0 : nothing to do 1 : done with success
    **/
@@ -799,5 +831,10 @@ class Certificate extends CommonDBTM {
    **/
    function showDebug() {
       NotificationEvent::debugEvent($this);
+   }
+
+
+   static function getIcon() {
+      return "fas fa-certificate";
    }
 }

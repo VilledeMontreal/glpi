@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -330,7 +330,7 @@ class QueuedNotification extends CommonDBTM {
          'id'                 => '20',
          'table'              => $this->getTable(),
          'field'              => 'itemtype',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'itemtype',
          'massiveaction'      => false
       ];
@@ -370,7 +370,7 @@ class QueuedNotification extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -454,7 +454,7 @@ class QueuedNotification extends CommonDBTM {
     *
     * @param $name : task's name
     *
-    * @return arrray of information
+    * @return array of information
    **/
    static function cronInfo($name) {
 
@@ -541,8 +541,6 @@ class QueuedNotification extends CommonDBTM {
     * @return integer either 0 or 1
    **/
    static function cronQueuedNotification($task = null) {
-      global $DB, $CFG_GLPI;
-
       if (!Notification_NotificationTemplate::hasActiveMode()) {
          return 0;
       }
@@ -551,7 +549,6 @@ class QueuedNotification extends CommonDBTM {
       // Send notifications at least 1 minute after adding in queue to be sure that process on it is finished
       $send_time = date("Y-m-d H:i:s", strtotime("+1 minutes"));
 
-      $mail = new self();
       $pendings = self::getPendings(
          $send_time,
          $task->fields['param']
@@ -593,13 +590,12 @@ class QueuedNotification extends CommonDBTM {
       if ($task->fields['param'] > 0) {
          $secs      = $task->fields['param'] * DAY_TIMESTAMP;
          $send_time = date("U") - $secs;
-         //TODO: migrate to DB::delete()
-         $query_exp = "DELETE
-                       FROM `glpi_queuednotifications`
-                       WHERE `glpi_queuednotifications`.`is_deleted`
-                             AND UNIX_TIMESTAMP(send_time) < '".$send_time."'";
-
-         $DB->query($query_exp);
+         $DB->delete(
+            self::getTable(), [
+               'is_deleted'   => 1,
+               new \QueryExpression('(UNIX_TIMESTAMP('.$DB->quoteName('send_time').') < '.$DB->quoteValue($send_time).')')
+            ]
+         );
          $vol = $DB->affectedRows();
       }
 
@@ -617,8 +613,6 @@ class QueuedNotification extends CommonDBTM {
     * @return void
    **/
    static function forceSendFor($itemtype, $items_id) {
-      global $DB;
-
       if (!empty($itemtype)
          && !empty($items_id)) {
          $pendings = self::getPendings(
@@ -648,8 +642,6 @@ class QueuedNotification extends CommonDBTM {
     * @return true if displayed  false if item not found or not right to display
    **/
    function showForm($ID, $options = []) {
-      global $CFG_GLPI;
-
       if (!Session::haveRight("queuednotification", READ)) {
          return false;
       }
@@ -659,7 +651,7 @@ class QueuedNotification extends CommonDBTM {
 
       $this->showFormHeader($options);
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Type')."</td>";
+      echo "<td>"._n('Type', 'Types', 1)."</td>";
 
       echo "<td>";
       if (!($item = getItemForItemtype($this->fields['itemtype']))) {
@@ -706,7 +698,7 @@ class QueuedNotification extends CommonDBTM {
       echo "<td>".$this->fields['sent_try']."</td>";
       echo "</tr>";
 
-      echo "<tr><th colspan='4'>".__('Email')."</th></tr>";
+      echo "<tr><th colspan='4'>"._n('Email', 'Emails', 1)."</th></tr>";
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Sender email')."</td>";
       echo "<td>".$this->fields['sender']."</td>";
@@ -788,7 +780,10 @@ class QueuedNotification extends CommonDBTM {
          }
       }
       return nl2br($newstring, false);
-      return preg_replace($patterns, $replacements, $string);
    }
 
+
+   static function getIcon() {
+      return "far fa-list-alt";
+   }
 }

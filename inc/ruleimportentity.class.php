@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -121,7 +121,7 @@ class RuleImportEntity extends Rule {
       if ($criteria['field'] == '_source') {
          $tab = [];
          foreach ($PLUGIN_HOOKS['import_item'] as $plug => $types) {
-            if (!Plugin::isPluginLoaded($plug)) {
+            if (!Plugin::isPluginActive($plug)) {
                continue;
             }
             $tab[$plug] = Plugin::getInfo($plug, 'name');
@@ -158,11 +158,11 @@ class RuleImportEntity extends Rule {
 
       $actions                             = [];
 
-      $actions['entities_id']['name']      = __('Entity');
+      $actions['entities_id']['name']      = Entity::getTypeName(1);
       $actions['entities_id']['type']      = 'dropdown';
       $actions['entities_id']['table']     = 'glpi_entities';
 
-      $actions['locations_id']['name']     = __('Location');
+      $actions['locations_id']['name']     = Location::getTypeName(1);
       $actions['locations_id']['type']     = 'dropdown';
       $actions['locations_id']['table']    = 'glpi_locations';
 
@@ -175,6 +175,9 @@ class RuleImportEntity extends Rule {
       $actions['groups_id_tech']['name']     = __('Group in charge of the hardware');
       $actions['groups_id_tech']['type']     = 'dropdown';
       $actions['groups_id_tech']['table']    = 'glpi_groups';
+
+      $actions['users_id_tech']['name']     = __('Technician in charge of the hardware');
+      $actions['users_id_tech']['type']     = 'dropdown_users';
 
       return $actions;
    }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,7 +34,7 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
-class NotificationTargetSavedsearch_Alert extends NotificationTarget {
+class NotificationTargetSavedSearch_Alert extends NotificationTarget {
 
 
    function getEvents() {
@@ -59,13 +59,10 @@ class NotificationTargetSavedsearch_Alert extends NotificationTarget {
                   $search->getName(),
                   $search->getID()
                );
-            } else {
-               $events[$row['event']] = __('Private search alert');
             }
          }
-      } else {
-         $events['alert'] = __('Private search alert');
       }
+      $events['alert'] = __('Private search alert');
 
       return $events;
    }
@@ -120,7 +117,7 @@ class NotificationTargetSavedsearch_Alert extends NotificationTarget {
 
    function addNotificationTargets($entity) {
       if ($this->raiseevent == 'alert') {
-         $this->addTarget(Notification::USER, __('User'));
+         $this->addTarget(Notification::USER, User::getTypeName(1));
       } else {
          parent::addNotificationTargets($entity);
       }

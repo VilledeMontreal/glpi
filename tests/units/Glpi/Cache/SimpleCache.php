@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -56,7 +56,7 @@ class SimpleCache extends \GLPITestCase {
       $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
       $this->newTestedInstance(
-         new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+         new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
          $cache_dir
       );
 
@@ -86,7 +86,7 @@ class SimpleCache extends \GLPITestCase {
       $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
       $this->newTestedInstance(
-         new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+         new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
          $cache_dir
       );
 
@@ -118,7 +118,7 @@ class SimpleCache extends \GLPITestCase {
       $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
       $this->newTestedInstance(
-         new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+         new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
          $cache_dir
       );
 
@@ -151,7 +151,7 @@ class SimpleCache extends \GLPITestCase {
       $this->when(
          function() use ($self, $cache_dir, $cache_namespace) {
             $self->newTestedInstance(
-               new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+               new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
                $cache_dir
             );
          }
@@ -183,7 +183,7 @@ class SimpleCache extends \GLPITestCase {
 
       // Simulate existing cache with footprint.
       $this->newTestedInstance(
-         new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+         new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
          $cache_dir
       );
 
@@ -198,7 +198,7 @@ class SimpleCache extends \GLPITestCase {
       $this->when(
          function() use ($self, $cache_dir, $cache_namespace) {
             $self->newTestedInstance(
-               new \mock\Zend\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+               new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
                $cache_dir
             );
          }
@@ -209,6 +209,43 @@ class SimpleCache extends \GLPITestCase {
 
       // Previously set value is not valid anymore as footprint file is not usable and cannot be trusted.
       $this->boolean($this->testedInstance->has('footprinted'))->isFalse();
+
+      $this->testOperationsOnCache(null);
+   }
+
+   /**
+    * Test case: cache dir is not writable, footprint file cannot be used.
+    */
+   public function testCacheWithUnreadableFootprintFile() {
+      $cache_dir = vfsStream::url('glpi/cache');
+      $cache_namespace = uniqid(true);
+
+      $root_directory = vfsStream::setup(
+         'glpi',
+         null,
+         [
+            'cache' => [
+               $cache_namespace . '.json' => '[]',
+            ],
+         ]
+      );
+      // Make file writable but not readable
+      $root_directory->getChild('cache/' . $cache_namespace . '.json')->chmod(0200);
+
+      $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
+
+      $self = $this;
+      $this->when(
+         function() use ($self, $cache_dir, $cache_namespace) {
+            $self->newTestedInstance(
+               new \mock\Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+               $cache_dir
+            );
+         }
+      )->error()
+         ->withType(E_USER_WARNING)
+         ->withMessage('Cannot read "' . $footprint_file . '" cache footprint file. Cache performance can be lowered.')
+            ->exists();
 
       $this->testOperationsOnCache(null);
    }

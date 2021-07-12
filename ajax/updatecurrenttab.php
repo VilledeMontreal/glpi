@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,28 +38,17 @@ if (!basename($_SERVER['SCRIPT_NAME']) == "helpdesk.faq.php") {
 
 // Manage tabs
 if (isset($_GET['tab']) && isset($_GET['itemtype'])) {
-   if ($item = getItemForItemtype($_GET['itemtype'])) {
-      if (isset($_GET['id']) && !$item->isNewID($_GET['id'])) {
-         $item->getFromDB($_GET['id']);
-      }
 
-      $tabs         = $item->defineAllTabs();
-      if (isset($tabs['no_all_tab'])) {
-         unset($tabs['no_all_tab']);
+   $tabs = Toolbox::getAvailablesTabs($_UGET['itemtype'], $_GET['id'] ?? null);
+   $selected_tab = '';
+   $current      = 0;
+   foreach (array_keys($tabs) as $key) {
+      if ($current == $_GET['tab']) {
+         $selected_tab = $key;
       }
-      // Add all tab
-      $tabs[-1]     = 'All';
-      $selected_tab = '';
-      $current      = 0;
-      foreach (array_keys($tabs) as $key) {
-         if ($current == $_GET['tab']) {
-            $selected_tab = $key;
-         }
-         $current++;
-      }
-      if (!empty($selected_tab)) {
-         Session::setActiveTab($_GET['itemtype'], $selected_tab);
-      }
-
+      $current++;
+   }
+   if (!empty($selected_tab)) {
+      Session::setActiveTab($_UGET['itemtype'], $selected_tab);
    }
 }

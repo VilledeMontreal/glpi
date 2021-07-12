@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -41,7 +41,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab telemetry informations
+    * Grab telemetry information
     *
     * @return array
     */
@@ -60,7 +60,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab GLPI part informations
+    * Grab GLPI part information
     *
     * @return array
     */
@@ -109,7 +109,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab DB part informations
+    * Grab DB part information
     *
     * @return array
     */
@@ -118,9 +118,11 @@ class Telemetry extends CommonGLPI {
 
       $dbinfos = $DB->getInfo();
 
-      $size_res = $DB->query("SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) dbsize
-         FROM information_schema.tables WHERE table_schema='" . $DB->dbdefault ."'");
-      $size_res = $DB->fetchAssoc($size_res);
+      $size_res = $DB->request([
+         'SELECT' => new \QueryExpression("ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS dbsize"),
+         'FROM'   => 'information_schema.tables',
+         'WHERE'  => ['table_schema' => $DB->dbdefault]
+      ])->next();
 
       $db = [
          'engine'    => $dbinfos['Server Software'],
@@ -134,7 +136,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab web server part informations
+    * Grab web server part information
     *
     * @return array
     */
@@ -185,7 +187,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab PHP part informations
+    * Grab PHP part information
     *
     * @return array
     */
@@ -207,7 +209,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Grab OS part informations
+    * Grab OS part information
     *
     * @return array
     */
@@ -233,7 +235,7 @@ class Telemetry extends CommonGLPI {
     * @return string
     */
    public static function getAverage($itemtype) {
-      $count = (int)countElementsInTable(getTableForItemtype($itemtype));
+      $count = (int)countElementsInTable(getTableForItemType($itemtype));
 
       if ($count <= 500) {
          return '0-500';
@@ -258,15 +260,15 @@ class Telemetry extends CommonGLPI {
    static function cronInfo($name) {
       switch ($name) {
          case 'telemetry' :
-            return ['description' => __('Send telemetry informations')];
+            return ['description' => __('Send telemetry information')];
       }
       return [];
    }
 
    /**
-    * Send telemetry informations
+    * Send telemetry information
     *
-    * @param Crontask $task Crontask instance
+    * @param CronTask $task CronTask instance
     *
     * @return void
     */
@@ -287,30 +289,13 @@ class Telemetry extends CommonGLPI {
          //all is OK!
          return 1;
       } else {
-         $message = 'Something went wrong sending telemetry informations';
+         $message = 'Something went wrong sending telemetry information';
          if ($errstr != '') {
             $message .= ": $errstr";
          }
-         throw new \RuntimeException($message);
+         Toolbox::logError($message);
+         return null; // null = Action aborted
       }
-   }
-
-   /**
-    * Get UUID
-    *
-    * @param string $type UUID type (either instance or registration)
-    *
-    * @return string
-    */
-   private static final function getUuid($type) {
-      $conf = Config::getConfigurationValues('core', [$type . '_uuid']);
-      $uuid = null;
-      if (!isset($conf[$type . '_uuid']) || empty($conf[$type . '_uuid'])) {
-         $uuid = self::generateUuid($type);
-      } else {
-         $uuid = $conf[$type . '_uuid'];
-      }
-      return $uuid;
    }
 
    /**
@@ -319,7 +304,7 @@ class Telemetry extends CommonGLPI {
     * @return string
     */
    public static final function getInstanceUuid() {
-      return self::getUuid('instance');
+      return Config::getUuid('instance');
    }
 
    /**
@@ -328,21 +313,7 @@ class Telemetry extends CommonGLPI {
     * @return string
     */
    public static final function getRegistrationUuid() {
-      return self::getUuid('registration');
-   }
-
-
-   /**
-    * Generates an unique identifier and store it
-    *
-    * @param string $type UUID type (either instance or registration)
-    *
-    * @return string
-    */
-   public static final function generateUuid($type) {
-      $uuid = Toolbox::getRandomString(40);
-      Config::setConfigurationValues('core', [$type . '_uuid' => $uuid]);
-      return $uuid;
+      return Config::getUuid('registration');
    }
 
    /**
@@ -351,7 +322,7 @@ class Telemetry extends CommonGLPI {
     * @return string
     */
    public static final function generateInstanceUuid() {
-      return self::generateUuid('instance');
+      return Config::generateUuid('instance');
    }
 
    /**
@@ -360,7 +331,7 @@ class Telemetry extends CommonGLPI {
     * @return string
     */
    public static final function generateRegistrationUuid() {
-      return self::generateUuid('registration');
+      return Config::generateUuid('registration');
    }
 
 
@@ -380,7 +351,7 @@ class Telemetry extends CommonGLPI {
             $.ajax({
                url:  $(this).attr('href'),
                success: function(data) {
-                  var _elt = $('<div/>');
+                  var _elt = $('<div></div>');
                   _elt.append(data);
                   $('body').append(_elt);
 
@@ -447,7 +418,7 @@ class Telemetry extends CommonGLPI {
 
 
    /**
-    * Display telemetry informations
+    * Display telemetry information
     *
     * @return string
     */
@@ -464,7 +435,7 @@ class Telemetry extends CommonGLPI {
    }
 
    /**
-    * Display reference informations
+    * Display reference information
     *
     * @return string
     */

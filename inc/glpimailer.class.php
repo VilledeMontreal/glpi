@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -65,15 +65,16 @@ class GLPIMailer extends PHPMailer {
          if ($CFG_GLPI['smtp_username'] != '') {
             $this->SMTPAuth = true;
             $this->Username = $CFG_GLPI['smtp_username'];
-            $this->Password = Toolbox::decrypt($CFG_GLPI['smtp_passwd'], GLPIKEY);
+            $this->Password = Toolbox::sodiumDecrypt($CFG_GLPI['smtp_passwd']);
          }
 
          if ($CFG_GLPI['smtp_mode'] == MAIL_SMTPSSL) {
             $this->SMTPSecure = "ssl";
-         }
-
-         if ($CFG_GLPI['smtp_mode'] == MAIL_SMTPTLS) {
+         } else if ($CFG_GLPI['smtp_mode'] == MAIL_SMTPTLS) {
             $this->SMTPSecure = "tls";
+         } else {
+            // Don't automatically enable encryption if the GLPI config doesn't specify it
+            $this->SMTPAutoTLS = false;
          }
 
          if (!$CFG_GLPI['smtp_check_certificate']) {
@@ -97,7 +98,7 @@ class GLPIMailer extends PHPMailer {
       }
    }
 
-   public static function validateAddress($address, $patternselect = null) {
+   public static function validateAddress($address, $patternselect = "pcre8") {
       $isValid = parent::validateAddress($address, $patternselect);
       if (!$isValid && Toolbox::endsWith($address, '@localhost')) {
          //since phpmailer6, @localhost address are no longer valid...

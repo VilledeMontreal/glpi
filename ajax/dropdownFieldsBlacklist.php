@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,4 +45,4 @@ if ($_POST['id'] > 0) {
    $field->getEmpty();
    $field->fields['itemtype'] = $_POST['itemtype'];
 }
-$field->selectCriterias($field);
+$field->selectCriterias();

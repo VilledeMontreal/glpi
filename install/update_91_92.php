@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@
  * @return bool for success (will die for most error)
 **/
 function update91to92() {
-   global $DB, $migration, $CFG_GLPI;
+   global $DB, $migration;
 
    $current_config   = Config::getConfigurationValues('core');
    $updateresult     = true;
@@ -298,7 +298,7 @@ function update91to92() {
               'glpi_devicesoundcards'    => 'devicesoundcardmodels_id'];
 
    foreach ($tables as $table => $field) {
-      $migration->addField($table, $field, 'int', ['after' => 'is_recursive']);
+      $migration->addField($table, $field, 'int(11) DEFAULT NULL', ['after' => 'is_recursive']);
       $migration->migrationOneTable($table);
       $migration->addKey($table, $field);
    }
@@ -1348,7 +1348,7 @@ Regards,',
                       OR `os_license_number` IS NOT NULL
                       OR `os_kernel_version` IS NOT NULL
                       OR `os_licenseid` IS NOT NULL";
-      $DB->queryOrDie($query, "9.2 migrate main operating system informations");
+      $DB->queryOrDie($query, "9.2 migrate main operating system information");
 
       //migrate kernel versions.
       $kver = new OperatingSystemKernelVersion();
@@ -1417,7 +1417,7 @@ Regards,',
    }
 
    //add db version
-   $migration->addConfig(['dbversion' => GLPI_SCHEMA_VERSION]);
+   $migration->addConfig(['dbversion' => '9.1.3']);
 
    // Add certificates management
    if (!$DB->tableExists('glpi_certificates')) {

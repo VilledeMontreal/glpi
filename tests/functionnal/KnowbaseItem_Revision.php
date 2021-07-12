@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -87,8 +87,10 @@ class KnowbaseItem_Revision extends DbTestCase {
       $this->integer((int)$nb)->isIdenticalTo(1);
 
       $rev_id = null;
-      $result = $DB->query('SELECT MIN(id) as id FROM glpi_knowbaseitems_revisions');
-      $data = $DB->fetchAssoc($result);
+      $data = $DB->request([
+         'SELECT' => ['MIN' => 'id as id'],
+         'FROM'   => 'glpi_knowbaseitems_revisions'
+      ])->next();
       $rev_id = $data['id'];
 
       $kb1->getFromDB($kb1->getID());
@@ -99,6 +101,49 @@ class KnowbaseItem_Revision extends DbTestCase {
          $where
       );
       $this->integer((int)$nb)->isIdenticalTo(2);
+
+      //try a change on contents
+      $this->boolean(
+         $kb1->update(
+            [
+               'id'     => $kb1->getID(),
+               'answer' => \Toolbox::addslashes_deep('Don\'t use paths with spaces, like C:\\Program Files\\MyApp')
+            ]
+         )
+      )->isTrue();
+
+      $this->boolean(
+         $kb1->update(
+            [
+               'id'     => $kb1->getID(),
+               'answer' => 'Answer changed'
+            ]
+         )
+      )->isTrue();
+
+      $nb = countElementsInTable(
+         'glpi_knowbaseitems_revisions',
+         $where
+      );
+      $this->integer((int)$nb)->isIdenticalTo(4);
+
+      $nrev_id = null;
+      $data = $DB->request([
+         'SELECT' => new \QueryExpression('MAX(id) AS id'),
+         'FROM'   => 'glpi_knowbaseitems_revisions'
+      ])->next();
+      $nrev_id = $data['id'];
+
+      $this->boolean($kb1->getFromDB($kb1->getID()))->isTrue();
+      $this->boolean($kb1->revertTo($nrev_id))->isTrue();
+
+      $this->boolean($kb1->getFromDB($kb1->getID()))->isTrue();
+      $this->string($kb1->fields['answer'])->isIdenticalTo('Don\'t use paths with spaces, like C:\\Program Files\\MyApp');
+
+      //reset
+      $this->boolean($kb1->getFromDB($kb1->getID()))->isTrue();
+      $this->boolean($kb1->revertTo($rev_id))->isTrue();
+
    }
 
    public function testGetTabNameForItemNotLogged() {

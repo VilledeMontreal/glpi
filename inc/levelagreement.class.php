@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -187,7 +187,7 @@ abstract class LevelAgreement extends CommonDBChild {
          echo "</td></tr>";
       }
 
-      echo "<tr class='tab_bg_1'><td>".__('Type')."</td>";
+      echo "<tr class='tab_bg_1'><td>"._n('Type', 'Types', 1)."</td>";
       echo "<td>";
       self::getTypeDropdown(['value' => $this->fields["type"]]);
       echo "</td>";
@@ -263,11 +263,13 @@ abstract class LevelAgreement extends CommonDBChild {
             echo "</td>";
             echo "<td>";
             echo $tt->getBeginHiddenFieldText($laField);
-            echo "<i class='far fa-clock slt'></i>";
+            echo "<i class='fas fa-stopwatch slt'></i>";
             echo Dropdown::getDropdownName(static::getTable(),
                                            $ticket->fields[$laField])."&nbsp;";
             echo Html::hidden($laField, ['value' => $ticket->fields[$laField]]);
-            $comment = isset($this->fields['comment']) ? $this->fields['comment'] : '';
+            $obj = new static();
+            $obj->getFromDB($ticket->fields[$laField]);
+            $comment = isset($obj->fields['comment']) ? $obj->fields['comment'] : '';
             $level      = new static::$levelclass();
             $nextaction = new static::$levelticketclass();
             if ($nextaction->getFromDBForTicket($ticket->fields["id"], $type)) {
@@ -277,7 +279,7 @@ abstract class LevelAgreement extends CommonDBChild {
                            '</span><br>';
                if ($level->getFromDB($nextaction->fields[$pre.'levels_id'])) {
                   $comment .= '<span class="b spaced">'.
-                                sprintf(__('%1$s: %2$s'), __('Escalation level'),
+                                sprintf(__('%1$s: %2$s'), _n('Escalation level', 'Escalation levels', 1),
                                         $level->getName()).
                               '</span>';
                }
@@ -323,7 +325,6 @@ abstract class LevelAgreement extends CommonDBChild {
             echo "<span class='assign_la'>";
             if ($canupdate) {
                Html::showDateTimeField($dateField, ['value'      => $ticket->fields[$dateField],
-                                                    'timestep'   => 1,
                                                     'maybeempty' => true]);
             } else {
                echo Html::convDateTime($ticket->fields[$dateField]);
@@ -340,10 +341,10 @@ abstract class LevelAgreement extends CommonDBChild {
                echo "<a ".Html::addConfirmationOnAction($this->getAddConfirmation(),
                         "cleanhide('la_action$type$rand');cleandisplay('la_choice$type$rand');").
                     " class='pointer' title='".static::getTypeName()."'>
-                    <i class='far fa-clock slt'></i></a>";
+                    <i class='fas fa-stopwatch slt'></i></a>";
                echo "</span>";
                echo "<span id='la_choice$type$rand' style='display:none' class='assign_la'>";
-               echo "<i class='far fa-clock slt'></i>";
+               echo "<i class='fas fa-stopwatch slt'></i>";
                echo "<span class='b'>".static::getTypeName()."</span>&nbsp;";
                static::dropdown([
                   'name'      => $laField,
@@ -360,7 +361,6 @@ abstract class LevelAgreement extends CommonDBChild {
          echo "<td>";
          echo $tt->getBeginHiddenFieldValue($dateField);
          Html::showDateTimeField($dateField, ['value'      => $ticket->fields[$dateField],
-                                              'timestep'   => 1,
                                               'maybeempty' => false,
                                               'canedit'    => $canupdate,
                                               'required'   => $tt->isMandatoryField($dateField)]);
@@ -458,9 +458,9 @@ abstract class LevelAgreement extends CommonDBChild {
             $header_bottom .= "</th>";
          }
          $header_end .= "<th>".__('Name')."</th>";
-         $header_end .= "<th>".__('Type')."</th>";
+         $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
          $header_end .= "<th>".__('Maximum time')."</th>";
-         $header_end .= "<th>".__('Calendar')."</th>";
+         $header_end .= "<th>"._n('Calendar', 'Calendars', 1)."</th>";
 
          echo $header_begin.$header_top.$header_end;
          foreach ($laList as $val) {
@@ -682,7 +682,8 @@ abstract class LevelAgreement extends CommonDBChild {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -698,7 +699,7 @@ abstract class LevelAgreement extends CommonDBChild {
          'id'                 => '5',
          'table'              => $this->getTable(),
          'field'              => 'number_time',
-         'name'               => __('Time'),
+         'name'               => _x('hour', 'Time'),
          'datatype'           => 'specific',
          'massiveaction'      => false,
          'nosearch'           => true,
@@ -718,7 +719,7 @@ abstract class LevelAgreement extends CommonDBChild {
          'id'                 => '7',
          'table'              => $this->getTable(),
          'field'              => 'type',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'specific'
       ];
 
@@ -855,11 +856,10 @@ abstract class LevelAgreement extends CommonDBChild {
    /**
     * Get date for current agreement
     *
-    * @param $start_date         datetime start date
-    * @param $additional_delay   integer  additional delay to add or substract (for waiting time)
-    *                                     (default 0)
+    * @param string  $start_date        datetime start date
+    * @param integer $additional_delay  integer  additional delay to add or substract (for waiting time)
     *
-    * @return due date time (NULL if sla/ola not exists)
+    * @return string|null  due date time (NULL if sla/ola not exists)
    **/
    function computeDate($start_date, $additional_delay = 0) {
 
@@ -870,7 +870,7 @@ abstract class LevelAgreement extends CommonDBChild {
             $cal          = new Calendar();
             $work_in_days = ($this->fields['definition_time'] == 'day');
 
-            if ($cal->getFromDB($this->fields['calendars_id'])) {
+            if ($cal->getFromDB($this->fields['calendars_id']) && $cal->hasAWorkingDay()) {
                return $cal->computeEndDate($start_date, $delay,
                                            $additional_delay, $work_in_days,
                                            $this->fields['end_of_working_day']);
@@ -892,12 +892,11 @@ abstract class LevelAgreement extends CommonDBChild {
    /**
     * Get execution date of a level
     *
-    * @param $start_date         datetime    start date
-    * @param $levels_id          integer     sla/ola level id
-    * @param $additional_delay   integer     additional delay to add or substract (for waiting time)
-    *                                        (default 0)
+    * @param string  $start_date        start date
+    * @param integer $levels_id         sla/ola level id
+    * @param integer $additional_delay  additional delay to add or substract (for waiting time)
     *
-    * @return execution date time (NULL if ola/sla not exists)
+    * @return string|null  execution date time (NULL if ola/sla not exists)
    **/
    function computeExecutionDate($start_date, $levels_id, $additional_delay = 0) {
 
@@ -913,7 +912,7 @@ abstract class LevelAgreement extends CommonDBChild {
                // Based on a calendar
                if ($this->fields['calendars_id'] > 0) {
                   $cal = new Calendar();
-                  if ($cal->getFromDB($this->fields['calendars_id'])) {
+                  if ($cal->getFromDB($this->fields['calendars_id']) && $cal->hasAWorkingDay()) {
                      return $cal->computeEndDate($start_date, $delay,
                                                  $level->fields['execution_time'] + $additional_delay,
                                                  $work_in_days);
@@ -945,8 +944,8 @@ abstract class LevelAgreement extends CommonDBChild {
    /**
     * Get types name
     *
-    * @param type $type
-    * @return string name
+    * @param  integer $type
+    * @return string  name
     **/
    static function getOneTypeName($type) {
 
@@ -1041,11 +1040,13 @@ abstract class LevelAgreement extends CommonDBChild {
 
       if ($ticket->fields[$ticketfield] > 0) {
          $levelticket = new static::$levelticketclass();
-         $query = "SELECT *
-                   FROM `".$levelticket::getTable()."`
-                   WHERE `tickets_id` = '".$ticket->fields["id"]."'";
+         $iterator = $DB->request([
+            'SELECT' => 'id',
+            'FROM'   => $levelticket::getTable(),
+            'WHERE'  => ['tickets_id' => $ticket->fields['id']]
+         ]);
 
-         foreach ($DB->request($query) as $data) {
+         while ($data = $iterator->next()) {
             $levelticket->delete(['id' => $data['id']]);
          }
       }

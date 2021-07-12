@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -32,5 +32,10 @@
 
 include ('../inc/includes.php');
 
-$dropdown = new Domain();
-include (GLPI_ROOT . "/front/dropdown.common.php");
+Session::checkRight("domain", READ);
+
+Html::header(Domain::getTypeName(1), $_SERVER['PHP_SELF'], "management", "domain");
+
+Search::show('Domain');
+
+Html::footer();

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,7 +34,9 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
-/// Class Calendar
+/**
+ * CalendarSegment Class
+ */
 class CalendarSegment extends CommonDBChild {
 
    // From CommonDBTM
@@ -65,7 +67,7 @@ class CalendarSegment extends CommonDBChild {
 
       // Check override of segment : do not add
       if (count(self::getSegmentsBetween($input['calendars_id'], $input['day'], $input['begin'],
-                                         $input['day'], $input['end'])) > 0 ) {
+                                         $input['day'], $input['end'])) > 0) {
          Session::addMessageAfterRedirect(__('Can not add a range riding an existing period'),
                                           false, ERROR);
          return false;
@@ -73,9 +75,10 @@ class CalendarSegment extends CommonDBChild {
       return parent::prepareInputForAdd($input);
    }
 
-
    /**
     * Duplicate all segments from a calendar to his clone
+    *
+    * @deprecated 9.5
     *
     * @param $oldid
     * @param $newid
@@ -83,6 +86,7 @@ class CalendarSegment extends CommonDBChild {
    static function cloneCalendar($oldid, $newid) {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       $result = $DB->request(
          [
             'FROM'   => self::getTable(),
@@ -170,8 +174,12 @@ class CalendarSegment extends CommonDBChild {
       // Do not check hour if day before the end day of after the begin day
       $iterator = $DB->request([
          'SELECT' => [
-            new \QueryExpression("TIMEDIFF(LEAST(" . $DB->quoteValue($end_time) .", " . $DB->quoteName('end') . ")"),
-            new \QueryExpression("GREATEST(" . $DB->quoteName('begin') . ", " . $DB->quoteValue($begin_time) . ")) AS " . $DB->quoteName('TDIFF'))
+            new \QueryExpression("
+               TIMEDIFF(
+                   LEAST(" . $DB->quoteValue($end_time) .", " . $DB->quoteName('end') . "),
+                   GREATEST(" . $DB->quoteName('begin') . ", " . $DB->quoteValue($begin_time) . ")
+               ) AS " . $DB->quoteName('TDIFF')
+            )
          ],
          'FROM'   => 'glpi_calendarsegments',
          'WHERE'  => [
@@ -355,7 +363,7 @@ class CalendarSegment extends CommonDBChild {
          echo "<table class='tab_cadre_fixe'>";
          echo "<tr class='tab_bg_1'><th colspan='7'>".__('Add a schedule')."</tr>";
 
-         echo "<tr class='tab_bg_2'><td class='center'>".__('Day')."</td><td>";
+         echo "<tr class='tab_bg_2'><td class='center'>"._n('Day', 'Days', 1)."</td><td>";
          echo "<input type='hidden' name='calendars_id' value='$ID'>";
          Dropdown::showFromArray('day', Toolbox::getDaysOfWeekArray());
          echo "</td><td class='center'>".__('Start').'</td><td>';
@@ -385,7 +393,7 @@ class CalendarSegment extends CommonDBChild {
          echo Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          echo "</th>";
       }
-      echo "<th>".__('Day')."</th>";
+      echo "<th>"._n('Day', 'Days', 1)."</th>";
       echo "<th>".__('Start')."</th>";
       echo "<th>".__('End')."</th>";
       echo "</tr>";

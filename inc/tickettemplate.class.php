@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -40,11 +40,21 @@ if (!defined('GLPI_ROOT')) {
  * since version 0.83
 **/
 class TicketTemplate extends ITILTemplate {
+   use Glpi\Features\Clonable;
+
    public $second_level_menu         = "ticket";
    public $third_level_menu          = "TicketTemplate";
 
    static function getTypeName($nb = 0) {
       return _n('Ticket template', 'Ticket templates', $nb);
+   }
+
+   public function getCloneRelations() :array {
+      return [
+         TicketTemplateHiddenField::class,
+         TicketTemplateMandatoryField::class,
+         TicketTemplatePredefinedField::class,
+      ];
    }
 
    public static function getExtraAllowedFields($withtypeandcategory = 0, $withitemtype = 0) {
@@ -125,7 +135,7 @@ class TicketTemplate extends ITILTemplate {
     *
     * @param $tt ITILTemplate object
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showHelpdeskPreview(ITILTemplate $tt) {
 

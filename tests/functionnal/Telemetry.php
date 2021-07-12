@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,6 +39,9 @@ use \DbTestCase;
 class Telemetry extends DbTestCase {
 
    public function testGrabGlpiInfos() {
+      //we do not want any error messages
+      $_SESSION['glpicronuserrunning'] = "cron_phpunit";
+
       $expected = [
          'uuid'               => 'TO BE SET',
          'version'            => GLPI_VERSION,
@@ -65,14 +68,12 @@ class Telemetry extends DbTestCase {
       $this->string($result['uuid'])
          ->hasLength(40);
       $expected['uuid'] = $result['uuid'];
-      $this->array($result['plugins'])
-         ->hasSize(count(glob(GLPI_ROOT . "/plugins/*", GLOB_ONLYDIR)));
       $expected['plugins'] = $result['plugins'];
       $this->array($result)->isIdenticalTo($expected);
 
       $plugins = new \Plugin();
       $this->integer((int)$plugins->add(['directory' => 'testplugin',
-                                         'name'      => 'test plugin',
+                                         'name'      => 'testplugin',
                                          'version'   => '0.x.z']))
          ->isGreaterThan(0);
 

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -78,7 +78,8 @@ class DocumentType  extends CommonDropdown {
          'table'              => $this->getTable(),
          'field'              => 'ext',
          'name'               => __('Extension'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -95,7 +96,8 @@ class DocumentType  extends CommonDropdown {
          'table'              => $this->getTable(),
          'field'              => 'mime',
          'name'               => __('MIME type'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -110,9 +112,6 @@ class DocumentType  extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.84
-   **/
    static function getSpecificValueToDisplay($field, $values, array $options = []) {
       global $CFG_GLPI;
 

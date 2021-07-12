@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -79,11 +79,11 @@ class TicketTask extends CommonITILTask {
    **/
    function canViewItem() {
 
-      if (!parent::canReadITILItem()) {
+      if (!$this->canReadITILItem()) {
          return false;
       }
 
-      if (Session::haveRightsOr(self::$rightname, [parent::SEEPRIVATE, parent::SEEPUBLIC])) {
+      if (Session::haveRight(self::$rightname, parent::SEEPRIVATE)) {
          return true;
       }
 
@@ -93,8 +93,9 @@ class TicketTask extends CommonITILTask {
       }
 
       // see task created or affected to me
-      if (($this->fields["users_id"] === Session::getLoginUserID())
-          || ($this->fields["users_id_tech"] === Session::getLoginUserID())) {
+      if (Session::getCurrentInterface() == "central"
+          && ($this->fields["users_id"] === Session::getLoginUserID())
+              || ($this->fields["users_id_tech"] === Session::getLoginUserID())) {
          return true;
       }
 
@@ -115,7 +116,7 @@ class TicketTask extends CommonITILTask {
    **/
    function canCreateItem() {
 
-      if (!parent::canReadITILItem()) {
+      if (!$this->canReadITILItem()) {
          return false;
       }
 
@@ -140,7 +141,7 @@ class TicketTask extends CommonITILTask {
    **/
    function canUpdateItem() {
 
-      if (!parent::canReadITILItem()) {
+      if (!$this->canReadITILItem()) {
          return false;
       }
 
@@ -179,27 +180,31 @@ class TicketTask extends CommonITILTask {
     * Populate the planning with planned ticket tasks
     *
     * @param $options   array of possible options:
-    *    - who ID of the user (0 = undefined)
-    *    - who_group ID of the group of users (0 = undefined)
-    *    - begin Date
-    *    - end Date
+    *    - who          ID of the user (0 = undefined)
+    *    - whogroup     ID of the group of users (0 = undefined)
+    *    - begin        Date
+    *    - end          Date
     *
     * @return array of planning item
    **/
-   static function populatePlanning($options = []) {
+   static function populatePlanning($options = []) :array {
       return parent::genericPopulatePlanning(__CLASS__, $options);
    }
 
 
    /**
-    * Display a Planning Item
+    * Populate the planning with planned ticket tasks
     *
-    * @param array $val Array of the item to display
+    * @param $options   array of possible options:
+    *    - who          ID of the user (0 = undefined)
+    *    - whogroup     ID of the group of users (0 = undefined)
+    *    - begin        Date
+    *    - end          Date
     *
-    * @return string Already planned information
+    * @return array of planning item
    **/
-   static function getAlreadyPlannedInformation($val) {
-      return parent::genericGetAlreadyPlannedInformation(__CLASS__, $val);
+   static function populateNotPlanned($options = []) :array {
+      return parent::genericPopulateNotPlanned(__CLASS__, $options);
    }
 
 
@@ -250,8 +255,6 @@ class TicketTask extends CommonITILTask {
     * @see CommonDBTM::showFormButtons()
    **/
    function showFormButtons($options = []) {
-      global $CFG_GLPI;
-
       // for single object like config
       $ID = 1;
       if (isset($this->fields['id'])) {
@@ -287,7 +290,7 @@ class TicketTask extends CommonITILTask {
             $params['candel'] = false;
          }
 
-         if ($params['canedit'] && $this->can($ID, UPDATE)) {
+         if ($params['canedit'] && $this->canUpdateItem()) {
             echo Ticket::getSplittedSubmitButtonHtml($this->fields['tickets_id'], 'update');
             echo "</td></tr><tr class='tab_bg_2'>\n";
          }
@@ -308,5 +311,14 @@ class TicketTask extends CommonITILTask {
 
       echo "</td></tr></table></div>";
       Html::closeForm();
+   }
+
+   /**
+    * Build parent condition for search
+    *
+    * @return string
+    */
+   public static function buildParentCondition() {
+      return "(0 = 1 " . Ticket::buildCanViewCondition("tickets_id") . ") ";
    }
 }

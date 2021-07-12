@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,10 +36,27 @@ Html::header_nocache();
 
 Session::checkLoginUser();
 
+// Read parameters
+$context  = $_POST['context'] ?? '';
+$itemtype = $_POST["itemtype"] ?? '';
+
+// Check for required params
+if (empty($itemtype)) {
+   http_response_code(400);
+   Toolbox::logWarning("Bad request: itemtype cannot be empty");
+   die;
+}
+
+// Check if itemtype is valid in the given context
+if ($context == "impact") {
+   $isValidItemtype = Impact::isEnabled($itemtype);
+} else {
+   $isValidItemtype = CommonITILObject::isPossibleToAssignType($itemtype);
+}
+
 // Make a select box
-if (isset($_POST["itemtype"])
-    && CommonITILObject::isPossibleToAssignType($_POST["itemtype"])) {
-   $table = getTableForItemType($_POST["itemtype"]);
+if ($isValidItemtype) {
+   $table = getTableForItemType($itemtype);
 
    $rand = mt_rand();
    if (isset($_POST["rand"])) {
@@ -52,17 +69,27 @@ if (isset($_POST["itemtype"])
    }
    echo "<br>";
    $field_id = Html::cleanId("dropdown_".$_POST['myname'].$rand);
-   $p = ['itemtype'            => $_POST["itemtype"],
-              'entity_restrict'     => $_POST['entity_restrict'],
-              'table'               => $table,
-              'multiple'            => $_POST["multiple"],
-              'myname'              => $_POST["myname"],
-              'rand'                => $_POST["rand"]];
+   $p = [
+      'itemtype'            => $itemtype,
+      'entity_restrict'     => $_POST['entity_restrict'],
+      'table'               => $table,
+      'multiple'            => $_POST["multiple"],
+      'myname'              => $_POST["myname"],
+      'rand'                => $_POST["rand"],
+      '_idor_token'         => Session::getNewIDORToken($itemtype, [
+         'entity_restrict' => $_POST['entity_restrict'],
+      ]),
+   ];
 
    if (isset($_POST["used"]) && !empty($_POST["used"])) {
-      if (isset($_POST["used"][$_POST["itemtype"]])) {
-         $p["used"] = $_POST["used"][$_POST["itemtype"]];
+      if (isset($_POST["used"][$itemtype])) {
+         $p["used"] = $_POST["used"][$itemtype];
       }
+   }
+
+   // Add context if defined
+   if (!empty($context)) {
+      $p["context"] = $context;
    }
 
    echo Html::jsAjaxDropdown($_POST['myname'], $field_id,

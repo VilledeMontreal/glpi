@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -56,7 +56,7 @@ class Link_Itemtype extends CommonDBChild {
     *
     * @param $link : Link
     *
-    * @return Nothing (display)
+    * @return void
    **/
    static function showForLink($link) {
       global $DB,$CFG_GLPI;
@@ -122,7 +122,7 @@ class Link_Itemtype extends CommonDBChild {
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
       $header_end .= "</tr>";
       echo $header_begin.$header_top.$header_end;
 
@@ -184,7 +184,7 @@ class Link_Itemtype extends CommonDBChild {
     *
     * @since 0.85
     *
-    * @param $itemtype itemtype for which all link associations must be removed
+    * @param string $itemtype  itemtype for which all link associations must be removed
     */
    static function deleteForItemtype($itemtype) {
       global $DB;

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,7 @@ if (!defined('GLPI_ROOT')) {
 /**
  * KnowbaseItem Class
 **/
-class KnowbaseItem extends CommonDBVisible {
+class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria {
 
 
    // From CommonDBTM
@@ -73,6 +73,16 @@ class KnowbaseItem extends CommonDBVisible {
    static function getMenuShorcut() {
       return 'b';
    }
+
+
+   function getName($options = []) {
+      if (KnowbaseItemTranslation::canBeTranslated($this)) {
+         return KnowbaseItemTranslation::getTranslatedValue($this);
+      }
+
+      return parent::getName();
+   }
+
 
    /**
     * @see CommonGLPI::getMenuName()
@@ -111,8 +121,6 @@ class KnowbaseItem extends CommonDBVisible {
 
 
    function canViewItem() {
-      global $CFG_GLPI;
-
       if ($this->fields['users_id'] == Session::getLoginUserID()) {
          return true;
       }
@@ -154,7 +162,7 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @since 0.84
     *
-    * @param $full path or relative one (true by default)
+    * @param boolean $full  path or relative one
    **/
    static function getSearchURL($full = true) {
       global $CFG_GLPI;
@@ -167,6 +175,21 @@ class KnowbaseItem extends CommonDBVisible {
       return "$dir/front/helpdesk.faq.php";
    }
 
+   /**
+    * Get the form page URL for the current classe
+    *
+    * @param boolean $full  path or relative one
+   **/
+   static function getFormURL($full = true) {
+      global $CFG_GLPI;
+
+      $dir = ($full ? $CFG_GLPI['root_doc'] : '');
+
+      if (Session::getCurrentInterface() == "central") {
+         return "$dir/front/knowbaseitem.form.php";
+      }
+      return "$dir/front/helpdesk.faq.php";
+   }
 
    function defineTabs($options = []) {
 
@@ -230,7 +253,7 @@ class KnowbaseItem extends CommonDBVisible {
    /**
     * Actions done at the end of the getEmpty function
     *
-    *@return nothing
+    *@return void
    **/
    function post_getEmpty() {
 
@@ -247,13 +270,17 @@ class KnowbaseItem extends CommonDBVisible {
    **/
    function post_addItem() {
 
-      // add documents (and replace inline pictures)
+      // add screenshots
       $this->input = $this->addFiles(
          $this->input, [
             'force_update'  => true,
-            'content_field' => 'answer'
+            'content_field' => 'answer',
+            'name'          => 'answer',
          ]
       );
+
+      // Add documents
+      $this->input = $this->addFiles($this->input, ['force_update' => true]);
 
       if (isset($this->input["_visibility"])
           && isset($this->input["_visibility"]['_type'])
@@ -400,7 +427,7 @@ class KnowbaseItem extends CommonDBVisible {
    *
    * @since 0.83
    *
-   * @param $forceall force all joins (false by default)
+   * @param boolean $forceall  force all joins
    *
    * @return string joins to add
    **/
@@ -468,7 +495,7 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @return array
     */
-   static public function getVisibilityCriteria($forceall = false) {
+   static public function getVisibilityCriteria(bool $forceall = false): array {
       global $CFG_GLPI;
 
       $is_public_faq_context = !Session::getLoginUserID() && $CFG_GLPI["use_public_faq"];
@@ -593,9 +620,6 @@ class KnowbaseItem extends CommonDBVisible {
       return $criteria;
    }
 
-   /**
-    * @see CommonDBTM::prepareInputForAdd()
-   **/
    function prepareInputForAdd($input) {
 
       // set new date if not exists
@@ -621,22 +645,32 @@ class KnowbaseItem extends CommonDBVisible {
    }
 
 
-   /**
-    * @see CommonDBTM::prepareInputForUpdate()
-   **/
    function prepareInputForUpdate($input) {
-
-      // add documents (and replace inline pictures)
-      $input = $this->addFiles(
-         $input,
-         ['content_field' => 'answer']
-      );
-
       // set title for question if empty
       if (isset($input["name"]) && empty($input["name"])) {
          $input["name"] = __('New item');
       }
       return $input;
+   }
+
+   function post_updateItem($history = 1) {
+      // Update screenshots
+      $this->input = $this->addFiles(
+         $this->input,
+         [
+            'force_update'  => true,
+            'content_field' => 'answer',
+            'name'          => 'answer',
+         ]
+      );
+
+      // add uploaded documents
+      $this->input = $this->addFiles(
+         $this->input,
+         [
+            'force_update'  => true,
+         ]
+      );
    }
 
 
@@ -647,7 +681,7 @@ class KnowbaseItem extends CommonDBVisible {
     * @param $options array
     *     - target for the Form
     *
-    * @return nothing (display the form)
+    * @return void
    **/
    function showForm($ID, $options = []) {
       global $CFG_GLPI;
@@ -679,7 +713,7 @@ class KnowbaseItem extends CommonDBVisible {
                ]);
                $this->fields['answer'] = $solution->getField('content');
                if ($item->isField('itilcategories_id')) {
-                  $ic = new ItilCategory();
+                  $ic = new ITILCategory();
                   if ($ic->getFromDB($item->getField('itilcategories_id'))) {
                      $this->fields['knowbaseitemcategories_id']
                            = $ic->getField('knowbaseitemcategories_id');
@@ -691,6 +725,7 @@ class KnowbaseItem extends CommonDBVisible {
       $rand = mt_rand();
 
       $this->initForm($ID, $options);
+      $options['formoptions'] = "data-track-changes=true";
       $this->showFormHeader($options);
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Category name')."</td>";
@@ -768,13 +803,11 @@ class KnowbaseItem extends CommonDBVisible {
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Visible since')."</td><td>";
       Html::showDateTimeField("begin_date", ['value'       => $this->fields["begin_date"],
-                                                  'timestep'    => 1,
                                                   'maybeempty' => true,
                                                   'canedit'    => $canedit]);
       echo "</td>";
       echo "<td>".__('Visible until')."</td><td>";
       Html::showDateTimeField("end_date", ['value'       => $this->fields["end_date"],
-                                                'timestep'    => 1,
                                                 'maybeempty' => true,
                                                 'canedit'    => $canedit]);
       echo "</td></tr>";
@@ -832,7 +865,7 @@ class KnowbaseItem extends CommonDBVisible {
    /**
     * Add kb item to the public FAQ
     *
-    * @return nothing
+    * @return void
    **/
    function addToFaq() {
       global $DB;
@@ -870,10 +903,12 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @param $options      array of options
     *
-    * @return nothing (display item : question and answer)
+    * @return void|string
+    *    void if option display=true
+    *    string if option display=false (HTML code)
    **/
    function showFull($options = []) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       if (!$this->can($this->fields['id'], READ)) {
          return false;
@@ -977,7 +1012,7 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @param $options   $_GET
     *
-    * @return nothing (display the form)
+    * @return void
    **/
    function searchForm($options) {
       global $CFG_GLPI;
@@ -1024,7 +1059,7 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @param $options   $_GET
     *
-    * @return nothing (display the form)
+    * @return void
    **/
    function showBrowseForm($options) {
       global $CFG_GLPI;
@@ -1073,11 +1108,9 @@ class KnowbaseItem extends CommonDBVisible {
     *
     * @param $options   $_GET
     *
-    * @return nothing (display the form)
+    * @return void
    **/
    function showManageForm($options) {
-      global $CFG_GLPI;
-
       if (!Session::haveRightsOr(self::$rightname,
                                  [UPDATE, self::PUBLISHFAQ, self::KNOWBASEADMIN])) {
          return false;
@@ -1088,8 +1121,6 @@ class KnowbaseItem extends CommonDBVisible {
             $params[$key] = $val;
          }
       }
-
-      $faq = !Session::haveRight(self::$rightname, UPDATE);
 
       echo "<div>";
       echo "<form method='get' action='".$this->getSearchURL()."'>";
@@ -1118,79 +1149,99 @@ class KnowbaseItem extends CommonDBVisible {
     * @param $params array  (contains, knowbaseitemcategories_id, faq)
     * @param $type   string search type : browse / search (default search)
     *
-    * @return String : SQL request
+    * @return array : SQL request
    **/
    static function getListRequest(array $params, $type = 'search') {
       global $DB;
 
+      $criteria = [
+         'SELECT' => [
+            'glpi_knowbaseitems.*',
+            'glpi_knowbaseitemcategories.completename AS category',
+            new QueryExpression(
+               'COUNT(' . $DB->quoteName('glpi_knowbaseitems_users.id') . ')' .
+                  ' + COUNT(' . $DB->quoteName('glpi_groups_knowbaseitems.id') . ')' .
+                  ' + COUNT(' . $DB->quoteName('glpi_knowbaseitems_profiles.id') . ')' .
+                  ' + COUNT(' . $DB->quoteName('glpi_entities_knowbaseitems.id') .') AS ' .
+                  $DB->quoteName('visibility_count')
+            )
+         ],
+         'FROM'   => 'glpi_knowbaseitems',
+         'WHERE'     => [], //to be filled
+         'LEFT JOIN' => [], //to be filled
+         'GROUPBY'   => ['glpi_knowbaseitems.id', 'glpi_knowbaseitemcategories.completename']
+      ];
+
       // Lists kb Items
-      $where     = "";
-      $order     = "";
-      $score     = "";
-      $addselect = "";
-      $join  = self::addVisibilityJoins(true);
+      $restrict = self::getVisibilityCriteria(true);
+      $restrict_where = $restrict['WHERE'];
+      unset($restrict['WHERE']);
+      unset($restrict['SELECT']);
+      $criteria = array_merge_recursive($criteria, $restrict);
 
       switch ($type) {
-         case 'myunpublished' :
+         case 'myunpublished':
+         case 'allmy':
+         case 'allunpublished':
             break;
 
-         case 'allmy' :
-            break;
-
-         case 'allunpublished' :
-            break;
-
-         default :
+         default:
             // Build query
-            if (Session::getLoginUserID() && $type != 'myunpublished') {
-               $where = self::addVisibilityRestrict();
+            if (Session::getLoginUserID()) {
+               $criteria['WHERE'] = array_merge(
+                  $criteria['WHERE'],
+                  $restrict_where
+               );
             } else {
                // Anonymous access
                if (Session::isMultiEntitiesMode()) {
-                  $where = " (`glpi_entities_knowbaseitems`.`entities_id` = 0
-                              AND `glpi_entities_knowbaseitems`.`is_recursive` = 1)";
+                  $criteria['WHERE']['glpi_entities_knowbaseitems.entities_id'] = 0;
+                  $criteria['WHERE']['glpi_entities_knowbaseitems.is_recursive'] = 1;
                }
             }
             break;
       }
 
-      if (empty($where)) {
-         $where = '1 = 1';
-      }
-
       if ($params['faq']) { // helpdesk
-         $where .= " AND (`glpi_knowbaseitems`.`is_faq` = 1)";
+         $criteria['WHERE']['glpi_knowbaseitems.is_faq'] = 1;
       }
 
       if (KnowbaseItemTranslation::isKbTranslationActive()
           && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)) {
-         $join .= "LEFT JOIN `glpi_knowbaseitemtranslations`
-                     ON (`glpi_knowbaseitems`.`id` = `glpi_knowbaseitemtranslations`.`knowbaseitems_id`
-                         AND `glpi_knowbaseitemtranslations`.`language` = '".$_SESSION['glpilanguage']."')";
-         $addselect .= ", `glpi_knowbaseitemtranslations`.`name` AS transname,
-                          `glpi_knowbaseitemtranslations`.`answer` AS transanswer ";
+         $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = [
+            'ON'  => [
+               'glpi_knowbaseitems'             => 'id',
+               'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
+                  'AND'                            => [
+                     'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage']
+                  ]
+               ]
+            ]
+         ];
+         $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.name AS transname';
+         $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.answer AS transanswer';
       }
 
       // a search with $contains
       switch ($type) {
          case 'allmy' :
-            $where .= " AND `glpi_knowbaseitems`.`users_id` = '".Session::getLoginUserID()."'";
+            $criteria['WHERE']['glpi_knowbaseitems.users_id'] = Session::getLoginUserID();
             break;
 
          case 'myunpublished' :
-            $where .= " AND `glpi_knowbaseitems`.`users_id` = '".Session::getLoginUserID()."'
-                        AND (`glpi_entities_knowbaseitems`.`entities_id` IS NULL
-                              AND `glpi_knowbaseitems_profiles`.`profiles_id` IS NULL
-                              AND `glpi_groups_knowbaseitems`.`groups_id` IS NULL
-                              AND `glpi_knowbaseitems_users`.`users_id` IS NULL)";
+            $criteria['WHERE']['glpi_knowbaseitems.users_id'] = Session::getLoginUserID();
+            $criteria['WHERE']['glpi_entities_knowbaseitems.entities_id'] = null;
+            $criteria['WHERE']['glpi_knowbaseitems_profiles.profiles_id'] = null;
+            $criteria['WHERE']['glpi_groups_knowbaseitems.groups_id'] = null;
+            $criteria['WHERE']['glpi_knowbaseitems_users.users_id'] = null;
             break;
 
          case 'allunpublished' :
             // Only published
-            $where .= " AND (`glpi_entities_knowbaseitems`.`entities_id` IS NULL
-                              AND `glpi_knowbaseitems_profiles`.`profiles_id` IS NULL
-                              AND `glpi_groups_knowbaseitems`.`groups_id` IS NULL
-                              AND `glpi_knowbaseitems_users`.`users_id` IS NULL)";
+            $criteria['WHERE']['glpi_entities_knowbaseitems.entities_id'] = null;
+            $criteria['WHERE']['glpi_knowbaseitems_profiles.profiles_id'] = null;
+            $criteria['WHERE']['glpi_groups_knowbaseitems.groups_id'] = null;
+            $criteria['WHERE']['glpi_knowbaseitems_users.users_id'] = null;
             break;
 
          case 'search' :
@@ -1202,50 +1253,78 @@ class KnowbaseItem extends CommonDBVisible {
                $addscore = [];
                if (KnowbaseItemTranslation::isKbTranslationActive()
                    && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)) {
-                  $addscore = ['`glpi_knowbaseitemtranslations`.`name`',
-                                    '`glpi_knowbaseitemtranslations`.`answer`'];
+                  $addscore = [
+                     'glpi_knowbaseitemtranslations.name',
+                     'glpi_knowbaseitemtranslations.answer'
+                  ];
                }
-               $score = " ,(MATCH(`glpi_knowbaseitems`.`name`, `glpi_knowbaseitems`.`answer`)
-                           AGAINST('$search_wilcard' IN BOOLEAN MODE)";
+
+               $expr = "(MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') . ", " . $DB->quoteName('glpi_knowbaseitems.answer') . ")
+                           AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)";
 
                if (!empty($addscore)) {
                   foreach ($addscore as $addscore_field) {
-                     $score.= " + MATCH($addscore_field)
-                                        AGAINST('$search_wilcard' IN BOOLEAN MODE)";
+                     $expr .= " + MATCH(" . $DB->quoteName($addscore_field) . ")
+                                        AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)";
                   }
                }
-               $score .=" ) AS SCORE ";
+               $expr .=" ) AS SCORE ";
+               $criteria['SELECT'][] = new QueryExpression($expr);
 
-               $where_1 = $where." AND (MATCH(`glpi_knowbaseitems`.`name`,
-                                             `glpi_knowbaseitems`.`answer`)
-                          AGAINST('$search_wilcard' IN BOOLEAN MODE) ";
+               $ors = [
+                  new QueryExpression(
+                     "MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') .",
+                        " . $DB->quoteName('glpi_knowbaseitems.answer') .")
+                        AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
+                  )
+               ];
 
                if (!empty($addscore)) {
                   foreach ($addscore as $addscore_field) {
-                     $where_1.= "OR $addscore_field IS NOT NULL
-                                    AND MATCH($addscore_field)
-                                        AGAINST('$search_wilcard' IN BOOLEAN MODE)";
+                     $ors[] = [
+                        'NOT' => [$addscore_field => null],
+                        new QueryExpression(
+                           "MATCH(" . $DB->quoteName($addscore_field) . ")
+                              AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
+                        )
+                     ];
                   }
+
                }
-               $where_1.= ")";
+
+               $search_where =  $criteria['WHERE']; // Visibility restrict criteria
+
+               $search_where[] = ['OR' => $ors];
 
                // Add visibility date
-               $where_1 .= " AND (`glpi_knowbaseitems`.`begin_date` IS NULL
-                                   OR `glpi_knowbaseitems`.`begin_date` < NOW())
-                             AND (`glpi_knowbaseitems`.`end_date` IS NULL
-                                  OR `glpi_knowbaseitems`.`end_date` > NOW()) ";
+               $visibility_crit = [
+                  [
+                     'OR'  => [
+                        ['glpi_knowbaseitems.begin_date'  => null],
+                        ['glpi_knowbaseitems.begin_date'  => ['<', new QueryExpression('NOW()')]]
+                     ]
+                  ], [
+                     'OR'  => [
+                        ['glpi_knowbaseitems.end_date'    => null],
+                        ['glpi_knowbaseitems.end_date'    => ['>', new QueryExpression('NOW()')]]
+                     ]
+                  ]
+               ];
+               $search_where[] = $visibility_crit;
 
-               $order   = "ORDER BY `SCORE` DESC";
+               $criteria['ORDERBY'] = ['SCORE DESC'];
 
                // preliminar query to allow alternate search if no result with fulltext
-               $query_1   = "SELECT COUNT(`glpi_knowbaseitems`.`id`)
-                             FROM `glpi_knowbaseitems`
-                             $join
-                             WHERE $where_1";
-               $result_1  = $DB->query($query_1);
-               $numrows_1 = $DB->result($result_1, 0, 0);
+               $search_criteria = [
+                  'COUNT'     => 'cpt',
+                  'LEFT JOIN' => $criteria['LEFT JOIN'],
+                  'FROM'      => 'glpi_knowbaseitems',
+                  'WHERE'     => $search_where
+               ];
+               $search_iterator = $DB->request($search_criteria);
+               $numrows_search = $search_iterator->next()['cpt'];
 
-               if ($numrows_1 <= 0) {// not result this fulltext try with alternate search
+               if ($numrows_search <= 0) {// not result this fulltext try with alternate search
                   $search1 = [/* 1 */   '/\\\"/',
                                    /* 2 */   "/\+/",
                                    /* 3 */   "/\*/",
@@ -1256,61 +1335,55 @@ class KnowbaseItem extends CommonDBVisible {
                                    /* 8 */   "/\)/",
                                    /* 9 */   "/\-/"];
                   $contains = preg_replace($search1, "", $params["contains"]);
-                  $addwhere = '';
+                  $ors = [
+                     ["glpi_knowbaseitems.name"     => ['LIKE', Search::makeTextSearchValue($contains)]],
+                     ["glpi_knowbaseitems.answer"   => ['LIKE', Search::makeTextSearchValue($contains)]]
+                  ];
                   if (KnowbaseItemTranslation::isKbTranslationActive()
                       && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)) {
-                     $addwhere = " OR `glpi_knowbaseitemtranslations`.`name` ".Search::makeTextSearch($contains)."
-                                    OR `glpi_knowbaseitemtranslations`.`answer` ".Search::makeTextSearch($contains);
+                     $ors[] = ["glpi_knowbaseitemtranslations.name"   => ['LIKE', Search::makeTextSearchValue($contains)]];
+                     $ors[] = ["glpi_knowbaseitemtranslations.answer" => ['LIKE', Search::makeTextSearchValue($contains)]];
                   }
-                  $where   .= " AND (`glpi_knowbaseitems`.`name` ".Search::makeTextSearch($contains)."
-                                 OR `glpi_knowbaseitems`.`answer` ".Search::makeTextSearch($contains)."
-                                 $addwhere)";
+                  $criteria['WHERE'][] = ['OR' => $ors];
+                  // Add visibility date
+                  $criteria['WHERE'][] = $visibility_crit;
                } else {
-                  $where = $where_1;
+                  $criteria['WHERE'] = $search_where;
                }
-
-               // Add visibility date
-               $where .= " AND (`glpi_knowbaseitems`.`begin_date` IS NULL
-                                OR `glpi_knowbaseitems`.`begin_date` < NOW())
-                           AND (`glpi_knowbaseitems`.`end_date` IS NULL
-                                OR `glpi_knowbaseitems`.`end_date` > NOW()) ";
             }
             break;
 
          case 'browse' :
-
-            $where .= " AND (`glpi_knowbaseitems`.`knowbaseitemcategories_id`
-                           = '".$params["knowbaseitemcategories_id"]."')";
+            $criteria['WHERE']['glpi_knowbaseitems.knowbaseitemcategories_id'] = $params['knowbaseitemcategories_id'];
 
             if (!Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
                // Add visibility date
-               $where .= " AND (`glpi_knowbaseitems`.`begin_date` IS NULL
-                              OR `glpi_knowbaseitems`.`begin_date` < NOW())
-                           AND (`glpi_knowbaseitems`.`end_date` IS NULL
-                              OR `glpi_knowbaseitems`.`end_date` > NOW()) ";
+               $criteria['WHERE'][] = [
+                  'OR'  => [
+                     ['glpi_knowbaseitems.begin_date' => null],
+                     ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]]
+                  ]
+               ];
+               $criteria['WHERE'][] = [
+                  'OR'  => [
+                     ['glpi_knowbaseitems.end_date' => null],
+                     ['glpi_knowbaseitems.end_date' => ['>', new QueryExpression('NOW()')]]
+                  ]
+               ];
             }
 
-            $order  = " ORDER BY `glpi_knowbaseitems`.`name` ASC";
+            $criteria['ORDERBY'] = ['glpi_knowbaseitems.name ASC'];
             break;
       }
 
-      $query = "SELECT DISTINCT `glpi_knowbaseitems`.*,
-                       `glpi_knowbaseitemcategories`.`completename` AS category,
-                       COUNT(`glpi_knowbaseitems_users`.`id`)
-                        + COUNT(`glpi_groups_knowbaseitems`.`id`)
-                        + COUNT(`glpi_knowbaseitems_profiles`.`id`)
-                        + COUNT(`glpi_entities_knowbaseitems`.`id`) as visibility_count
-                       $addselect
-                       $score
-                FROM `glpi_knowbaseitems`
-                $join
-                LEFT JOIN `glpi_knowbaseitemcategories`
-                     ON (`glpi_knowbaseitemcategories`.`id`
-                           = `glpi_knowbaseitems`.`knowbaseitemcategories_id`)
-                WHERE $where
-                GROUP BY `glpi_knowbaseitems`.`id`
-                $order";
-      return $query;
+      $criteria['LEFT JOIN']['glpi_knowbaseitemcategories'] = [
+         'ON'  => [
+            'glpi_knowbaseitemcategories' => 'id',
+            'glpi_knowbaseitems'          => 'knowbaseitemcategories_id'
+         ]
+      ];
+
+      return $criteria;
    }
 
 
@@ -1321,7 +1394,9 @@ class KnowbaseItem extends CommonDBVisible {
     * @param $type      string   search type : browse / search (default search)
    **/
    static function showList($options, $type = 'search') {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
+
+      $DBread = DBConnection::getReadConnection();
 
       // Default values of parameters
       $params['faq']                       = !Session::haveRight(self::$rightname, READ);
@@ -1357,235 +1432,242 @@ class KnowbaseItem extends CommonDBVisible {
          $params["start"] = 0;
       }
 
-      $query = self::getListRequest($params, $type);
+      $criteria = self::getListRequest($params, $type);
+
+      $main_iterator = $DBread->request($criteria);
+      $rows = count($main_iterator);
+      $numrows = $rows;
 
       // Get it from database
-      if ($result = $DB->query($query)) {
-         $KbCategory = new KnowbaseItemCategory();
-         $title      = "";
-         if ($KbCategory->getFromDB($params["knowbaseitemcategories_id"])) {
-            $title = (empty($KbCategory->fields['name']) ?"(".$params['knowbaseitemcategories_id'].")"
-                                                         : $KbCategory->fields['name']);
-            $title = sprintf(__('%1$s: %2$s'), __('Category'), $title);
+      $KbCategory = new KnowbaseItemCategory();
+      $title      = "";
+      if ($KbCategory->getFromDB($params["knowbaseitemcategories_id"])) {
+         $title = (empty($KbCategory->fields['name']) ?"(".$params['knowbaseitemcategories_id'].")"
+                                                      : $KbCategory->fields['name']);
+         $title = sprintf(__('%1$s: %2$s'), __('Category'), $title);
+      }
+
+      Session::initNavigateListItems('KnowbaseItem', $title);
+      // force using getSearchUrl on list icon (when viewing a single article)
+      $_SESSION['glpilisturl']['KnowbaseItem'] = '';
+
+      $list_limit = $_SESSION['glpilist_limit'];
+
+      $showwriter = in_array($type, ['myunpublished', 'allunpublished', 'allmy']);
+
+      // Limit the result, if no limit applies, use prior result
+      if (($rows > $list_limit)
+         && !isset($_GET['export_all'])) {
+         $criteria['START'] = (int)$params['start'];
+         $criteria['LIMIT'] = (int)$list_limit;
+         $main_iterator = $DBread->request($criteria);
+         $numrows = count($main_iterator);
+      }
+
+      if ($numrows > 0) {
+         // Set display type for export if define
+         $output_type = Search::HTML_OUTPUT;
+
+         if (isset($_GET["display_type"])) {
+            $output_type = $_GET["display_type"];
          }
 
-         Session::initNavigateListItems('KnowbaseItem', $title);
-         // force using getSearchUrl on list icon (when viewing a single article)
-         $_SESSION['glpilisturl']['KnowbaseItem'] = '';
+         // Pager
+         $parameters = "start=".$params["start"]."&amp;knowbaseitemcategories_id=".
+                        $params['knowbaseitemcategories_id']."&amp;contains=".
+                        $params["contains"]."&amp;is_faq=".$params['faq'];
 
-         $numrows    = $DB->numrows($result);
-         $list_limit = $_SESSION['glpilist_limit'];
-
-         $showwriter = in_array($type, ['myunpublished', 'allunpublished', 'allmy']);
-
-         // Limit the result, if no limit applies, use prior result
-         if (($numrows > $list_limit)
-             && !isset($_GET['export_all'])) {
-            $query_limit   = $query ." LIMIT ".intval($params["start"]).", ".intval($list_limit)." ";
-            $result_limit  = $DB->query($query_limit);
-            $numrows_limit = $DB->numrows($result_limit);
-
-         } else {
-            $numrows_limit = $numrows;
-            $result_limit  = $result;
+         if (isset($options['item_itemtype'])
+               && isset($options['item_items_id'])) {
+            $parameters .= "&amp;item_items_id=".$options['item_items_id']."&amp;item_itemtype=".
+                              $options['item_itemtype'];
          }
 
-         if ($numrows_limit > 0) {
-            // Set display type for export if define
-            $output_type = Search::HTML_OUTPUT;
+         $pager_url = "";
+         if ($output_type == Search::HTML_OUTPUT) {
+            $pager_url = Toolbox::getItemTypeSearchURL('KnowbaseItem');
+            if (!Session::getLoginUserID()) {
+               $pager_url = $CFG_GLPI['root_doc']."/front/helpdesk.faq.php";
+            }
+            Html::printPager($params['start'], $rows, $pager_url, $parameters, 'KnowbaseItem');
+         }
 
-            if (isset($_GET["display_type"])) {
-               $output_type = $_GET["display_type"];
+         $nbcols = 1;
+         // Display List Header
+         echo Search::showHeader($output_type, $numrows+1, $nbcols);
+
+         echo Search::showNewLine($output_type);
+         $header_num = 1;
+         echo Search::showHeaderItem($output_type, __('Subject'), $header_num);
+
+         if ($output_type != Search::HTML_OUTPUT) {
+            echo Search::showHeaderItem($output_type, __('Content'), $header_num);
+         }
+
+         if ($showwriter) {
+            echo Search::showHeaderItem($output_type, __('Writer'), $header_num);
+         }
+         echo Search::showHeaderItem($output_type, __('Category'), $header_num);
+
+         if ($output_type == Search::HTML_OUTPUT) {
+            echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', Session::getPluralNumber()), $header_num);
+         }
+
+         if (isset($options['item_itemtype'])
+               && isset($options['item_items_id'])
+               && ($output_type == Search::HTML_OUTPUT)) {
+            echo Search::showHeaderItem($output_type, '&nbsp;', $header_num);
+         }
+
+         // Num of the row (1=header_line)
+         $row_num = 1;
+         while ($data = $main_iterator->next()) {
+            Session::addToNavigateListItems('KnowbaseItem', $data["id"]);
+            // Column num
+            $item_num = 1;
+            echo Search::showNewLine($output_type, ($row_num - 1)%2);
+            $row_num++;
+
+            $item = new self;
+            $item->getFromDB($data["id"]);
+            $name   = $data["name"];
+            $answer = $data["answer"];
+            // Manage translations
+            if (isset($data['transname']) && !empty($data['transname'])) {
+               $name   = $data["transname"];
+            }
+            if (isset($data['transanswer']) && !empty($data['transanswer'])) {
+               $answer = $data["transanswer"];
             }
 
-            // Pager
-            $parameters = "start=".$params["start"]."&amp;knowbaseitemcategories_id=".
-                          $params['knowbaseitemcategories_id']."&amp;contains=".
-                          $params["contains"]."&amp;is_faq=".$params['faq'];
-
-            if (isset($options['item_itemtype'])
-                && isset($options['item_items_id'])) {
-               $parameters .= "&amp;item_items_id=".$options['item_items_id']."&amp;item_itemtype=".
-                               $options['item_itemtype'];
-            }
-
-            $pager_url = "";
             if ($output_type == Search::HTML_OUTPUT) {
-               $pager_url = Toolbox::getItemTypeSearchURL('KnowbaseItem');
-               if (!Session::getLoginUserID()) {
-                  $pager_url = $CFG_GLPI['root_doc']."/front/helpdesk.faq.php";
-               }
-               Html::printPager($params['start'], $numrows, $pager_url, $parameters, 'KnowbaseItem');
-            }
-
-            $nbcols = 1;
-            // Display List Header
-            echo Search::showHeader($output_type, $numrows_limit+1, $nbcols);
-
-            echo Search::showNewLine($output_type);
-            $header_num = 1;
-            echo Search::showHeaderItem($output_type, __('Subject'), $header_num);
-
-            if ($output_type != Search::HTML_OUTPUT) {
-               echo Search::showHeaderItem($output_type, __('Content'), $header_num);
-            }
-
-            if ($showwriter) {
-               echo Search::showHeaderItem($output_type, __('Writer'), $header_num);
-            }
-            echo Search::showHeaderItem($output_type, __('Category'), $header_num);
-
-            if ($output_type == Search::HTML_OUTPUT) {
-               echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', 2), $header_num);
-            }
-
-            if (isset($options['item_itemtype'])
-                && isset($options['item_items_id'])
-                && ($output_type == Search::HTML_OUTPUT)) {
-               echo Search::showHeaderItem($output_type, '&nbsp;', $header_num);
-            }
-
-            // Num of the row (1=header_line)
-            $row_num = 1;
-            for ($i=0; $i<$numrows_limit; $i++) {
-               $data = $DB->fetchAssoc($result_limit);
-
-               Session::addToNavigateListItems('KnowbaseItem', $data["id"]);
-               // Column num
-               $item_num = 1;
-               $row_num++;
-               echo Search::showNewLine($output_type, $i%2);
-
-               $item = new self;
-               $item->getFromDB($data["id"]);
-               $name   = $data["name"];
-               $answer = $data["answer"];
-               // Manage translations
-               if (isset($data['transname']) && !empty($data['transname'])) {
-                  $name   = $data["transname"];
-               }
-               if (isset($data['transanswer']) && !empty($data['transanswer'])) {
-                  $answer = $data["transanswer"];
-               }
-
-               if ($output_type == Search::HTML_OUTPUT) {
-                  $toadd = '';
-                  if (isset($options['item_itemtype'])
-                      && isset($options['item_items_id'])) {
-                     $href  = " href='#' onClick=\"".Html::jsGetElementbyID('kbshow'.$data["id"]).".dialog('open'); return false;\"";
-                     $toadd = Ajax::createIframeModalWindow('kbshow'.$data["id"],
-                                                            KnowbaseItem::getFormURLWithID($data["id"]),
-                                                            ['display' => false]);
-                  } else {
-                     $href = " href=\"".KnowbaseItem::getFormURLWithID($data["id"])."\" ";
-                  }
-
-                  $fa_class = "";
-                  $fa_title = "";
-                  if ($data['is_faq']
-                      && (!Session::isMultiEntitiesMode()
-                          || isset($data['visibility_count'])
-                             && $data['visibility_count'] > 0)) {
-                     $fa_class = "fa-question-circle faq";
-                     $fa_title = __s("This item is part of the FAQ");
-                  } else if (isset($data['visibility_count'])
-                     && $data['visibility_count'] <= 0) {
-                     $fa_class = "fa-eye-slash not-published";
-                     $fa_title = __s("This item is not published yet");
-                  }
-                  echo Search::showItem($output_type,
-                                        "<div class='kb'>$toadd <i class='fa fa-fw $fa_class' title='$fa_title'></i> <a $href>".Html::resume_text($name, 80)."</a></div>
-                                          <div class='kb_resume'>".
-                                          Html::resume_text(Html::clean(Toolbox::unclean_cross_side_scripting_deep($answer)),
-                                                            600)."</div>",
-                                        $item_num, $row_num);
-               } else {
-                  echo Search::showItem($output_type, $name, $item_num, $row_num);
-                  echo Search::showItem($output_type,
-                     Html::clean(Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($answer,
-                                                                                               ENT_QUOTES,
-                                                                                               "UTF-8"))),
-                                $item_num, $row_num);
-               }
-
-               $showuserlink = 0;
-               if (Session::haveRight('user', READ)) {
-                  $showuserlink = 1;
-               }
-               if ($showwriter) {
-                  echo Search::showItem($output_type, getUserName($data["users_id"], $showuserlink),
-                                           $item_num, $row_num);
-               }
-
-               $categ = $data["category"];
-               if ($output_type == Search::HTML_OUTPUT) {
-                  $cathref = $ki->getSearchURL()."?knowbaseitemcategories_id=".
-                              $data["knowbaseitemcategories_id"].'&amp;forcetab=Knowbase$2';
-                  $categ   = "<a class='kb-category'"
-                     . " href='$cathref'"
-                     . " data-category-id='" . $data["knowbaseitemcategories_id"] . "'"
-                     . ">".$categ.'</a>';
-               }
-               echo Search::showItem($output_type, $categ, $item_num, $row_num);
-
-               if ($output_type == Search::HTML_OUTPUT) {
-                  echo "<td class='center'>";
-                  $j=0;
-                  $iterator = $DB->request([
-                     'FIELDS' => 'documents_id',
-                     'FROM'   => 'glpi_documents_items',
-                     'WHERE'  => [
-                        'items_id'  => $data["id"],
-                        'itemtype'  => 'KnowbaseItem'
-                     ]
-                  ]);
-                  while ($docs = $iterator->next()) {
-                     $doc = new Document();
-                     $doc->getFromDB($docs["documents_id"]);
-                     echo $doc->getDownloadLink();
-                     $j++;
-                     if ($j > 1) {
-                        echo "<br>";
-                     }
-                  }
-                  echo "</td>";
-               }
-
+               $toadd = '';
                if (isset($options['item_itemtype'])
-                   && isset($options['item_items_id'])
-                   && ($output_type == Search::HTML_OUTPUT)) {
-
-                  $forcetab = $options['item_itemtype'] . '$1';
-                  $item_itemtype = $options['item_itemtype'];
-                  $content = "<a href='".$item_itemtype::getFormURLWithID($options['item_items_id']).
-                               "&amp;load_kb_sol=".$data['id'].
-                               "&amp;forcetab=".$forcetab."'>".
-                               __('Use as a solution')."</a>";
-                  echo Search::showItem($output_type, $content, $item_num, $row_num);
+                     && isset($options['item_items_id'])) {
+                  $href  = " href='#' onClick=\"".Html::jsGetElementbyID('kbshow'.$data["id"]).".dialog('open'); return false;\"";
+                  $toadd = Ajax::createIframeModalWindow('kbshow'.$data["id"],
+                                                         KnowbaseItem::getFormURLWithID($data["id"]),
+                                                         ['display' => false]);
+               } else {
+                  $href = " href=\"".KnowbaseItem::getFormURLWithID($data["id"])."\" ";
                }
 
-               // End Line
-               echo Search::showEndLine($output_type);
-            }
-
-            // Display footer
-            if (($output_type == Search::PDF_OUTPUT_LANDSCAPE)
-                || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
-               echo Search::showFooter($output_type,
-                                       Dropdown::getDropdownName("glpi_knowbaseitemcategories",
-                                                                 $params['knowbaseitemcategories_id']),
-                                       $numrows_limit);
+               $fa_class = "";
+               $fa_title = "";
+               if ($data['is_faq']
+                     && (!Session::isMultiEntitiesMode()
+                        || isset($data['visibility_count'])
+                           && $data['visibility_count'] > 0)) {
+                  $fa_class = "fa-question-circle faq";
+                  $fa_title = __s("This item is part of the FAQ");
+               } else if (isset($data['visibility_count'])
+                  && $data['visibility_count'] <= 0) {
+                  $fa_class = "fa-eye-slash not-published";
+                  $fa_title = __s("This item is not published yet");
+               }
+               echo Search::showItem($output_type,
+                                       "<div class='kb'>$toadd <i class='fa fa-fw $fa_class' title='$fa_title'></i> <a $href>".Html::resume_text($name, 80)."</a></div>
+                                       <div class='kb_resume'>".
+                                       Html::resume_text(Html::clean(Toolbox::unclean_cross_side_scripting_deep($answer)),
+                                                         600)."</div>",
+                                       $item_num, $row_num);
             } else {
-               echo Search::showFooter($output_type, '', $numrows_limit);
-            }
-            echo "<br>";
-            if ($output_type == Search::HTML_OUTPUT) {
-               Html::printPager($params['start'], $numrows, $pager_url, $parameters, 'KnowbaseItem');
+               echo Search::showItem($output_type, $name, $item_num, $row_num);
+               echo Search::showItem($output_type,
+                  Html::clean(Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($answer,
+                                                                                             ENT_QUOTES,
+                                                                                             "UTF-8"))),
+                              $item_num, $row_num);
             }
 
-         } else {
-            echo "<div class='center b'>".__('No item found')."</div>";
+            $showuserlink = 0;
+            if (Session::haveRight('user', READ)) {
+               $showuserlink = 1;
+            }
+            if ($showwriter) {
+               echo Search::showItem($output_type, getUserName($data["users_id"], $showuserlink),
+                                          $item_num, $row_num);
+            }
+
+            $categ = $data["category"];
+            $inst = new KnowbaseItemCategory;
+            if (DropdownTranslation::canBeTranslated($inst)) {
+               $tcateg = DropdownTranslation::getTranslatedValue(
+                  $data["knowbaseitemcategories_id"],
+                  $inst->getType()
+               );
+               if (!empty($tcateg)) {
+                  $categ = $tcateg;
+               }
+            }
+
+            if ($output_type == Search::HTML_OUTPUT) {
+               $cathref = $ki->getSearchURL()."?knowbaseitemcategories_id=".
+                           $data["knowbaseitemcategories_id"].'&amp;forcetab=Knowbase$2';
+               $categ   = "<a class='kb-category'"
+                  . " href='$cathref'"
+                  . " data-category-id='" . $data["knowbaseitemcategories_id"] . "'"
+                  . ">".$categ.'</a>';
+            }
+            echo Search::showItem($output_type, $categ, $item_num, $row_num);
+
+            if ($output_type == Search::HTML_OUTPUT) {
+               echo "<td class='center'>";
+               $j=0;
+               $iterator = $DBread->request([
+                  'FIELDS' => 'documents_id',
+                  'FROM'   => 'glpi_documents_items',
+                  'WHERE'  => [
+                     'items_id'  => $data["id"],
+                     'itemtype'  => 'KnowbaseItem'
+                  ] + getEntitiesRestrictCriteria()
+               ]);
+               while ($docs = $iterator->next()) {
+                  $doc = new Document();
+                  $doc->getFromDB($docs["documents_id"]);
+                  echo $doc->getDownloadLink();
+                  $j++;
+                  if ($j > 1) {
+                     echo "<br>";
+                  }
+               }
+               echo "</td>";
+            }
+
+            if (isset($options['item_itemtype'])
+                  && isset($options['item_items_id'])
+                  && ($output_type == Search::HTML_OUTPUT)) {
+
+               $forcetab = $options['item_itemtype'] . '$1';
+               $item_itemtype = $options['item_itemtype'];
+               $content = "<a href='".$item_itemtype::getFormURLWithID($options['item_items_id']).
+                              "&amp;load_kb_sol=".$data['id'].
+                              "&amp;forcetab=".$forcetab."'>".
+                              __('Use as a solution')."</a>";
+               echo Search::showItem($output_type, $content, $item_num, $row_num);
+            }
+
+            // End Line
+            echo Search::showEndLine($output_type);
          }
+
+         // Display footer
+         if (($output_type == Search::PDF_OUTPUT_LANDSCAPE)
+               || ($output_type == Search::PDF_OUTPUT_PORTRAIT)) {
+            echo Search::showFooter($output_type,
+                                    Dropdown::getDropdownName("glpi_knowbaseitemcategories",
+                                                               $params['knowbaseitemcategories_id']),
+                                    $numrows);
+         } else {
+            echo Search::showFooter($output_type, '', $numrows);
+         }
+         echo "<br>";
+         if ($output_type == Search::HTML_OUTPUT) {
+            Html::printPager($params['start'], $rows, $pager_url, $parameters, 'KnowbaseItem');
+         }
+
+      } else {
+         echo "<div class='center b'>".__('No item found')."</div>";
       }
    }
 
@@ -1593,81 +1675,101 @@ class KnowbaseItem extends CommonDBVisible {
    /**
     * Print out list recent or popular kb/faq
     *
-    * @param $type      type : recent / popular / not published
+    * @param string $type  type : recent / popular / not published
     *
-    * @return nothing (display table)
+    * @return void
    **/
    static function showRecentPopular($type) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $faq = !Session::haveRight(self::$rightname, READ);
 
+      $criteria = [
+         'SELECT'    => ['glpi_knowbaseitems.*'],
+         'DISTINCT'  => true,
+         'FROM'      => self::getTable(),
+         'WHERE'     => [],
+         'LIMIT'     => 10
+      ];
+
       if ($type == "recent") {
-         $orderby = "ORDER BY `date` DESC";
+         $criteria['ORDERBY'] = 'date DESC';
          $title   = __('Recent entries');
       } else if ($type == 'lastupdate') {
-         $orderby = "ORDER BY `date_mod` DESC";
+         $criteria['ORDERBY'] = 'date_mod DESC';
          $title   = __('Last updated entries');
       } else {
-         $orderby = "ORDER BY `view` DESC";
+         $criteria['ORDERBY'] = 'view DESC';
          $title   = __('Most popular questions');
       }
 
-      $faq_limit = "";
-      $addselect = "";
       // Force all joins for not published to verify no visibility set
-      $join = self::addVisibilityJoins(true);
+      $restrict = self::getVisibilityCriteria(true);
+      unset($restrict['WHERE']);
+      unset($restrict['SELECT']);
+      $criteria = array_merge($criteria, $restrict);
 
       if (Session::getLoginUserID()) {
-         $faq_limit .= "WHERE ".self::addVisibilityRestrict();
+         $restrict = self::getVisibilityCriteria();
+         $criteria['WHERE'] = array_merge($criteria['WHERE'], $restrict['WHERE']);
       } else {
          // Anonymous access
          if (Session::isMultiEntitiesMode()) {
-            $faq_limit .= " WHERE (`glpi_entities_knowbaseitems`.`entities_id` = 0
-                                   AND `glpi_entities_knowbaseitems`.`is_recursive` = 1)";
-         } else {
-            $faq_limit .= " WHERE 1";
+            $criteria['WHERE']['glpi_entities_knowbaseitems.entities_id'] = 0;
+            $criteria['WHERE']['glpi_entities_knowbaseitems.is_recursive'] = 1;
          }
       }
 
       // Only published
-      $faq_limit .= " AND (`glpi_entities_knowbaseitems`.`entities_id` IS NOT NULL
-                           OR `glpi_knowbaseitems_profiles`.`profiles_id` IS NOT NULL
-                           OR `glpi_groups_knowbaseitems`.`groups_id` IS NOT NULL
-                           OR `glpi_knowbaseitems_users`.`users_id` IS NOT NULL)";
+      $criteria['WHERE'][] = [
+         'NOT'  => [
+            'glpi_entities_knowbaseitems.entities_id' => null,
+            'glpi_knowbaseitems_profiles.profiles_id' => null,
+            'glpi_groups_knowbaseitems.groups_id'     => null,
+            'glpi_knowbaseitems_users.users_id'       => null
+         ]
+      ];
 
       // Add visibility date
-      $faq_limit .= " AND (`glpi_knowbaseitems`.`begin_date` IS NULL
-                           OR `glpi_knowbaseitems`.`begin_date` < NOW())
-                      AND (`glpi_knowbaseitems`.`end_date` IS NULL
-                           OR `glpi_knowbaseitems`.`end_date` > NOW()) ";
+      $criteria['WHERE'][] = [
+         'OR'  => [
+            ['glpi_knowbaseitems.begin_date' => null],
+            ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]]
+         ]
+      ];
+      $criteria['WHERE'][] = [
+         'OR'  => [
+            ['glpi_knowbaseitems.end_date'   => null],
+            ['glpi_knowbaseitems.end_date'   => ['>', new QueryExpression('NOW()')]]
+         ]
+      ];
 
       if ($faq) { // FAQ
-         $faq_limit .= " AND (`glpi_knowbaseitems`.`is_faq` = 1)";
+         $criteria['WHERE']['glpi_knowbaseitems.is_faq'] = 1;
       }
 
       if (KnowbaseItemTranslation::isKbTranslationActive()
           && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)) {
-         $join .= "LEFT JOIN `glpi_knowbaseitemtranslations`
-                     ON (`glpi_knowbaseitems`.`id` = `glpi_knowbaseitemtranslations`.`knowbaseitems_id`
-                           AND `glpi_knowbaseitemtranslations`.`language` = '".$_SESSION['glpilanguage']."')";
-         $addselect .= ", `glpi_knowbaseitemtranslations`.`name` AS transname,
-                          `glpi_knowbaseitemtranslations`.`answer` AS transanswer ";
+         $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = [
+            'ON'  => [
+               'glpi_knowbaseitems'             => 'id',
+               'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
+                  'AND'                            => [
+                     'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage']
+                  ]
+               ]
+            ]
+         ];
+         $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.name AS transname';
+         $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.answer AS transanswer';
       }
 
-      $query = "SELECT DISTINCT `glpi_knowbaseitems`.* $addselect
-                FROM `glpi_knowbaseitems`
-                $join
-                $faq_limit
-                $orderby
-                LIMIT 10";
-      $result = $DB->query($query);
-      $number = $DB->numrows($result);
+      $iterator = $DB->request($criteria);
 
-      if ($number > 0) {
+      if (count($iterator)) {
          echo "<table class='tab_cadrehov'>";
          echo "<tr class='noHover'><th>".$title."</th></tr>";
-         while ($data = $DB->fetchAssoc($result)) {
+         while ($data = $iterator->next()) {
             $name = $data['name'];
 
             if (isset($data['transname']) && !empty($data['transname'])) {
@@ -1717,7 +1819,7 @@ class KnowbaseItem extends CommonDBVisible {
          'id'                 => '5',
          'table'              => $this->getTable(),
          'field'              => 'date',
-         'name'               => __('Date'),
+         'name'               => _n('Date', 'Dates', 1),
          'datatype'           => 'datetime',
          'massiveaction'      => false
       ];
@@ -1785,27 +1887,10 @@ class KnowbaseItem extends CommonDBVisible {
          'id'                 => '70',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown',
          'right'              => 'all'
-      ];
-
-      $tab[] = [
-         'id'                 => '80',
-         'table'              => 'glpi_entities',
-         'field'              => 'completename',
-         'name'               => __('Entity'),
-         'massiveaction'      => false,
-         'datatype'           => 'dropdown'
-      ];
-
-      $tab[] = [
-         'id'                 => '86',
-         'table'              => $this->getTable(),
-         'field'              => 'is_recursive',
-         'name'               => __('Child entities'),
-         'datatype'           => 'bool'
       ];
 
       // add objectlock search options
@@ -1814,11 +1899,6 @@ class KnowbaseItem extends CommonDBVisible {
       return $tab;
    }
 
-   /**
-    * @since 0.85
-    *
-    * @see commonDBTM::getRights()
-   **/
    function getRights($interface = 'central') {
 
       if ($interface == 'central') {
@@ -1900,8 +1980,8 @@ class KnowbaseItem extends CommonDBVisible {
 
       $values = [
          'id'     => $this->getID(),
-         'name'   => $revision->fields['name'],
-         'answer' => $revision->fields['answer']
+         'name'   => addslashes($revision->fields['name']),
+         'answer' => addslashes($revision->fields['answer'])
       ];
 
       if ($this->update($values)) {
@@ -1912,5 +1992,50 @@ class KnowbaseItem extends CommonDBVisible {
       } else {
          return false;
       }
+   }
+
+   /**
+    * Get ids of KBI in given category
+    *
+    * @param int           $category_id   id of the parent category
+    * @param KnowbaseItem  $kbi           used only for unit tests
+    *
+    * @return array        Array of ids
+    */
+   public static function getForCategory($category_id, $kbi = null) {
+      global $DB;
+
+      if ($kbi === null) {
+         $kbi = new self();
+      }
+
+      $ids = $DB->request([
+         'SELECT' => 'id',
+         'FROM'   => self::getTable(),
+         'WHERE'  => ['knowbaseitemcategories_id' => $category_id],
+      ]);
+
+      // Get array of ids
+      $ids = array_map(function($row){
+         return $row['id'];
+      }, iterator_to_array($ids, false));
+
+      // Filter on canViewItem
+      $ids = array_filter($ids, function($id) use ($kbi) {
+         $kbi->getFromDB($id);
+         return $kbi->canViewItem();
+      });
+
+      // Avoid empty IN
+      if (count($ids) === 0) {
+         $ids[] = -1;
+      }
+
+      return $ids;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-question";
    }
 }

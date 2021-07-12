@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,10 +38,17 @@ if (!defined('GLPI_ROOT')) {
  * Cluster Class
 **/
 class Cluster extends CommonDBTM {
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    public $dohistory                   = true;
    static $rightname                   = 'cluster';
+
+   public function getCloneRelations() :array {
+      return [
+         NetworkPort::class
+      ];
+   }
 
    static function getTypeName($nb = 0) {
       return _n('Cluster', 'Clusters', $nb);
@@ -50,6 +57,7 @@ class Cluster extends CommonDBTM {
    function defineTabs($options = []) {
       $ong = [];
       $this->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('Item_Cluster', $ong, $options)
          ->addStandardTab('NetworkPort', $ong, $options)
          ->addStandardTab('Contract_Item', $ong, $options)
@@ -57,10 +65,12 @@ class Cluster extends CommonDBTM {
          ->addStandardTab('Ticket', $ong, $options)
          ->addStandardTab('Item_Problem', $ong, $options)
          ->addStandardTab('Change_Item', $ong, $options)
+         ->addStandardTab('Appliance_Item', $ong, $options)
          ->addStandardTab('Log', $ong, $options);
-      ;
+
       return $ong;
    }
+
 
    function showForm($ID, $options = []) {
       $rand = mt_rand();
@@ -102,13 +112,13 @@ class Cluster extends CommonDBTM {
       echo "<td><label for='uuid$rand'>".__('UUID')."</label></td>";
       echo "<td>";
       Html::autocompletionTextField($this, 'uuid', ['rand' => $rand]);
-      echo "</td><td><label for='version$rand'>".__('Version')."</label></td>";
+      echo "</td><td><label for='version$rand'>"._n('Version', 'Versions', 1)."</label></td>";
       echo "<td>";
       Html::autocompletionTextField($this, 'version', ['rand' => $rand]);
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_types_id$rand'>".__('Type')."</label></td>";
+      echo "<td><label for='dropdown_types_id$rand'>"._n('Type', 'Types', 1)."</label></td>";
       echo "<td>";
       ClusterType::dropdown([
          'value'  => $this->fields["clustertypes_id"],
@@ -116,7 +126,7 @@ class Cluster extends CommonDBTM {
          'rand'   => $rand
       ]);
       echo "</td>";
-      echo "<td><label for='dropdown_autoupdatesystems_id$rand'>".__('Update Source')."</label></td>";
+      echo "<td><label for='dropdown_autoupdatesystems_id$rand'>".AutoUpdateSystem::getTypeName(1)."</label></td>";
       echo "<td >";
       AutoUpdateSystem::dropdown(['value' => $this->fields["autoupdatesystems_id"], 'rand' => $rand]);
       echo "</td></tr>";
@@ -234,5 +244,10 @@ class Cluster extends CommonDBTM {
             Item_Cluster::class,
          ]
       );
+   }
+
+
+   static function getIcon() {
+      return "fas fa-project-diagram";
    }
 }

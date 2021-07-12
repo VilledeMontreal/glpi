@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -76,7 +76,7 @@ class FieldUnicity extends CommonDropdown {
                          'label' => __('Active'),
                          'type'  => 'bool'],
                    ['name'  => 'itemtype',
-                         'label' => __('Type'),
+                         'label' => _n('Type', 'Types', 1),
                          'type'  => 'unicity_itemtype'],
                    ['name'  => 'fields',
                          'label' => __('Unique fields'),
@@ -149,10 +149,10 @@ class FieldUnicity extends CommonDropdown {
    /**
     * Display a dropdown which contains all the available itemtypes
     *
-    * @param ID      the field unicity item id
-    * @param value   the selected value (default 0)
+    * @param integer $ID     The field unicity item id
+    * @param integer $value  The selected value (default 0)
     *
-    * @return nothing
+    * @return void
    **/
    function showItemtype($ID, $value = 0) {
       global $CFG_GLPI;
@@ -165,6 +165,7 @@ class FieldUnicity extends CommonDropdown {
          echo "<input type='hidden' name='itemtype' value='".$this->fields['itemtype']."'>";
 
       } else {
+         $options = [];
          //Add criteria : display dropdown
          foreach ($CFG_GLPI['unicity_types'] as $itemtype) {
             if ($item = getItemForItemtype($itemtype)) {
@@ -189,11 +190,11 @@ class FieldUnicity extends CommonDropdown {
    /**
     * Return criteria unicity for an itemtype, in an entity
     *
-    * @param itemtype      the itemtype for which unicity must be checked
-    * @param entities_id   the entity for which configuration must be retrivied (default 0)
-    * @param $check_active (true by default)
+    * @param string  itemtype       the itemtype for which unicity must be checked
+    * @param integer entities_id    the entity for which configuration must be retrivied
+    * @param boolean $check_active
     *
-    * @return an array of fields to check, or an empty array if no
+    * @return array an array of fields to check, or an empty array if no
    **/
    public static function getUnicityFieldsConfig($itemtype, $entities_id = 0, $check_active = true) {
       global $DB;
@@ -232,13 +233,11 @@ class FieldUnicity extends CommonDropdown {
    /**
     * Display a list of available fields for unicity checks
     *
-    * @param $unicity an instance of CommonDBTM class
+    * @param CommonDBTM $unicity
     *
-    * @return nothing
+    * @return void
    **/
    static function selectCriterias(CommonDBTM $unicity) {
-      global $DB;
-
       echo "<span id='span_fields'>";
 
       if (!isset($unicity->fields['itemtype']) || !$unicity->fields['itemtype']) {
@@ -263,15 +262,17 @@ class FieldUnicity extends CommonDropdown {
     *
     * @since 0.84
     *
-    * @param $itemtype          itemtype
-    * @param $options   array    of options
+    * @param string $itemtype
+    * @param array  $options
    **/
    static function dropdownFields($itemtype, $options = []) {
       global $DB;
 
-      $p['name']    = 'fields';
-      $p['display'] = true;
-      $p['values']  = [];
+      $p = [
+         'name'    => 'fields',
+         'display' => true,
+         'values'  => [],
+      ];
 
       if (is_array($options) && count($options)) {
          foreach ($options as $key => $val) {
@@ -343,7 +344,7 @@ class FieldUnicity extends CommonDropdown {
          'id'                 => '4',
          'table'              => $this->getTable(),
          'field'              => 'itemtype',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'massiveaction'      => false,
          'datatype'           => 'itemtypename',
          'itemtype_list'      => 'unicity_types'
@@ -394,7 +395,7 @@ class FieldUnicity extends CommonDropdown {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -447,8 +448,6 @@ class FieldUnicity extends CommonDropdown {
     * @param $options      array
    **/
    static function getSpecificValueToSelect($field, $name = '', $values = '', array $options = []) {
-      global $DB;
-
       if (!is_array($values)) {
          $values = [$field => $values];
       }
@@ -470,9 +469,9 @@ class FieldUnicity extends CommonDropdown {
    /**
     * Perform checks to be sure that an itemtype and at least a field are selected
     *
-    * @param input the values to insert in DB
+    * @param array $input  the values to insert in DB
     *
-    * @return input the values to insert, but modified
+    * @return array the input values to insert, but modified
    **/
    static function checkBeforeInsert($input) {
 
@@ -509,7 +508,7 @@ class FieldUnicity extends CommonDropdown {
     *
     * @param itemtype
     *
-    * @return nothing
+    * @return void
    **/
    static function deleteForItemtype($itemtype) {
       global $DB;
@@ -525,7 +524,7 @@ class FieldUnicity extends CommonDropdown {
    /**
     * List doubles
     *
-    * @param $unicity an instance of FieldUnicity class
+    * @param FieldUnicity $unicity
    **/
    static function showDoubles(FieldUnicity $unicity) {
       global $DB;
@@ -638,4 +637,8 @@ class FieldUnicity extends CommonDropdown {
       NotificationEvent::debugEvent($this, $params);
    }
 
+
+   static function getIcon() {
+      return "fas fa-fingerprint";
+   }
 }

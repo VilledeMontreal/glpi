@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -56,6 +56,7 @@ abstract class ITILTemplateField extends CommonDBChild {
    function getForbiddenStandardMassiveAction() {
 
       $forbidden   = parent::getForbiddenStandardMassiveAction();
+      $forbidden[] = 'clone';
       $forbidden[] = 'update';
       return $forbidden;
    }
@@ -75,7 +76,7 @@ abstract class ITILTemplateField extends CommonDBChild {
    }
 
 
-   function getRawName() {
+   protected function computeFriendlyName() {
       $tt_class = static::$itemtype;
       $tt     = new $tt_class;
       $fields = $tt->getAllowedFieldsNames(true);

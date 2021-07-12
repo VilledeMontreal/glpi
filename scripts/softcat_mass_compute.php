@@ -4,7 +4,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +33,8 @@
  */
 
 include ('../inc/includes.php');
+
+echo "Usage of this script is deprecated, please use 'php bin/console rules:process_software_category_rules' command.\n";
 
 // COMPUTER ONLY UNDEF CATEGORIES
 $ONLY_UNDEFINED = true;

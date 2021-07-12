@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,9 +45,6 @@ class Item_DeviceBattery extends Item_Devices {
    static protected $notable = false;
 
 
-   /**
-    * @since 0.85
-    **/
    static function getSpecificities($specif = '') {
       return [
          'serial'             => parent::getSpecificities('serial'),
@@ -56,9 +53,11 @@ class Item_DeviceBattery extends Item_Devices {
          'states_id'          => parent::getSpecificities('states_id'),
          'manufacturing_date' => [
             'long name' => __('Manufacturing date'),
-            'short name' => __('Date'),
+            'short name' => _n('Date', 'Dates', 1),
             'size'       => 10,
-            'id'         => 20
+            'datatype'   => 'date',
+            'id'         => 20,
+            'autocomplete' => true,
          ]
       ];
    }

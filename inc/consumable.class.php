@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -43,6 +43,7 @@ if (!defined('GLPI_ROOT')) {
   @author Julien Dombre
 **/
 class Consumable extends CommonDBChild {
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    static protected $forward_entity_to = ['Infocom'];
@@ -54,6 +55,11 @@ class Consumable extends CommonDBChild {
    static public $itemtype             = 'ConsumableItem';
    static public $items_id             = 'consumableitems_id';
 
+   public function getCloneRelations() :array {
+      return [
+         Infocom::class
+      ];
+   }
 
    function getForbiddenStandardMassiveAction() {
 
@@ -95,16 +101,14 @@ class Consumable extends CommonDBChild {
    }
 
 
-   function post_addItem() {
-
-      Infocom::cloneItem('ConsumableItem', $this->fields["consumableitems_id"], $this->fields['id'],
-                         $this->getType());
-   }
-
-
    /**
     * send back to stock
-   **/
+    *
+    * @param array $input Array of item fields. Only the ID field is used here.
+    * @param int $history Not used
+    *
+    * @return bool
+    */
    function backToStock(array $input, $history = 1) {
       global $DB;
 
@@ -226,7 +230,7 @@ class Consumable extends CommonDBChild {
                      $ma->addMessage($item->getErrorMessage(ERROR_RIGHT));
                   }
                }
-               Event::log($item->fields['consumableitems_id'], "consumables", 5, "inventory",
+               Event::log($item->fields['consumableitems_id'], "consumableitems", 5, "inventory",
                           //TRANS: %s is the user login
                           sprintf(__('%s gives a consumable'), $_SESSION["glpiname"]));
             } else {
@@ -596,54 +600,63 @@ class Consumable extends CommonDBChild {
          return;
       }
 
-      $query = "SELECT COUNT(*) AS count, `consumableitems_id`, `itemtype`, `items_id`
-                FROM `glpi_consumables`
-                WHERE `date_out` IS NOT NULL
-                      AND `consumableitems_id` IN (SELECT `id`
-                                                   FROM `glpi_consumableitems` ".
-                                                   getEntitiesRestrictRequest("WHERE",
-                                                                           "glpi_consumableitems").")
-                GROUP BY `itemtype`, `items_id`, `consumableitems_id`";
+      $iterator = $DB->request([
+         'SELECT' => [
+            'COUNT'  => ['* AS count'],
+            'consumableitems_id',
+            'itemtype',
+            'items_id'
+         ],
+         'FROM'   => 'glpi_consumables',
+         'WHERE'  => [
+            'NOT'                => ['date_out' => null],
+            'consumableitems_id' => new \QuerySubQuery([
+               'SELECT' => 'id',
+               'FROM'   => 'glpi_consumableitems',
+               'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
+            ])
+         ],
+         'GROUP'  => ['itemtype', 'items_id', 'consumableitems_id']
+      ]);
       $used = [];
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result)) {
-            while ($data = $DB->fetchAssoc($result)) {
-               $used[$data['itemtype'].'####'.$data['items_id']][$data["consumableitems_id"]]
-                  = $data["count"];
-            }
-         }
+      while ($data = $iterator->next()) {
+         $used[$data['itemtype'].'####'.$data['items_id']][$data["consumableitems_id"]]
+            = $data["count"];
       }
-      $query = "SELECT COUNT(*) AS count, `consumableitems_id`
-                FROM `glpi_consumables`
-                WHERE `date_out` IS NULL
-                      AND `consumableitems_id` IN (SELECT `id`
-                                                   FROM `glpi_consumableitems` ".
-                                                   getEntitiesRestrictRequest("WHERE",
-                                                                           "glpi_consumableitems").")
-                GROUP BY `consumableitems_id`";
+
+      $iterator = $DB->request([
+         'SELECT' => [
+            'COUNT'  => '* AS count',
+            'consumableitems_id',
+         ],
+         'FROM'   => 'glpi_consumables',
+         'WHERE'  => [
+            'date_out'           => null,
+            'consumableitems_id' => new \QuerySubQuery([
+               'SELECT' => 'id',
+               'FROM'   => 'glpi_consumableitems',
+               'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
+            ])
+         ],
+         'GROUP'  => ['consumableitems_id']
+      ]);
       $new = [];
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result)) {
-            while ($data = $DB->fetchAssoc($result)) {
-               $new[$data["consumableitems_id"]] = $data["count"];
-            }
-         }
+      while ($data = $iterator->next()) {
+         $new[$data["consumableitems_id"]] = $data["count"];
       }
 
+      $iterator = $DB->request([
+         'FROM'   => 'glpi_consumableitems',
+         'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
+      ]);
       $types = [];
-      $query = "SELECT *
-                FROM `glpi_consumableitems` ".
-                getEntitiesRestrictRequest("WHERE", "glpi_consumableitems");
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result)) {
-            while ($data = $DB->fetchAssoc($result)) {
-               $types[$data["id"]] = $data["name"];
-            }
-         }
+      while ($data = $iterator->next()) {
+         $types[$data["id"]] = $data["name"];
       }
+
       asort($types);
       $total = [];
       if (count($types) > 0) {
@@ -752,5 +765,10 @@ class Consumable extends CommonDBChild {
    function getRights($interface = 'central') {
       $ci = new ConsumableItem();
       return $ci->getRights($interface);
+   }
+
+
+   static function getIcon() {
+      return "fas fa-box-open";
    }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -292,7 +292,7 @@ class TicketRecurrent extends CommonDropdown {
    /**
     * Show next creation date
     *
-    * @return nothing only display
+    * @return void
    **/
    function showInfos() {
 
@@ -371,26 +371,20 @@ class TicketRecurrent extends CommonDropdown {
          return 'NULL';
       }
 
-      // First occurence of creation
-      $occurence_time = strtotime($begin_date);
-      $creation_time  = $occurence_time - $create_before;
-
-      // Add steps while creation time is in past
-      while ($creation_time < $now) {
-         $creation_time  = strtotime("+ $periodicity_as_interval", $creation_time);
-         $occurence_time = $creation_time + $create_before;
-
-         // Stop if end date reached
-         if ($has_end_date && $occurence_time > strtotime($end_date)) {
-            return 'NULL';
-         }
-      }
-
-      // Add steps while start time is not in working hours
       $calendar = new Calendar();
-      if ($calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay()) {
-         while (!$calendar->isAWorkingHour($occurence_time)) {
-            $creation_time = strtotime("+ $periodicity_as_interval", $creation_time);
+      $is_calendar_valid = $calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay();
+
+      if (!$is_calendar_valid || $periodicity_in_seconds >= DAY_TIMESTAMP) {
+         // Compute next occurence without using the calendar if calendar is not valid
+         // or if periodicity is at least one day.
+
+         // First occurence of creation
+         $occurence_time = strtotime($begin_date);
+         $creation_time  = $occurence_time - $create_before;
+
+         // Add steps while creation time is in past
+         while ($creation_time < $now) {
+            $creation_time  = strtotime("+ $periodicity_as_interval", $creation_time);
             $occurence_time = $creation_time + $create_before;
 
             // Stop if end date reached
@@ -398,6 +392,48 @@ class TicketRecurrent extends CommonDropdown {
                return 'NULL';
             }
          }
+
+         if ($is_calendar_valid) {
+            // Jump to next working day if occurence is outside working days.
+            while ($calendar->isHoliday(date('Y-m-d', $occurence_time))
+                   || !$calendar->isAWorkingDay($occurence_time)) {
+               $occurence_time = strtotime('+ 1 day', $occurence_time);
+            }
+            // Jump to next working hour if occurence is outside working hours.
+            if (!$calendar->isAWorkingHour($occurence_time)) {
+               $occurence_date = $calendar->computeEndDate(
+                  date('Y-m-d', $occurence_time),
+                  0 // 0 second delay to get the first working "second"
+               );
+               $occurence_time = strtotime($occurence_date);
+            }
+            $creation_time  = $occurence_time - $create_before;
+         }
+      } else {
+         // Base computation on calendar if calendar is valid
+
+         $occurence_date = $calendar->computeEndDate(
+            $begin_date,
+            0 // 0 second delay to get the first working "second"
+         );
+         $occurence_time = strtotime($occurence_date);
+         $creation_time  = $occurence_time - $create_before;
+
+         while ($creation_time < $now) {
+            $occurence_date = $calendar->computeEndDate(
+               date('Y-m-d H:i:s', $occurence_time),
+               $periodicity_in_seconds,
+               0,
+               $periodicity_in_seconds >= DAY_TIMESTAMP
+            );
+            $occurence_time = strtotime($occurence_date);
+            $creation_time  = $occurence_time - $create_before;
+
+            // Stop if end date reached
+            if ($has_end_date && $occurence_time > strtotime($end_date)) {
+               return 'NULL';
+            }
+         };
       }
 
       return date("Y-m-d H:i:s", $creation_time);
@@ -409,7 +445,7 @@ class TicketRecurrent extends CommonDropdown {
     *
     * @param $name : task's name
     *
-    * @return arrray of information
+    * @return array of information
    **/
    static function cronInfo($name) {
 
@@ -433,14 +469,19 @@ class TicketRecurrent extends CommonDropdown {
 
       $tot = 0;
 
-      $query = "SELECT *
-                FROM `glpi_ticketrecurrents`
-                WHERE `glpi_ticketrecurrents`.`next_creation_date` < NOW()
-                      AND `glpi_ticketrecurrents`.`is_active` = 1
-                      AND (`glpi_ticketrecurrents`.`end_date` IS NULL
-                           OR `glpi_ticketrecurrents`.`end_date` > NOW())";
+      $iterator = $DB->request([
+         'FROM'   => 'glpi_ticketrecurrents',
+         'WHERE'  => [
+            'next_creation_date' => ['<', new \QueryExpression('NOW()')],
+            'is_active'          => 1,
+            'OR'                 => [
+               ['end_date' => null],
+               ['end_date' => ['>', new \QueryExpression('NOW()')]]
+            ]
+         ]
+      ]);
 
-      foreach ($DB->request($query) as $data) {
+      while ($data = $iterator->next()) {
          if (self::createTicket($data)) {
             $tot++;
          } else {
@@ -532,6 +573,11 @@ class TicketRecurrent extends CommonDropdown {
       }
 
       return $result;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-stopwatch";
    }
 
 }

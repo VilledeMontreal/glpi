@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -64,7 +64,7 @@ class BuildMissingTimestampsCommand extends AbstractCommand {
             'FROM'   => 'information_schema.columns',
             'WHERE'  => [
                'table_schema' => $this->db->dbdefault,
-               'table_name'   => ['LIKE', 'glpi_%'],
+               'table_name'   => ['LIKE', 'glpi\_%'],
                'column_name'  => ['date_creation', 'date_mod'],
             ],
             'ORDER'  => ['table_name', 'column_name'],

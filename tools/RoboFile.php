@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -103,10 +103,13 @@ class RoboFile extends \Robo\Tasks
 
          foreach ($it as $js_file) {
             if (!$this->endsWith($js_file->getFilename(), 'min.js')) {
-               $this->taskMinify($js_file->getRealpath())
-                  ->to(preg_replace('/\.js$/', '.min.js', $js_file->getRealpath()))
-                  ->type('js')
-                  ->run();
+               $this->_exec(
+                  sprintf(
+                     __DIR__ . '/../node_modules/.bin/terser %s --mangle --output %s',
+                     $js_file->getRealpath(),
+                     preg_replace('/\.js$/', '.min.js', $js_file->getRealpath())
+                  )
+               );
             }
          }
       }

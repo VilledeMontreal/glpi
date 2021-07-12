@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,14 +45,15 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class EnableMaintenanceModeCommand extends AbstractCommand {
 
+   protected $requires_db_up_to_date = false;
+
    protected function configure() {
       parent::configure();
 
-      $this->setName('glpi:maintenance:enable_maintenance_mode');
+      $this->setName('glpi:maintenance:enable');
       $this->setAliases(
          [
-            'glpi:maintenance:on',
-            'maintenance:on',
+            'maintenance:enable',
          ]
       );
       $this->setDescription(__('Enable maintenance mode'));

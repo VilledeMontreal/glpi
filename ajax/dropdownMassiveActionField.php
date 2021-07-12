@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,7 @@ if (!isset($_POST["itemtype"]) || !($item = getItemForItemtype($_POST['itemtype'
    exit();
 }
 
-if (InfoCom::canApplyOn($_POST["itemtype"])) {
+if (Infocom::canApplyOn($_POST["itemtype"])) {
    Session::checkSeveralRightsOr([$_POST["itemtype"] => UPDATE,
                                        "infocom"          => UPDATE]);
 } else {
@@ -64,8 +64,6 @@ if (isset($_POST["itemtype"])
    }
 
    $search            = $search[$_POST["id_field"]];
-
-   $FIELDNAME_PRINTED = false;
 
    echo "<table class='tab_glpi' width='100%'><tr><td>";
 
@@ -101,9 +99,7 @@ if (isset($_POST["itemtype"])
       echo $item->getValueToSelect($search, $fieldname, $values, $options);
    }
 
-   if (!$FIELDNAME_PRINTED) {
-      echo "<input type='hidden' name='field' value='$fieldname'>";
-   }
+   echo "<input type='hidden' name='field' value='$fieldname'>";
    echo "</td>";
    if ($inline) {
       echo "<td><input type='submit' name='massiveaction' class='submit' value='$submitname'></td>";

@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -28,6 +28,8 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+/* global grid_link_url, grid_rack_add_tip, grid_rack_id, grid_rack_units */
 var x_before_drag = 0;
 var y_before_drag = 0;
 var dirty = false;
@@ -57,13 +59,11 @@ var initRack = function() {
          $('#viewgraph').toggleClass('clear_text');
       })
       .on("click", ".cell_add", function() {
-         /* global grid_rack_units */
          var index = grid_rack_units - $(this).index();
          var side = $(this).parents('.rack_side').hasClass('rack_front')
             ? 0  // front
             : 1; // rear
 
-         /* global grid_link_url grid_rack_id */
          $.ajax({
             url : grid_link_url,
             data: {
@@ -115,7 +115,7 @@ var initRack = function() {
          // disable qtip
          element.qtip('hide', true);
       })
-      .on('click', function(event) {
+      .on('click', '.grid-stack-item', function(event) {
          var element = $(event.target);
          var el_url  = element.find('.itemrack_name').attr('href');
 
@@ -147,7 +147,6 @@ var initRack = function() {
       $('.indexes').append('<li>' + i + '</li>');
 
       // append cells for adding new items
-      /* global grid_rack_add_tip */
       $('.racks_add').append(
          '<div class="cell_add"><span class="tipcontent">'+grid_rack_add_tip+'</span></div>'
       );

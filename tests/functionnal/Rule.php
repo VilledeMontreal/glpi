@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +33,7 @@
 namespace tests\units;
 
 use \DbTestCase;
+use ReflectionClass;
 
 /* Test for inc/rule.class.php */
 
@@ -158,31 +159,28 @@ class Rule extends DbTestCase {
       $rule    = new \Rule();
       $actions = $rule->getSpecificMassiveActions();
       $this->array($actions)->isIdenticalTo([
-         'Rule:duplicate'  => 'Duplicate',
-         'Rule:export'     => 'Export'
+         'Rule:export'     => '<i class=\'ma-icon fas fa-file-download\'></i>Export'
       ]);
 
       $_SESSION['glpiactiveprofile']['rule_dictionnary_software'] = ALLSTANDARDRIGHT;
       $rule    = new \RuleDictionnarySoftware();
       $actions = $rule->getSpecificMassiveActions();
       $this->array($actions)->isIdenticalTo([
-         'Rule:move_rule' => 'Move',
-         'Rule:duplicate' => 'Duplicate',
-         'Rule:export'    => 'Export'
+         'Rule:move_rule' => '<i class=\'ma-icon fas fa-arrows-alt-v\'></i>Move',
+         'Rule:export'     => '<i class=\'ma-icon fas fa-file-download\'></i>Export'
       ]);
 
       $_SESSION['glpiactiveprofile']['rule_dictionnary_software'] = READ;
       $rule    = new \RuleDictionnarySoftware();
       $actions = $rule->getSpecificMassiveActions();
       $this->array($actions)->isIdenticalTo([
-         'Rule:duplicate' => 'Duplicate',
-         'Rule:export'    => 'Export'
+         'Rule:export'     => '<i class=\'ma-icon fas fa-file-download\'></i>Export'
       ]);
    }
 
    public function testGetSearchOptionsNew() {
       $rule = new \Rule();
-      $this->array($rule->rawSearchOptions())->hasSize(10);
+      $this->array($rule->rawSearchOptions())->hasSize(11);
    }
 
    public function testGetRuleWithCriteriasAndActions() {
@@ -243,7 +241,7 @@ class Rule extends DbTestCase {
       $this->integer($rule->maxActionsCount())->isIdenticalTo(0);
 
       $rule = new \RuleTicket();
-      $this->integer($rule->maxActionsCount())->isIdenticalTo(0);
+      $this->integer($rule->maxActionsCount())->isIdenticalTo(29);
 
       $rule = new \RuleDictionnarySoftware();
       $this->integer($rule->maxActionsCount())->isIdenticalTo(4);
@@ -280,17 +278,17 @@ class Rule extends DbTestCase {
 
    protected function actionsNamesProvider() {
       return [
-         [__('Location')               , 'locations_id'],
+         [\Location::getTypeName(1)               , 'locations_id'],
          ["&nbsp;"                     , 'location'],
-         [__('Type')                   , 'type'],
+         [_n('Type', 'Types', 1)                   , 'type'],
          [__('Category')               , 'itilcategories_id'],
-         [__('Requester')              , '_users_id_requester'],
-         [__('Requester group')        , '_groups_id_requester'],
+         [_n('Requester', 'Requesters', 1)              , '_users_id_requester'],
+         [_n('Requester group', 'Requester groups', 1)        , '_groups_id_requester'],
          [__('Technician')             , '_users_id_assign'],
          [__('Technician group')       , '_groups_id_assign'],
          [__('Assigned to a supplier') , '_suppliers_id_assign'],
-         [__('Watcher')                , '_users_id_observer'],
-         [__('Watcher group')          , '_groups_id_observer'],
+         [_n('Watcher', 'Watchers', 1)                , '_users_id_observer'],
+         [_n('Watcher group', 'Watcher groups', 1)          , '_groups_id_observer'],
          [__('Urgency')                , 'urgency'],
          [__('Impact')                 , 'impact'],
          [__('Priority')               , 'priority'],
@@ -305,16 +303,16 @@ class Rule extends DbTestCase {
                   __('Time to own'))     , 'slas_id_tto'],
          [sprintf(__('%1$s - %2$s'),
                   __('Send an approval request'),
-                  __('User'))            , 'users_id_validate'],
+                  \User::getTypeName(1))            , 'users_id_validate'],
          [sprintf(__('%1$s - %2$s'),
                   __('Send an approval request'),
-                  __('Group'))           , 'groups_id_validate'],
+                  \Group::getTypeName(1))           , 'groups_id_validate'],
          [sprintf(__('%1$s - %2$s'),
                   __('Send an approval request'),
                   __('Minimum validation required')) , 'validation_percent'],
          [__('Approval request to requester group manager') , 'users_id_validate_requester_supervisor'],
          [__('Approval request to technician group manager') , 'users_id_validate_assign_supervisor'],
-         [__('Request source'), 'requesttypes_id']
+         [\RequestType::getTypeName(1), 'requesttypes_id']
       ];
    }
 
@@ -389,7 +387,7 @@ class Rule extends DbTestCase {
       //Check that an uuid has been generated
       $this->string($rule->fields['uuid'])->isNotEmpty();
       //Check that a ranking has been added
-      $this->string($rule->fields['ranking'])->isNotEmpty();
+      $this->integer($rule->fields['ranking'])->isGreaterThan(0);
 
       //Add a rule and provide an uuid
       $rules_id = $rule->add(['name' => 'MyRule', 'uuid' => '12345']);
@@ -414,7 +412,7 @@ class Rule extends DbTestCase {
       $expected = "<td >Unavailable&nbsp;</td><td >contains</td><td >_loc</td>";
       $this->string($result)->isIdenticalTo($expected);
 
-      $input['criteria'] = 'users_locations';
+      $input['criteria'] = '_locations_id_of_requester';
       $result   = $rule->getMinimalCriteriaText($input);
       $expected = "<td >Requester location</td><td >contains</td><td >_loc</td>";
       $this->string($result)->isIdenticalTo($expected);
@@ -525,5 +523,110 @@ class Rule extends DbTestCase {
       //FIXME: missing tests?
       /*$result = $rule->getCriteriaDisplayPattern(9, \Rule::PATTERN_IS, 1);
       var_dump($result);*/
+   }
+
+   public function testClone() {
+      $rule = getItemByTypeName('Rule', 'One user assignation');
+      $rules_id = $rule->fields['id'];
+
+      $this->integer($rule->fields['is_active'])->isIdenticalTo(1);
+      $this->string($rule->fields['name'])->isIdenticalTo('One user assignation');
+
+      $relations = [
+         \RuleAction::class => 1,
+         \RuleCriteria::class  => 3
+      ];
+
+      foreach ($relations as $relation => $expected) {
+         $this->integer(
+            countElementsInTable(
+               $relation::getTable(),
+               ['rules_id' => $rules_id]
+            )
+         )->isIdenticalTo($expected);
+      }
+
+      $cloned = $rule->clone();
+      $this->integer($cloned)->isGreaterThan($rules_id);
+      $this->boolean($rule->getFromDB($cloned))->isTrue();
+
+      $this->integer($rule->fields['is_active'])->isIdenticalTo(0);
+      $this->string($rule->fields['name'])->isIdenticalTo('Copy of One user assignation');
+
+      foreach ($relations as $relation => $expected) {
+         $this->integer(
+            countElementsInTable(
+               $relation::getTable(),
+               ['rules_id' => $cloned]
+            )
+         )->isIdenticalTo($expected);
+      }
+   }
+
+   public function testRanking() {
+      //create a software rule
+      $first_rule = new \RuleSoftwareCategory();
+      $add = $first_rule->add([
+         'sub_type'  => 'RuleSoftwareCategory',
+         'name'      => 'my test rule'
+      ]);
+      $this->integer($add)->isGreaterThan(0);
+      $first_rule = new \RuleSoftwareCategory();
+      $this->boolean($first_rule->getFromDB($add))->isTrue();
+      $this->integer($first_rule->fields['ranking'])->isGreaterThan(0);
+
+      $second_rule = new \RuleSoftwareCategory();
+      $add = $second_rule->add([
+         'sub_type'  => 'RuleSoftwareCategory',
+         'name'      => 'my other test rule'
+      ]);
+      $this->integer($add)->isGreaterThan(0);
+      $second_rule = new \RuleSoftwareCategory();
+      $this->boolean($second_rule->getFromDB($add))->isTrue();
+      $this->integer($second_rule->fields['ranking'])->isGreaterThan($first_rule->fields['ranking']);
+   }
+
+   public function testAllCriteria() {
+      $classes = $this->getClasses('getCriterias');
+
+      foreach ($classes as $class) {
+         $reflection_class = new ReflectionClass($class);
+         if ($reflection_class->isAbstract() || !is_subclass_of($class, \Rule::class, true)) {
+            continue;
+         }
+
+         $rule = new $class();
+         $criteria = $rule->getCriterias();
+
+         foreach ($criteria as $key => $criterion) {
+            if (!is_array($criterion) || !array_key_exists('type', $criterion) || $criterion['type'] !== 'dropdown') {
+               continue;
+            }
+
+            $rulecriteria = new \RuleCriteria();
+
+            $conditions = $rulecriteria->getConditions($class, $key);
+            foreach (array_keys($conditions) as $condition) {
+               $rulecriteria->fields = [
+                  'id'        => 1,
+                  'rules_id'  => 1,
+                  'criteria'  => $key,
+                  'condition' => $condition,
+                  'pattern'   => in_array($condition, [\Rule::REGEX_MATCH,  \Rule::REGEX_NOT_MATCH]) ? '/1/' : 1,
+               ];
+
+               $results      = [];
+               $regex_result = [];
+               $this->boolean(
+                  $rulecriteria->match(
+                     $rulecriteria,
+                     1,
+                     $results,
+                     $regex_result
+                  )
+               );
+            }
+         }
+      }
    }
 }

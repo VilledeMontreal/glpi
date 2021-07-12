@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,8 +45,7 @@ if (!defined('GLPI_ROOT')) {
 class ProblemTemplatePredefinedField extends ITILTemplatePredefinedField {
 
    // From CommonDBChild
-   static public $itemtype  = 'ProblemTemplate';
-   static public $items_id  = 'problemtemplates_id';
-   static public $itiltype  = 'Problem';
-
+   static public $itemtype = 'ProblemTemplate';
+   static public $items_id = 'problemtemplates_id';
+   static public $itiltype = 'Problem';
 }

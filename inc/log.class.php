@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -80,16 +80,13 @@ class Log extends CommonDBTM {
 
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
-      if (!$withtemplate) {
-         $nb = 0;
-         if ($_SESSION['glpishow_count_on_tabs']) {
-            $nb = countElementsInTable('glpi_logs',
-                                       ['itemtype' => $item->getType(),
-                                        'items_id' => $item->getID()]);
-         }
-         return self::createTabEntry(self::getTypeName(1), $nb);
+      $nb = 0;
+      if ($_SESSION['glpishow_count_on_tabs']) {
+         $nb = countElementsInTable('glpi_logs',
+                                    ['itemtype' => $item->getType(),
+                                     'items_id' => $item->getID()]);
       }
-      return '';
+      return self::createTabEntry(self::getTypeName(1), $nb);
    }
 
 
@@ -109,7 +106,7 @@ class Log extends CommonDBTM {
     *
     * @return boolean for success (at least 1 log entry added)
    **/
-   static function constructHistory(CommonDBTM $item, &$oldvalues, &$values) {
+   static function constructHistory(CommonDBTM $item, $oldvalues, $values) {
 
       if (!count($oldvalues)) {
          return false;
@@ -256,8 +253,6 @@ class Log extends CommonDBTM {
 
    **/
    static function showForItem(CommonDBTM $item, $withtemplate = 0) {
-      global $DB;
-
       $itemtype = $item->getType();
       $items_id = $item->getField('id');
 
@@ -294,9 +289,9 @@ class Log extends CommonDBTM {
 
       $header = "<tr>";
       $header .= "<th>".__('ID')."</th>";
-      $header .= "<th>".__('Date')."</th>";
-      $header .= "<th>".__('User')."</th>";
-      $header .= "<th>".__('Field')."</th>";
+      $header .= "<th>"._n('Date', 'Dates', 1)."</th>";
+      $header .= "<th>".User::getTypeName(1)."</th>";
+      $header .= "<th>"._n('Field', 'Fields', 1)."</th>";
       //TRANS: a noun, modification, change
       $header .= "<th>"._x('name', 'Update')."</th>";
       $header .= "</tr>";
@@ -369,7 +364,7 @@ class Log extends CommonDBTM {
                echo "<td class='tab_date'>".$data['date_mod']."</td>";
                echo "<td>".$data['user_name']."</td>";
                echo "<td>".$data['field']."</td>";
-               echo "<td width='60%'>".$data['change']."</td>";
+               echo "<td width='60%'>".Html::entities_deep($data['change'])."</td>";
                echo "</tr>";
             }
          }
@@ -397,7 +392,7 @@ class Log extends CommonDBTM {
     * @return array of localized log entry (TEXT only, no HTML)
    **/
    static function getHistoryData(CommonDBTM $item, $start = 0, $limit = 0, array $sqlfilters = []) {
-      global $DB;
+      $DBread = DBConnection::getReadConnection();
 
       $itemtype  = $item->getType();
       $items_id  = $item->getField('id');
@@ -419,7 +414,7 @@ class Log extends CommonDBTM {
          $query['LIMIT'] = (int)$limit;
       }
 
-      $iterator = $DB->request($query);
+      $iterator = $DBread->request($query);
 
       $changes = [];
       while ($data = $iterator->next()) {
@@ -449,7 +444,11 @@ class Log extends CommonDBTM {
                case self::HISTORY_ADD_DEVICE :
                   $tmp['field'] = NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
                   }
                   //TRANS: %s is the component name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["new_value"]);
@@ -477,7 +476,12 @@ class Log extends CommonDBTM {
                case self::HISTORY_DELETE_DEVICE :
                   $tmp['field']=NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
+
                   }
                   //TRANS: %s is the component name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["old_value"]);
@@ -486,7 +490,12 @@ class Log extends CommonDBTM {
                case self::HISTORY_LOCK_DEVICE :
                   $tmp['field'] = NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
+
                   }
                   //TRANS: %s is the component name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["old_value"]);
@@ -495,7 +504,12 @@ class Log extends CommonDBTM {
                case self::HISTORY_UNLOCK_DEVICE :
                   $tmp['field'] = NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
+
                   }
                   //TRANS: %s is the component name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["new_value"]);
@@ -516,7 +530,12 @@ class Log extends CommonDBTM {
                case self::HISTORY_DISCONNECT_DEVICE :
                   $tmp['field'] = NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
+
                   }
                   //TRANS: %s is the item name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["old_value"]);
@@ -525,7 +544,12 @@ class Log extends CommonDBTM {
                case self::HISTORY_CONNECT_DEVICE :
                   $tmp['field'] = NOT_AVAILABLE;
                   if ($item2 = getItemForItemtype($data["itemtype_link"])) {
-                     $tmp['field'] = $item2->getTypeName(1);
+                     if ($item2 instanceof Item_Devices) {
+                        $tmp['field'] = $item2->getDeviceTypeName(1);
+                     } else {
+                        $tmp['field'] = $item2->getTypeName(1);
+                     }
+
                   }
                   //TRANS: %s is the item name
                   $tmp['change'] = sprintf(__('%1$s: %2$s'), $action_label, $data["new_value"]);
@@ -572,11 +596,11 @@ class Log extends CommonDBTM {
                         }
                         // Simple Heuristic, of course not enough
                         if ($isr && !$isa && !$iso) {
-                           $as = __('Requester');
+                           $as = _n('Requester', 'Requesters', 1);
                         } else if (!$isr && $isa && !$iso) {
                            $as = __('Assigned to');
                         } else if (!$isr && !$isa && $iso) {
-                           $as = __('Watcher');
+                           $as = _n('Watcher', 'Watchers', 1);
                         } else {
                            // Deleted or Ambiguous
                            $as = false;
@@ -655,7 +679,7 @@ class Log extends CommonDBTM {
                   }
                   $tmp['change'] = sprintf(__('%1$s: %2$s'),
                                            $action_label,
-                                           sprintf(__('%1$s (%2$s)'), $tmp['field'], $data["old_value"]));
+                                           sprintf(__('%1$s (%2$s)'), $tmp['field'], $data["new_value"]));
                   break;
 
                case self::HISTORY_LOCK_SUBITEM :
@@ -695,7 +719,7 @@ class Log extends CommonDBTM {
             $tablename = '';
             // It's not an internal device
             foreach ($SEARCHOPTION as $key2 => $val2) {
-               if ($key2 == $data["id_search_option"]) {
+               if ($key2 === $data["id_search_option"]) {
                   $tmp['field'] =  $val2["name"];
                   $tablename    =  $val2["table"];
                   $fieldname    = $val2["field"];
@@ -732,22 +756,24 @@ class Log extends CommonDBTM {
                   if ($oldval_expl[0] == '&nbsp;') {
                      $oldval = $data["old_value"];
                   } else {
-                     foreach ($DB->request('glpi_users', "`name` = '".$oldval_expl[0]."'") as $val) {
+                     $old_iterator = $DBread->request('glpi_users', ['name' => $oldval_expl[0]]);
+                     while ($val = $old_iterator->next()) {
                         $oldval = sprintf(__('%1$s %2$s'),
                               formatUserName($val['id'], $oldval_expl[0], $val['realname'],
                                     $val['firstname']),
-                              $oldval_expl[1]);
+                              ($oldval_expl[1] ?? "0"));
                      }
                   }
 
                   if ($newval_expl[0] == '&nbsp;') {
                      $newval = $data["new_value"];
                   } else {
-                     foreach ($DB->request('glpi_users', "`name` = '".$newval_expl[0]."'") as $val) {
+                     $new_iterator = $DBread->request('glpi_users', ['name' => $newval_expl[0]]);
+                     while ($val = $new_iterator->next()) {
                         $newval = sprintf(__('%1$s %2$s'),
                               formatUserName($val['id'], $newval_expl[0], $val['realname'],
                                     $val['firstname']),
-                              $newval_expl[1]);
+                              ($newval_expl[1] ?? "0"));
                      }
                   }
                }
@@ -875,7 +901,11 @@ class Log extends CommonDBTM {
                      . 'itemtype_link::' . $data['itemtype_link'] . ';';
 
                   if ($linked_item = getItemForItemtype($data["itemtype_link"])) {
-                     $value = $linked_item->getTypeName(1);
+                     if ($linked_item instanceof Item_Devices) {
+                        $value = $linked_item->getDeviceTypeName(1);
+                     } else {
+                        $value = $linked_item->getTypeName(1);
+                     }
                   }
                   break;
 
@@ -1198,7 +1228,10 @@ class Log extends CommonDBTM {
       }
 
       if (isset($filters['date']) && !empty($filters['date'])) {
-         $sql_filters['date_mod'] = ['LIKE', "%{$filters['date']}%"];
+         $sql_filters[] = [
+            ['date_mod' => ['>=', "{$filters['date']} 00:00:00"]],
+            ['date_mod' => ['<=', "{$filters['date']} 23:59:59"]],
+         ];
       }
 
       if (isset($filters['linked_actions']) && !empty($filters['linked_actions'])) {
@@ -1233,11 +1266,6 @@ class Log extends CommonDBTM {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see commonDBTM::getRights()
-   **/
    function getRights($interface = 'central') {
 
       $values = [ READ => __('Read')];

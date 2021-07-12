@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -67,7 +67,7 @@ if (Session::haveRight("transfer", READ)
 if (Session::haveRight("config", READ)) {
    echo "<tr class='tab_bg_1'><td class='center b'>";
    echo "<a href='".$CFG_GLPI['root_doc']."/front/blacklist.php'>".
-        _n('Blacklist', 'Blacklists', 2)."</a>";
+        _n('Blacklist', 'Blacklists', Session::getPluralNumber())."</a>";
    echo "</td></tr>";
 }
 

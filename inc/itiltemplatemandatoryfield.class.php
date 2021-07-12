@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -99,10 +99,10 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField {
     *
     * @since 0.83
     *
-    * @param $ID                    integer  the template ID
-    * @param $withtypeandcategory   boolean  with type and category (true by default)
+    * @param integer $ID                   the template ID
+    * @param boolean $withtypeandcategory  with type and category (true by default)
     *
-    * @return an array of mandatory fields
+    * @return array of mandatory fields
    **/
    function getMandatoryFields($ID, $withtypeandcategory = true) {
       global $DB;
@@ -148,7 +148,7 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField {
     * @param ITILTemplate $tt           ITIL Template
     * @param boolean      $withtemplate Template or basic item (default 0)
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForITILTemplate(ITILTemplate $tt, $withtemplate = 0) {
       global $DB;

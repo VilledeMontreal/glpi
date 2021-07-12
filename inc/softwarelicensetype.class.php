@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -41,6 +41,10 @@ class SoftwareLicenseType extends CommonTreeDropdown {
 
    static function getTypeName($nb = 0) {
       return _n('License type', 'License types', $nb);
+   }
+
+   static function getFieldLabel() {
+      return _n('Type', 'Types', 1);
    }
 
 }

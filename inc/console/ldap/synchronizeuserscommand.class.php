@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -73,7 +73,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
 
       $this->setName('glpi:ldap:synchronize_users');
       $this->setAliases(['ldap:sync']);
-      $this->setDescription(__('Synchronize users against LDAP server informations'));
+      $this->setDescription(__('Synchronize users against LDAP server information'));
 
       $this->addOption(
          'only-create-new',
@@ -154,6 +154,10 @@ class SynchronizeUsersCommand extends AbstractCommand {
       $only_create = $input->getOption('only-create-new');
       $only_update = $input->getOption('only-update-existing');
 
+      $ldap_filter = $input->getOption('ldap-filter');
+      $begin_date  = $input->getOption('begin-date');
+      $end_date    = $input->getOption('end-date');
+
       $actions = [];
       if ($only_create) {
          $actions = [
@@ -194,10 +198,6 @@ class SynchronizeUsersCommand extends AbstractCommand {
          }
       }
 
-      $ldap_filter = $input->getOption('ldap-filter');
-      $begin_date  = $input->getOption('begin-date');
-      $end_date    = $input->getOption('end-date');
-
       if (!$input->getOption('no-interaction')) {
          // Ask for confirmation (unless --no-interaction)
 
@@ -222,7 +222,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
          $informations->addRow([__('End date'), $end_date]);
          $informations->render();
 
-         /** @var QuestionHelper $question_helper */
+         /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
          $question_helper = $this->getHelper('question');
          $run = $question_helper->ask(
             $input,
@@ -241,7 +241,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
       foreach ($servers_id as $server_id) {
          $server = new AuthLDAP();
          if (!$server->getFromDB($server_id)) {
-            throw new RuntimeException(__('Unable to load LDAP server informations.'));
+            throw new RuntimeException(__('Unable to load LDAP server information.'));
          }
          if (!$server->isActive()) {
             // Can happen if id is specified in command call
@@ -266,7 +266,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
             ];
             $limitexceeded = false;
 
-            $users = AuthLdap::getAllUsers(
+            $users = AuthLDAP::getAllUsers(
                [
                   'authldaps_id' => $server_id,
                   'mode'         => $action,
@@ -346,7 +346,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
                   $user_sync_field
                );
 
-               if ($existing_user instanceof User && $action == AuthLdap::ACTION_IMPORT) {
+               if ($existing_user instanceof User && $action == AuthLDAP::ACTION_IMPORT) {
                   continue; // Do not update existing user if current action is only import
                }
 
@@ -361,7 +361,7 @@ class SynchronizeUsersCommand extends AbstractCommand {
                   $id_field   = $server->fields['sync_field'];
                }
 
-               $result = AuthLdap::ldapImportUserByServerId(
+               $result = AuthLDAP::ldapImportUserByServerId(
                   [
                      'method'           => AuthLDAP::IDENTIFIER_LOGIN,
                      'value'            => $value,
@@ -451,12 +451,17 @@ class SynchronizeUsersCommand extends AbstractCommand {
                   sprintf(__('Unable to parse --%1$s value "%2$s".'), $option_name, $date)
                );
             }
-            $input->setOption($option_name, date('Y:m:d H:i:s', $parsed_date));
+            $input->setOption($option_name, date('Y-m-d H:i:s', $parsed_date));
          }
       }
 
       $begin_date = $input->getOption('begin-date');
       $end_date   = $input->getOption('end-date');
+      if ($only_create === false && $only_update === false && ($begin_date !== null || $end_date !== null)) {
+         throw new \Symfony\Component\Console\Exception\InvalidArgumentException(
+            __('Options --begin-date and --end-date can only be used with --only-create-new or --only-update-existing option.')
+         );
+      }
       if ($begin_date > $end_date) {
          throw new InvalidArgumentException(
             __('Option --begin-date value has to be lower than option --end-date value.')

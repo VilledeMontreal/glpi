@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -60,9 +60,6 @@ class Item_Disk extends CommonDBChild {
    }
 
 
-   /**
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       // can exists for template
@@ -94,11 +91,6 @@ class Item_Disk extends CommonDBChild {
    }
 
 
-   /**
-    * @see CommonGLPI::defineTabs()
-    *
-    * @since 0.85
-   **/
    function defineTabs($options = []) {
 
       $ong = [];
@@ -112,6 +104,7 @@ class Item_Disk extends CommonDBChild {
    /**
     * Duplicate all disks from an item template to his clone
     *
+    * @deprecated 9.5
     * @since 0.84
     *
     * @param string  $type  Item type
@@ -123,6 +116,7 @@ class Item_Disk extends CommonDBChild {
    static function cloneItem($type, $oldid, $newid) {
       global $DB;
 
+      Toolbox::deprecated('Use clone');
       $iterator = $DB->request([
          'FROM'   => self::getTable(),
          'WHERE'  => [
@@ -152,8 +146,6 @@ class Item_Disk extends CommonDBChild {
     * @return true if displayed  false if item not found or not right to display
    **/
    function showForm($ID, $options = []) {
-      global $CFG_GLPI;
-
       $itemtype = null;
       if (isset($options['itemtype']) && !empty($options['itemtype'])) {
          $itemtype = $options['itemtype'];
@@ -184,7 +176,7 @@ class Item_Disk extends CommonDBChild {
       }
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Item')."</td>";
+      echo "<td>"._n('Item', 'Items', 1)."</td>";
       echo "<td>".$item->getLink()."</td>";
       if (Plugin::haveImport()) {
          echo "<td>".__('Automatic inventory')."</td>";
@@ -213,9 +205,9 @@ class Item_Disk extends CommonDBChild {
       echo "<td>".__('Mount point')."</td>";
       echo "<td>";
       Html::autocompletionTextField($this, "mountpoint");
-      echo "</td><td>".__('File system')."</td>";
+      echo "</td><td>".Filesystem::getTypeName(1)."</td>";
       echo "<td>";
-      FileSystem::dropdown(['value' => $this->fields["filesystems_id"]]);
+      Filesystem::dropdown(['value' => $this->fields["filesystems_id"]]);
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
@@ -255,14 +247,47 @@ class Item_Disk extends CommonDBChild {
 
    }
 
+   /**
+    * Get disks related to a given item
+    *
+    * @param CommonDBTM $item  Item instance
+    * @param string     $sort  Field to sort on
+    * @param string     $order Sort order
+    *
+    * @return DBmysqlIterator
+    */
+   public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator {
+      global $DB;
+
+      $iterator = $DB->request([
+         'SELECT'    => [
+            Filesystem::getTable() . '.name AS fsname',
+            self::getTable() . '.*'
+         ],
+         'FROM'      => self::getTable(),
+         'LEFT JOIN' => [
+            Filesystem::getTable() => [
+               'FKEY' => [
+                  self::getTable()        => 'filesystems_id',
+                  Filesystem::getTable()  => 'id'
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            'itemtype'     => $item->getType(),
+            'items_id'     => $item->fields['id']
+         ]
+      ]);
+      return $iterator;
+   }
 
    /**
     * Print the disks
     *
-    * @param $item                  Item object
-    * @param $withtemplate boolean  Template or basic item (default 0)
+    * @param CommonDBTM $item          Item object
+    * @param boolean    $withtemplate  Template or basic item (default 0)
     *
-    * @return Nothing (call to classes members)
+    * @return void
    **/
    static function showForItem(CommonDBTM $item, $withtemplate = 0) {
       global $DB;
@@ -287,26 +312,7 @@ class Item_Disk extends CommonDBChild {
 
       echo "<div class='center'>";
 
-      $iterator = $DB->request([
-         'SELECT'    => [
-            FileSystem::getTable() . '.name AS fsname',
-            self::getTable() . '.*'
-         ],
-         'FROM'      => self::getTable(),
-         'LEFT JOIN' => [
-            FileSystem::getTable() => [
-               'FKEY' => [
-                  self::getTable()        => 'filesystems_id',
-                  FileSystem::getTable()  => 'id'
-               ]
-            ]
-         ],
-         'WHERE'     => [
-            'itemtype'     => $itemtype,
-            'items_id'     => $ID
-         ]
-      ]);
-
+      $iterator = self::getFromItem($item);
       echo "<table class='tab_cadre_fixehov'>";
       $colspan = 8;
       if (Plugin::haveImport()) {
@@ -323,7 +329,7 @@ class Item_Disk extends CommonDBChild {
          }
          $header .= "<th>".__('Partition')."</th>";
          $header .= "<th>".__('Mount point')."</th>";
-         $header .= "<th>".__('File system')."</th>";
+         $header .= "<th>".Filesystem::getTypeName(1)."</th>";
          $header .= "<th>".__('Global size')."</th>";
          $header .= "<th>".__('Free size')."</th>";
          $header .= "<th>".__('Free percentage')."</th>";
@@ -396,6 +402,72 @@ class Item_Disk extends CommonDBChild {
       echo "</div>";
    }
 
+   function rawSearchOptions() {
+
+      $tab = [];
+
+      $tab[] = [
+         'id'                 => 'common',
+         'name'               => __('Characteristics')
+      ];
+
+      $tab[] = [
+         'id'                 => '1',
+         'table'              => $this->getTable(),
+         'field'              => 'name',
+         'name'               => __('Name'),
+         'datatype'           => 'itemlink',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '2',
+         'table'              => $this->getTable(),
+         'field'              => 'device',
+         'name'               => __('Partition'),
+         'datatype'           => 'string',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '3',
+         'table'              => $this->getTable(),
+         'field'              => 'mountpoint',
+         'name'               => __('Mount point'),
+         'datatype'           => 'string',
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '4',
+         'table'              => $this->getTable(),
+         'field'              => 'totalsize',
+         'unit'               => 'auto',
+         'name'               => __('Global size'),
+         'datatype'           => 'number',
+         'width'              => 1000,
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '5',
+         'table'              => $this->getTable(),
+         'field'              => 'freesize',
+         'unit'               => 'auto',
+         'name'               => __('Free size'),
+         'datatype'           => 'number',
+         'width'              => 1000,
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      return $tab;
+   }
+
    public static function rawSearchOptionsToAdd($itemtype) {
       $tab = [];
 
@@ -455,7 +527,7 @@ class Item_Disk extends CommonDBChild {
          'field'              => 'freepercent',
          'name'               => __('Free percentage'),
          'forcegroupby'       => true,
-         'datatype'           => 'decimal',
+         'datatype'           => 'progressbar',
          'width'              => 2,
          'computation'        => 'ROUND(100*TABLE.freesize/TABLE.totalsize)',
          'computationgroupby' => true,
@@ -496,7 +568,7 @@ class Item_Disk extends CommonDBChild {
          'id'                 => '155',
          'table'              => 'glpi_filesystems',
          'field'              => 'name',
-         'name'               => __('File system'),
+         'name'               => Filesystem::getTypeName(1),
          'forcegroupby'       => true,
          'massiveaction'      => false,
          'datatype'           => 'dropdown',
@@ -590,7 +662,7 @@ class Item_Disk extends CommonDBChild {
       if (!isset($all[$status])) {
          Toolbox::logWarning(
             sprintf(
-               'Encryption status %1$s does not exixts!'
+               'Encryption status %1$s does not exixts!', $status
             )
          );
          return NOT_AVAILABLE;

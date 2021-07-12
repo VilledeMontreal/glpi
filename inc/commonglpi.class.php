@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -85,12 +85,56 @@ class CommonGLPI {
 
 
    /**
+    * Return the simplified localized label of the current Type in the context of a form.
+    * Avoid to recall the type in the label (Computer status -> Status)
+    *
+    * Should be overloaded in each new class
+    *
+    * @return string
+   **/
+   static function getFieldLabel() {
+      return static::getTypeName();
+   }
+
+
+   /**
     * Return the type of the object : class name
     *
     * @return string
    **/
    static function getType() {
       return get_called_class();
+   }
+
+   /**
+    * Check rights on CommonGLPI Object (without corresponding table)
+    * Same signature as CommonDBTM::can but in case of this class, we don't check instance rights
+    * so, id and input parameters are unused.
+    *
+    * @param integer $ID    ID of the item (-1 if new item)
+    * @param mixed   $right Right to check : r / w / recursive / READ / UPDATE / DELETE
+    * @param array   $input array of input data (used for adding item) (default NULL)
+    *
+    * @return boolean
+   **/
+   function can($ID, $right, array &$input = null) {
+      switch ($right) {
+         case READ :
+            return static::canView();
+
+         case UPDATE :
+            return static::canUpdate();
+
+         case DELETE :
+            return static::canDelete();
+
+         case PURGE :
+            return static::canPurge();
+
+         case CREATE :
+            return static::canCreate();
+      }
+      return false;
    }
 
 
@@ -223,6 +267,8 @@ class CommonGLPI {
 
       $ong = [];
       $this->addDefaultFormTab($ong);
+      $this->addImpactTab($ong, $options);
+
       return $ong;
    }
 
@@ -261,7 +307,7 @@ class CommonGLPI {
       if (($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE)
           && (!$this->isNewItem() || $this->showdebug)
           && (method_exists($class, 'showDebug')
-              || InfoCom::canApplyOn($class)
+              || Infocom::canApplyOn($class)
               || in_array($class, $CFG_GLPI["reservation_types"]))) {
 
             $onglets[-2] = __('Debug');
@@ -306,6 +352,24 @@ class CommonGLPI {
       return $this;
    }
 
+   /**
+    * Add the impact tab if enabled for this item type
+    *
+    * @param array  $ong      defined tabs
+    * @param array  $options  options (for withtemplate)
+    *
+    * @return CommonGLPI
+   **/
+   function addImpactTab(array &$ong, array $options) {
+      global $CFG_GLPI;
+
+      // Check if impact analysis is enabled for this item type
+      if (Impact::isEnabled(static::class)) {
+         $this->addStandardTab('Impact', $ong, $options);
+      }
+
+      return $this;
+   }
 
    /**
     * Add default tab for form
@@ -348,6 +412,7 @@ class CommonGLPI {
             $menu['shortcut']        = static::getMenuShorcut();
             $menu['page']            = static::getSearchURL(false);
             $menu['links']['search'] = static::getSearchURL(false);
+            $menu['icon']            = static::getIcon();
 
             if (!in_array('add', $forbidden)
                 && $type::canCreate()) {
@@ -377,6 +442,9 @@ class CommonGLPI {
             $menu['shortcut']        = static::getMenuShorcut();
             $menu['page']            = static::getSearchURL(false);
             $menu['links']['search'] = static::getSearchURL(false);
+            if (method_exists($item, 'getIcon')) {
+               $menu['icon'] = static::getIcon();
+            }
          }
       }
       if ($data = static::getAdditionalMenuOptions()) {
@@ -773,7 +841,7 @@ class CommonGLPI {
          if (isset($cleaned_options['stock_image'])) {
             unset($cleaned_options['stock_image']);
          }
-         if ($this->getType() == 'Ticket') {
+         if ($this instanceof CommonITILObject && $this->isNewItem()) {
             $this->input = $cleaned_options;
             $this->saveInput();
             // $extraparamhtml can be tool long in case of ticket with content
@@ -904,18 +972,22 @@ class CommonGLPI {
 
             }
          }
-         $cleantarget = HTML::cleanParametersURL($target);
-         echo "<div class='navigationheader'><table class='tab_cadre_pager'>";
-         echo "<tr class='tab_bg_2'>";
+         $cleantarget = Html::cleanParametersURL($target);
+         echo "<div class='navigationheader'>";
 
          if ($first >= 0) {
-            echo "<td class='left'><a href='$cleantarget?id=$first$extraparamhtml'>" .
-                "<i class='fa fa-angle-double-left' title=\"".__s('First')."\"></i></a></td>";
+            echo "<a href='$cleantarget?id=$first$extraparamhtml'
+                     class='navicon left'>
+                     <i class='fas fa-angle-double-left pointer' title=\"".__s('First')."\"></i>
+                  </a>";
          }
 
          if ($prev >= 0) {
-            echo "<td class='left'><a href='$cleantarget?id=$prev$extraparamhtml' id='previouspage'>" .
-                "<i class='fa fa-chevron-left' title=\"".__s('Previous')."\"></i></td>";
+            echo "<a href='$cleantarget?id=$prev$extraparamhtml'
+                     id='previouspage'
+                     class='navicon left'>
+                     <i class='fas fa-angle-left pointer' title=\"".__s('Previous')."\"></i>
+                  </a>";
             $js = '$("body").keydown(function(e) {
                        if ($("input, textarea").is(":focus") === false) {
                           if(e.keyCode == 37 && e.ctrlKey) {
@@ -929,11 +1001,10 @@ class CommonGLPI {
          if (!$glpilisttitle) {
             $glpilisttitle = __s('List');
          }
-         echo "<td><a href=\"".$glpilisturl."\" title='$glpilisttitle'>";
-         echo "<i class='far fa-list-alt fa-2x pointer'><span class='sr-only'>";
-         echo Toolbox::substr($glpilisttitle, 0, 100)."...";
-         echo "</span></i>";
-         echo "</a></td>";
+         echo "<a href='$glpilisturl' title=\"$glpilisttitle\"
+                  class='navicon left'>
+                  <i class='far fa-list-alt pointer'></i>
+               </a>";
 
          $name = '';
          if (isset($this->fields['id']) && ($this instanceof CommonDBTM)) {
@@ -952,7 +1023,7 @@ class CommonGLPI {
             $name = sprintf(__('%1$s (%2$s)'), $name, $entname);
 
          }
-         echo "<td class='b big'>";
+         echo "<span class='center nav_title'>&nbsp;";
          if (!self::isLayoutWithMain() || self::isLayoutExcludedPage()) {
             if ($this instanceof CommonITILObject) {
                echo "<span class='status'>";
@@ -961,16 +1032,101 @@ class CommonGLPI {
             }
             echo $name;
          }
-         echo "</td>";
+         echo "</span>";
+
+         $ma = new MassiveAction([
+               'item' => [
+                  $this->getType() => [
+                     $this->fields['id'] => 1
+                  ]
+               ]
+            ],
+            $_GET,
+            'initial',
+            $this->fields['id']
+         );
+         $actions = $ma->getInput()['actions'];
+         $input   = $ma->getInput();
+
+         if ($this->isEntityAssign()) {
+            $input['entity_restrict'] = $this->getEntityID();
+         }
+
+         if (count($actions)) {
+            $rand          = mt_rand();
+
+            if (count($actions)) {
+               echo "<span class='single-actions'>";
+               echo "<button type='button' class='btn btn-secondary moreactions'>
+                        ".__("Actions")."
+                        <i class='fas fa-caret-down'></i>
+                     </button>";
+
+               echo "<div class='dropdown-menu' aria-labelledby='btnGroupDrop1'>";
+               foreach ($actions as $key => $action) {
+                  echo "<a class='dropdown-item' data-action='$key' href='#'>$action</a>";
+               }
+               echo "</div>";
+               echo "</span>";
+            }
+
+            Html::openMassiveActionsForm();
+            echo "<div id='dialog_container_$rand'></div>";
+            // Force 'checkbox-zero-on-empty', because some massive actions can use checkboxes
+            $CFG_GLPI['checkbox-zero-on-empty'] = true;
+            Html::closeForm();
+            //restore
+            unset($CFG_GLPI['checkbox-zero-on-empty']);
+
+            echo Html::scriptBlock( "$(function() {
+               var ma = ".json_encode($input).";
+
+               $(document).on('click', '.moreactions', function() {
+                  $('.moreactions + .dropdown-menu').toggle();
+               });
+
+               $(document).on('click', function(event) {
+                  var target = $(event.target);
+                  var parent = target.parent();
+
+                  if(!target.hasClass('moreactions')
+                     && !parent.hasClass('moreactions')) {
+                     $('.moreactions + .dropdown-menu').hide();
+                  }
+               });
+
+               $(document).on('click', '[data-action]', function() {
+                  $('.moreactions + .dropdown-menu').hide();
+
+                  var current_action = $(this).data('action');
+
+                  $('<div></div>').dialog({
+                     title: ma.actions[current_action],
+                     width: 500,
+                     height: 'auto',
+                     modal: true,
+                     appendTo: '#dialog_container_$rand'
+                  }).load(
+                     '".$CFG_GLPI['root_doc']. "/ajax/dropdownMassiveAction.php',
+                     Object.assign(
+                        {action: current_action},
+                        ma
+                     )
+                  );
+               });
+            });");
+         }
 
          if ($current !== false) {
-            echo "<td>".($current+1) . "/" . count($glpilistitems)."</td>";
+            echo "<span class='right navicon'>" . ($current + 1) . "/" . count($glpilistitems) . "</span>";
          }
 
          if ($next >= 0) {
-            echo "<td class='right'><a href='$cleantarget?id=$next$extraparamhtml' id='nextpage'>" .
-                "<i class='fa fa-chevron-right' title=\"".__s('Next')."\"></i>
-                    </a></td>";
+            echo "<a href='$cleantarget?id=$next$extraparamhtml'
+                     id='nextpage'
+                     class='navicon right'>" .
+               "<i class='fas fa-angle-right pointer' title=\"".__s('Next')."\"></i>
+                    </a>";
             $js = '$("body").keydown(function(e) {
                        if ($("input, textarea").is(":focus") === false) {
                           if(e.keyCode == 39 && e.ctrlKey) {
@@ -982,12 +1138,12 @@ class CommonGLPI {
          }
 
          if ($last >= 0) {
-            echo "<td class='right'><a href='$cleantarget?id=$last$extraparamhtml'>" .
-                "<i class='fa fa-angle-double-right' title=\"".__s('Last')."\"></i></a></td>";
+            echo "<a href='$cleantarget?id=$last $extraparamhtml'
+                     class='navicon right'>" .
+               "<i class='fas fa-angle-double-right pointer' title=\"" . __s('Last') . "\"></i></a>";
          }
 
-         // End pager
-         echo "</tr></table></div>";
+         echo "</div>"; // .navigationheader
       }
    }
 
@@ -1054,7 +1210,7 @@ class CommonGLPI {
                unset($_SESSION['_redirected_from_profile_selector']);
                Html::redirect($CFG_GLPI['root_doc']."/front/central.php");
             }
-            html::displayRightError();
+            Html::displayRightError();
          }
       }
 
@@ -1083,13 +1239,13 @@ class CommonGLPI {
    function showDebugInfo() {
       global $CFG_GLPI;
 
-      $class = $this->getType();
-
-      if (method_exists($class, 'showDebug')) {
+      if (method_exists($this, 'showDebug')) {
          $this->showDebug();
       }
 
-      if (InfoCom::canApplyOn($class)) {
+      $class = $this->getType();
+
+      if (Infocom::canApplyOn($class)) {
          $infocom = new Infocom();
          if ($infocom->getFromDBforDevice($class, $this->fields['id'])) {
             $infocom->showDebug();
@@ -1336,5 +1492,4 @@ class CommonGLPI {
             return sprintf(__('%1$s: %2$s'), $object, __('Item already defined'));
       }
    }
-
 }

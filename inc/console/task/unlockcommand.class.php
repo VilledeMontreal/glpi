@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -111,9 +111,9 @@ class UnlockCommand extends AbstractCommand {
                   . ') AS ' . $this->db->quoteName('task')
                )
             ],
-            'FROM'   => Crontask::getTable(),
+            'FROM'   => CronTask::getTable(),
             'WHERE'  => [
-               'state' => Crontask::STATE_RUNNING,
+               'state' => CronTask::STATE_RUNNING,
                new QueryExpression(
                   'UNIX_TIMESTAMP(' .  $this->db->quoteName('lastrun') . ') + ' . $delay
                   . ' <  UNIX_TIMESTAMP(NOW())'

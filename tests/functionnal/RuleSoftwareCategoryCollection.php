@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -102,7 +102,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase {
       $result = $categoryCollection->processAllRules(null, null, $input);
       $this->array($result)->isIdenticalTo([
          "_import_category" => '1',
-         "_ruleid"          => $myrule['id']
+         "_ruleid"          => (string) $myrule['id']
       ]);
 
       //Set default rule as disabled, as it was before

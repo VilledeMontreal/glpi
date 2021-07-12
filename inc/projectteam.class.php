@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -110,14 +110,14 @@ class ProjectTeam extends CommonDBRelation {
    /**
     * Duplicate all teams from a project template to his clone
     *
+    * @deprecated 9.5
     * @since 9.2
     *
     * @param integer $oldid        ID of the item to clone
     * @param integer $newid        ID of the item cloned
     **/
    static function cloneProjectTeam ($oldid, $newid) {
-      global $DB;
-
+      Toolbox::deprecated('Use clone');
       $team = self::getTeamFor($oldid);
       foreach ($team as $type) {
          foreach ($type as $data) {

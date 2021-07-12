@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -42,6 +42,7 @@ if (!defined('GLPI_ROOT')) {
  *   - actions
 **/
 class Rule extends CommonDBTM {
+   use Glpi\Features\Clonable;
 
    public $dohistory             = true;
 
@@ -91,6 +92,13 @@ class Rule extends CommonDBTM {
    const AND_MATCHING            = "AND";
    const OR_MATCHING             = "OR";
 
+
+   public function getCloneRelations() :array {
+      return [
+         RuleAction::class,
+         RuleCriteria::class
+      ];
+   }
 
 
    static function getTable($classname = null) {
@@ -204,6 +212,7 @@ class Rule extends CommonDBTM {
 
          $menu['rule']['title'] = static::getTypeName(Session::getPluralNumber());
          $menu['rule']['page']  = static::getSearchURL(false);
+         $menu['rule']['icon']  = static::getIcon();
 
          foreach ($CFG_GLPI["rulecollections_types"] as $rulecollectionclass) {
             $rulecollection = new $rulecollectionclass();
@@ -228,6 +237,7 @@ class Rule extends CommonDBTM {
 
          $menu['rule']['title'] = static::getTypeName(Session::getPluralNumber());
          $menu['rule']['page']  = static::getSearchURL(false);
+         $menu['rule']['icon']  = static::getIcon();
 
          $menu['rule']['options']['transfer']['title']           = __('Transfer');
          $menu['rule']['options']['transfer']['page']            = "/front/transfer.php";
@@ -247,6 +257,7 @@ class Rule extends CommonDBTM {
          $menu['dictionnary']['title']    = _n('Dictionary', 'Dictionaries', Session::getPluralNumber());
          $menu['dictionnary']['shortcut'] = '';
          $menu['dictionnary']['page']     = '/front/dictionnary.php';
+         $menu['dictionnary']['icon']     = static::getIcon();
 
          $menu['dictionnary']['options']['manufacturers']['title']
                            = _n('Manufacturer', 'Manufacturers', Session::getPluralNumber());
@@ -417,7 +428,7 @@ class Rule extends CommonDBTM {
          }
 
          $menu['dictionnary']['options']['os']['title']
-                           = __('Operating system');
+                           = OperatingSystem::getTypeName(1);
          $menu['dictionnary']['options']['os']['page']
                            = '/front/ruledictionnaryoperatingsystem.php';
          $menu['dictionnary']['options']['os']['links']['search']
@@ -429,7 +440,7 @@ class Rule extends CommonDBTM {
          }
 
          $menu['dictionnary']['options']['os_sp']['title']
-                           = __('Service pack');
+                           = OperatingSystemServicePack::getTypeName(1);
          $menu['dictionnary']['options']['os_sp']['page']
                            = '/front/ruledictionnaryoperatingsystemservicepack.php';
          $menu['dictionnary']['options']['os_sp']['links']['search']
@@ -441,7 +452,7 @@ class Rule extends CommonDBTM {
          }
 
          $menu['dictionnary']['options']['os_version']['title']
-                           = __('Version of the operating system');
+                           = OperatingSystemVersion::getTypeName(1);
          $menu['dictionnary']['options']['os_version']['page']
                            = '/front/ruledictionnaryoperatingsystemversion.php';
          $menu['dictionnary']['options']['os_version']['links']['search']
@@ -453,7 +464,7 @@ class Rule extends CommonDBTM {
          }
 
          $menu['dictionnary']['options']['os_arch']['title']
-                           = __('Operating system architecture');
+                           = OperatingSystemArchitecture::getTypeName(1);
          $menu['dictionnary']['options']['os_arch']['page']
                            = '/front/ruledictionnaryoperatingsystemarchitecture.php';
          $menu['dictionnary']['options']['os_arch']['links']['search']
@@ -552,10 +563,13 @@ class Rule extends CommonDBTM {
       if ($collection = getItemForItemtype($collectiontype)) {
          if ($isadmin
              && ($collection->orderby == "ranking")) {
-            $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'move_rule'] = __('Move');
+            $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'move_rule']
+               = "<i class='ma-icon fas fa-arrows-alt-v'></i>".
+                 __('Move');
          }
-         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'duplicate'] = _x('button', 'Duplicate');
-         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'export']    = _x('button', 'Export');
+         $actions[__CLASS__.MassiveAction::CLASS_ACTION_SEPARATOR.'export']
+            = "<i class='ma-icon fas fa-file-download'></i>".
+              _x('button', 'Export');
       }
       return $actions;
    }
@@ -569,23 +583,6 @@ class Rule extends CommonDBTM {
    static function showMassiveActionsSubForm(MassiveAction $ma) {
 
       switch ($ma->getAction()) {
-         case 'duplicate' :
-            $entity_assign = false;
-            foreach ($ma->getitems() as $itemtype => $ids) {
-               if ($item = getItemForItemtype($itemtype)) {
-                  if ($item->isEntityAssign()) {
-                     $entity_assign = true;
-                     break;
-                  }
-               }
-            }
-            if ($entity_assign) {
-               Entity::dropdown();
-            }
-            echo "<br><br>".Html::submit(_x('button', 'Duplicate'),
-                                         ['name' => 'massiveaction']);
-            return true;
-
          case 'move_rule' :
             $input = $ma->getInput();
             $values = ['after'  => __('After'),
@@ -625,26 +622,7 @@ class Rule extends CommonDBTM {
    **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
-      global $DB;
-
       switch ($ma->getAction()) {
-         case 'duplicate':
-            $rulecollection = new RuleCollection();
-            foreach ($ids as $id) {
-               if ($item->getFromDB($id)) {
-                  if ($rulecollection->duplicateRule($id)) {
-                     $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
-                  } else {
-                     $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_KO);
-                     $ma->addMessage($item->getErrorMessage(ERROR_ON_ACTION));
-                  }
-               } else {
-                  $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_KO);
-                  $ma->addMessage($item->getErrorMessage(ERROR_NOT_FOUND));
-               }
-            }
-            break;
-
          case 'export':
             if (count($ids)) {
                $_SESSION['exportitems'] = $ids;
@@ -690,7 +668,17 @@ class Rule extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
+         'id'                 => '2',
+         'table'              => $this->getTable(),
+         'field'              => 'id',
+         'name'               => __('ID'),
+         'massiveaction'      => false,
+         'datatype'           => 'number'
       ];
 
       $tab[] = [
@@ -707,7 +695,8 @@ class Rule extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'description',
          'name'               => __('Description'),
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -739,7 +728,7 @@ class Rule extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -839,7 +828,7 @@ class Rule extends CommonDBTM {
     *     - target filename : where to go when done.
     *     - withtemplate boolean : template or basic item
     *
-    * @return nothing
+    * @return void
    **/
    function showForm($ID, $options = []) {
       global $CFG_GLPI;
@@ -896,7 +885,9 @@ class Rule extends CommonDBTM {
          }
       }
       if ($canedit) {
-         echo "<input type='hidden' name='ranking' value='".$this->fields["ranking"]."'>";
+         if (!$this->isNewID($ID)) {
+            echo "<input type='hidden' name='ranking' value='".$this->fields["ranking"]."'>";
+         }
          echo "<input type='hidden' name='sub_type' value='".get_class($this)."'>";
       }
       echo "</td></tr>\n";
@@ -1015,9 +1006,8 @@ class Rule extends CommonDBTM {
     * @return the maximum number of actions
    **/
    function maxActionsCount() {
-      return count(array_filter($this->actions, function($action_obj) {
-         $action = $this->getAction($action_obj->fields['field']);
-         return !isset($action['duplicatewith']);
+      return count(array_filter($this->getAllActions(), function($action_obj) {
+         return !isset($action_obj['duplicatewith']);
       }));
    }
 
@@ -1171,7 +1161,7 @@ class Rule extends CommonDBTM {
          echo "</script>\n";
          echo "<div class='center firstbloc'>".
                "<a class='vsubmit' href='javascript:viewAddCriteria".$rules_id."$rand();'>";
-         echo __('Add a new criteria')."</a></div>\n";
+         echo __('Add a new criterion')."</a></div>\n";
       }
 
       echo "<div class='spaced'>";
@@ -1213,8 +1203,8 @@ class Rule extends CommonDBTM {
       $header_end .= "</tr>\n";
       echo $header_begin.$header_top.$header_end;
 
-      foreach ($this->criterias as $criteria) {
-         $this->showMinimalCriteriaForm($criteria->fields, $canedit, $rand);
+      foreach ($this->criterias as $criterion) {
+         $this->showMinimalCriteriaForm($criterion->fields, $canedit, $rand);
       }
 
       if ($nb) {
@@ -1234,7 +1224,7 @@ class Rule extends CommonDBTM {
 
 
    /**
-    * Display the dropdown of the criterias for the rule
+    * Display the dropdown of the criteria for the rule
     *
     * @since 0.84 new proto
     *
@@ -1243,8 +1233,6 @@ class Rule extends CommonDBTM {
     * @return the initial value (first)
    **/
    function dropdownCriteria($options = []) {
-      global $CFG_GLPI;
-
       $p['name']                = 'criteria';
       $p['display']             = true;
       $p['value']               = '';
@@ -1287,8 +1275,6 @@ class Rule extends CommonDBTM {
     * @return the initial value (first non used)
    **/
    function dropdownActions($options = []) {
-      global $CFG_GLPI;
-
       $p['name']                = 'field';
       $p['display']             = true;
       $p['used']                = [];
@@ -1349,9 +1335,9 @@ class Rule extends CommonDBTM {
    **/
    function getCriteria($ID) {
 
-      $criterias = $this->getAllCriteria();
-      if (isset($criterias[$ID])) {
-         return $criterias[$ID];
+      $criteria = $this->getAllCriteria();
+      if (isset($criteria[$ID])) {
+         return $criteria[$ID];
       }
       return [];
    }
@@ -1412,7 +1398,7 @@ class Rule extends CommonDBTM {
    /**
     * Process the rule
     *
-    * @param &$input          the input data used to check criterias
+    * @param &$input          the input data used to check criteria
     * @param &$output         the initial output array used to be manipulate by actions
     * @param &$params         parameters for all internal functions
     * @param &options   array options:
@@ -1490,13 +1476,12 @@ class Rule extends CommonDBTM {
    }
 
 
-   /// Are criterias valid to be processed
    /**
-    *  Are criterias valid to be processed
+    *  Are criteria valid to be processed
     *
     *  @since 0.85
     *
-    * @param $options
+    * @param array $options
     *
     * @return boolean
    **/
@@ -1506,8 +1491,8 @@ class Rule extends CommonDBTM {
          if (isset($options['only_criteria'])
              && !is_null($options['only_criteria'])
              && is_array($options['only_criteria'])) {
-            foreach ($this->criterias as $criteria) {
-               if (in_array($criteria->fields['criteria'], $options['only_criteria'])) {
+            foreach ($this->criterias as $criterion) {
+               if (in_array($criterion->fields['criteria'], $options['only_criteria'])) {
                   return true;
                }
             }
@@ -1521,11 +1506,11 @@ class Rule extends CommonDBTM {
 
 
    /**
-    * Check criterias
+    * Check criteria
     *
-    * @param $input the input data used to check criterias
+    * @param aray $input the input data used to check criteri
     *
-    * @return boolean if criterias match
+    * @return boolean if criteria match
    **/
    function checkCriterias($input) {
 
@@ -1534,11 +1519,11 @@ class Rule extends CommonDBTM {
       if ($this->fields["match"] == self::AND_MATCHING) {
          $doactions = true;
 
-         foreach ($this->criterias as $criteria) {
+         foreach ($this->criterias as $criterion) {
 
-            $definition_criteria = $this->getCriteria($criteria->fields['criteria']);
-            if (!isset($definition_criteria['is_global']) || !$definition_criteria['is_global']) {
-               $doactions &= $this->checkCriteria($criteria, $input);
+            $definition_criterion = $this->getCriteria($criterion->fields['criteria']);
+            if (!isset($definition_criterion['is_global']) || !$definition_criterion['is_global']) {
+               $doactions &= $this->checkCriteria($criterion, $input);
                if (!$doactions) {
                   break;
                }
@@ -1547,12 +1532,12 @@ class Rule extends CommonDBTM {
 
       } else { // OR MATCHING
          $doactions = false;
-         foreach ($this->criterias as $criteria) {
-            $definition_criteria = $this->getCriteria($criteria->fields['criteria']);
+         foreach ($this->criterias as $criterion) {
+            $definition_criterion = $this->getCriteria($criterion->fields['criteria']);
 
-            if (!isset($definition_criteria['is_global'])
-                || !$definition_criteria['is_global']) {
-               $doactions |= $this->checkCriteria($criteria, $input);
+            if (!isset($definition_criterion['is_global'])
+                || !$definition_criterion['is_global']) {
+               $doactions |= $this->checkCriteria($criterion, $input);
                if ($doactions) {
                   break;
                }
@@ -1569,23 +1554,23 @@ class Rule extends CommonDBTM {
 
 
    /**
-    * Check criterias
+    * Check criteria
     *
-    * @param $input           the input data used to check criterias
-    * @param &$check_results
+    * @param array $input          the input data used to check criteria
+    * @param array &$check_results
     *
-    * @return boolean if criterias match
+    * @return boolean if criteria match
    **/
    function testCriterias($input, &$check_results) {
 
       reset($this->criterias);
 
-      foreach ($this->criterias as $criteria) {
-         $result = $this->checkCriteria($criteria, $input);
-         $check_results[$criteria->fields["id"]]["name"]   = $criteria->fields["criteria"];
-         $check_results[$criteria->fields["id"]]["value"]  = $criteria->fields["pattern"];
-         $check_results[$criteria->fields["id"]]["result"] = ((!$result)?0:1);
-         $check_results[$criteria->fields["id"]]["id"]     = $criteria->fields["id"];
+      foreach ($this->criterias as $criterion) {
+         $result = $this->checkCriteria($criterion, $input);
+         $check_results[$criterion->fields["id"]]["name"]   = $criterion->fields["criteria"];
+         $check_results[$criterion->fields["id"]]["value"]  = $criterion->fields["pattern"];
+         $check_results[$criterion->fields["id"]]["result"] = ((!$result)?0:1);
+         $check_results[$criterion->fields["id"]]["id"]     = $criterion->fields["id"];
       }
    }
 
@@ -1594,7 +1579,7 @@ class Rule extends CommonDBTM {
     * Process a criteria of a rule
     *
     * @param &$criteria  criteria to check
-    * @param &$input     the input data used to check criterias
+    * @param &$input     the input data used to check criteria
    **/
    function checkCriteria(&$criteria, &$input) {
 
@@ -1678,7 +1663,7 @@ class Rule extends CommonDBTM {
    /**
     * Specific prepare input datas for the rule
     *
-    * @param $input  the input data used to check criterias
+    * @param $input  the input data used to check criteria
     * @param $params parameters
     *
     * @return the updated input datas
@@ -1692,7 +1677,7 @@ class Rule extends CommonDBTM {
     * Get all data needed to process rules (core + plugins)
     *
     * @since 0.84
-    * @param $input  the input data used to check criterias
+    * @param $input  the input data used to check criteria
     * @param $params parameters
     *
     * @return the updated input datas
@@ -1703,7 +1688,7 @@ class Rule extends CommonDBTM {
       $input = $this->prepareInputDataForProcess($input, $params);
       if (isset($PLUGIN_HOOKS['use_rules'])) {
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
             if (is_array($val) && in_array($this->getType(), $val)) {
@@ -1742,7 +1727,7 @@ class Rule extends CommonDBTM {
          $params['criterias_results'] = $this->criterias_results;
          $params['rule_itemtype']     = $this->getType();
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
             if (is_array($val) && in_array($this->getType(), $val)) {
@@ -1832,7 +1817,7 @@ class Rule extends CommonDBTM {
 
    function cleanDBonPurge() {
 
-      // Delete a rule and all associated criterias and actions
+      // Delete a rule and all associated criteria and actions
       if (!empty($this->ruleactionclass)) {
          $ruleactionclass = $this->ruleactionclass;
          $ra = new $ruleactionclass();
@@ -1934,10 +1919,27 @@ class Rule extends CommonDBTM {
    function prepareInputForAdd($input) {
 
       // Before adding, add the ranking of the new rule
-      $input["ranking"] = $this->getNextRanking();
+      $input["ranking"] = $input['ranking'] ?? $this->getNextRanking();
       //If no uuid given, generate a new one
       if (!isset($input['uuid'])) {
          $input["uuid"] = self::getUuid();
+      }
+
+      if ($this->getType() == 'Rule' && !isset($input['sub_type'])) {
+          \Toolbox::logError('Sub type not specified creating a new rule');
+          return false;
+      }
+
+      if (!isset($input['sub_type'])) {
+         $input['sub_type'] = $this->getType();
+      } else if ($this->getType() != 'Rule' && $input['sub_type'] != $this->getType()) {
+         \Toolbox::logWarning(
+            sprintf(
+               'Creating a %s rule with %s subtype.',
+               $this->getType(),
+               $input['sub_type']
+            )
+         );
       }
 
       return $input;
@@ -1950,14 +1952,15 @@ class Rule extends CommonDBTM {
    function getNextRanking() {
       global $DB;
 
-      $sql = "SELECT MAX(`ranking`) AS `rank`
-              FROM `glpi_rules`
-              WHERE `sub_type` = '".$this->getType()."'";
-      $result = $DB->query($sql);
+      $iterator = $DB->request([
+         'SELECT' => ['MAX' => 'ranking AS rank'],
+         'FROM'   => self::getTable(),
+         'WHERE'  => ['sub_type' => $this->getType()]
+      ]);
 
-      if ($DB->numrows($result) > 0) {
-         $datas = $DB->fetchAssoc($result);
-         return $datas["rank"] + 1;
+      if (count($iterator)) {
+         $data = $iterator->next();
+         return $data["rank"] + 1;
       }
       return 0;
    }
@@ -2010,7 +2013,7 @@ class Rule extends CommonDBTM {
       $check_results = [];
       $output        = [];
 
-      //Test all criterias, without stopping at the first good one
+      //Test all criteria, without stopping at the first good one
       $this->testCriterias($input, $check_results);
       //Process the rule
       $this->process($input, $output, $params);
@@ -2026,7 +2029,7 @@ class Rule extends CommonDBTM {
       echo "<td class='center b'>"._n('Criterion', 'Criteria', 1)."</td>";
       echo "<td class='center b'>".__('Condition')."</td>";
       echo "<td class='center b'>".__('Reason')."</td>";
-      echo "<td class='center b'>".__('Validation')."</td>";
+      echo "<td class='center b'>"._n('Validation', 'Validations', 1)."</td>";
       echo "</tr>\n";
 
       foreach ($check_results as $ID => $criteria_result) {
@@ -2047,7 +2050,7 @@ class Rule extends CommonDBTM {
       echo "<table class='tab_cadrehov'>";
       echo "<tr><th colspan='2'>" . __('Rule results') . "</th></tr>";
       echo "<tr class='tab_bg_1'>";
-      echo "<td class='center b'>".__('Validation')."</td><td>";
+      echo "<td class='center b'>"._n('Validation', 'Validations', 1)."</td><td>";
       echo Dropdown::getYesNo($global_result)."</td></tr>";
 
       $output = $this->preProcessPreviewResults($output);
@@ -2091,7 +2094,7 @@ class Rule extends CommonDBTM {
     * Show the minimal form for the criteria rule
     *
     * @param $fields    datas used to display the criteria
-    * @param $canedit   can edit the criterias rule ?
+    * @param $canedit   can edit the criteria rule?
     * @param $rand      random value of the form
    **/
    function showMinimalCriteriaForm($fields, $canedit, $rand) {
@@ -2383,7 +2386,7 @@ class Rule extends CommonDBTM {
 
          switch ($action['type']) {
             case "dropdown" :
-               if ($type=='fromuser' || $type=='fromitem') {
+               if ($type=='defaultfromuser' || $type=='fromuser' || $type=='fromitem') {
                   return Dropdown::getYesNo($value);
                }
                // $type == assign
@@ -2482,7 +2485,7 @@ class Rule extends CommonDBTM {
 
 
    /**
-    * Function used to display type specific criterias during rule's preview
+    * Function used to display type specific criteria during rule's preview
     *
     * @param $fields fields values
    **/
@@ -2507,9 +2510,7 @@ class Rule extends CommonDBTM {
     * @param $rules_id  ID of the rule
    **/
    function showRulePreviewCriteriasForm($target, $rules_id) {
-      global $DB;
-
-      $criterias = $this->getAllCriteria();
+      $criteria = $this->getAllCriteria();
 
       if ($this->getRuleWithCriteriasAndActions($rules_id, 1, 0)) {
          echo "<form name='testrule_form' id='testrule_form' method='post' action='$target'>\n";
@@ -2521,13 +2522,13 @@ class Rule extends CommonDBTM {
          $already_displayed = [];
          $first             = true;
 
-         //Brower all criterias
-         foreach ($this->criterias as $criteria) {
+         //Brower all criteria
+         foreach ($this->criterias as $criterion) {
 
             //Look for the criteria in the field of already displayed criteria :
             //if present, don't display it again
-            if (!in_array($criteria->fields["criteria"], $already_displayed)) {
-               $already_displayed[] = $criteria->fields["criteria"];
+            if (!in_array($criterion->fields["criteria"], $already_displayed)) {
+               $already_displayed[] = $criterion->fields["criteria"];
                echo "<tr class='tab_bg_1'>";
                echo "<td>";
 
@@ -2539,17 +2540,17 @@ class Rule extends CommonDBTM {
                }
 
                echo "</td>";
-               $criteria_constants = $criterias[$criteria->fields["criteria"]];
+               $criteria_constants = $criteria[$criterion->fields["criteria"]];
                echo "<td>".$criteria_constants["name"]."</td>";
                echo "<td>";
                $value = "";
-               if (isset($_POST[$criteria->fields["criteria"]])) {
-                  $value = $_POST[$criteria->fields["criteria"]];
+               if (isset($_POST[$criterion->fields["criteria"]])) {
+                  $value = $_POST[$criterion->fields["criteria"]];
                }
 
-               $this->displayCriteriaSelectPattern($criteria->fields['criteria'],
-                                                   $criteria->fields['criteria'],
-                                                   $criteria->fields['condition'], $value, true);
+               $this->displayCriteriaSelectPattern($criterion->fields['criteria'],
+                                                   $criterion->fields['criteria'],
+                                                   $criterion->fields['condition'], $value, true);
                echo "</td></tr>\n";
             }
          }
@@ -2577,7 +2578,7 @@ class Rule extends CommonDBTM {
          $params['criterias_results'] = $this->criterias_results;
          $params['rule_itemtype']     = $this->getType();
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
             if (is_array($val) && in_array($this->getType(), $val)) {
@@ -2604,8 +2605,6 @@ class Rule extends CommonDBTM {
     *    - sub_type : integer / sub_type of rule
    **/
    static function dropdown($options = []) {
-      global $DB, $CFG_GLPI;
-
       $p['sub_type']        = '';
       $p['name']            = 'rules_id';
       $p['entity'] = '';
@@ -2650,6 +2649,7 @@ class Rule extends CommonDBTM {
 
    /**
     * @since 0.84
+    * @return array
    */
    function getAllActions() {
       return self::doHookAndMergeResults("getRuleActions", $this->getActions(), $this->getType());
@@ -2683,7 +2683,7 @@ class Rule extends CommonDBTM {
       $toreturn = $params;
       if (isset($PLUGIN_HOOKS['use_rules'])) {
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
             if (is_array($val) && in_array($itemtype, $val)) {
@@ -3045,7 +3045,7 @@ class Rule extends CommonDBTM {
                   if (count($types)) {
                      $nb = countElementsInTable(
                         ['glpi_rules', 'glpi_ruleactions'], [
-                           'glpi_ruleactions.rules_id'   => new \QueryExpression(Db::quoteName('glpi_rules.id')),
+                           'glpi_ruleactions.rules_id'   => new \QueryExpression(DB::quoteName('glpi_rules.id')),
                            'glpi_rules.sub_type'         => $types,
                            'glpi_ruleactions.field'      => 'entities_id',
                            'glpi_ruleactions.value'      => $item->getID()
@@ -3162,5 +3162,30 @@ class Rule extends CommonDBTM {
       echo "</div>";
    }
 
+   public static function canCreate() {
+      return static::canUpdate();
+   }
 
+   public static function canPurge() {
+      return static::canUpdate();
+   }
+
+   static function getIcon() {
+      return "fas fa-book";
+   }
+
+   public function prepareInputForClone($input) {
+      //get ranking
+      $nextRanking = $this->getNextRanking();
+
+      //Update fields of the new collection
+      $input['name']        = sprintf(__('Copy of %s'), $input['name']);
+      $input['is_active']   = 0;
+      $input['ranking']     = $nextRanking;
+      $input['uuid']        = static::getUuid();
+
+      $input = Toolbox::addslashes_deep($input);
+
+      return parent::prepareInputForClone($input);
+   }
 }

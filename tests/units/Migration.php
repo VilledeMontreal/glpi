@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -131,46 +131,68 @@ class Migration extends \GLPITestCase {
          function () {
             $this->migration->executeMigration();
          }
-      )->isIdenticalTo('Configuration values added for one, two.Task completed.');
+      )->isIdenticalTo('Configuration values added for one, two (core).Task completed.');
 
-      $this->array($this->queries)->isIdenticalTo([
+      $core_queries = [
          0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'core\' AND `name` IN (\'one\', \'two\')',
          1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'one\'',
          2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'one\', \'key\')',
-         3 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'two\'',
-         4 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')'
-      ]);
+         3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
+         4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one \', \'key\')',
+         5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'two\'',
+         6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
+         7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
+         8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
+      ];
+      $this->array($this->queries)->isIdenticalTo($core_queries);
 
-      //test with context set => new keys should be inserted in correct context
+      //test with existing value on different context => new keys should be inserted in correct context
       $this->queries = [];
-      $this->migration->setContext('test-context');
+      $this->migration->addConfig([
+         'one' => 'key',
+         'two' => 'value'
+      ], 'test-context');
 
       $this->output(
          function () {
             $this->migration->executeMigration();
          }
-      )->isIdenticalTo('Configuration values added for one, two.Task completed.');
+      )->isIdenticalTo('Configuration values added for one, two (test-context).Task completed.');
 
       $this->array($this->queries)->isIdenticalTo([
          0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` IN (\'one\', \'two\')',
          1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'one\'',
          2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'one\', \'key\')',
-         3 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'two\'',
-         4 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'two\', \'value\')'
+         3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
+         4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one (test-context) \', \'key\')',
+         5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'two\'',
+         6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'two\', \'value\')',
+         7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
+         8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two (test-context) \', \'value\')',
       ]);
 
-      $this->migration->setContext('core'); //reset
-
       //test with one existing value => only new key should be inserted
+      $this->migration->addConfig([
+         'one' => 'key',
+         'two' => 'value'
+      ]);
       $this->queries = [];
-      $dbresult = [[
-         'id'        => '42',
-         'context'   => 'core',
-         'name'      => 'one',
-         'value'     => 'setted value'
-      ]];
-      $it = new \ArrayIterator($dbresult);
-      $this->calling($this->db)->request = $it;
+      $this->calling($this->db)->request = function ($table) {
+         // Call using 'glpi_configs' value for first parameter
+         // corresponds to the call made to retrieve exisintg values
+         // -> returns a value for config 'one'
+         if ('glpi_configs' === $table) {
+            $dbresult = [[
+               'id'        => '42',
+               'context'   => 'core',
+               'name'      => 'one',
+               'value'     => 'setted value'
+            ]];
+            return new \ArrayIterator($dbresult);
+         }
+         // Other calls corresponds to call made in Config::setConfigurationValues()
+         return new \ArrayIterator();
+      };
 
       $DB = $this->db;
 
@@ -178,10 +200,11 @@ class Migration extends \GLPITestCase {
          function () {
             $this->migration->executeMigration();
          }
-      )->isIdenticalTo('Configuration values added for two.Task completed.');
+      )->isIdenticalTo('Configuration values added for two (core).Task completed.');
 
       $this->array($this->queries)->isIdenticalTo([
-         0 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')'
+         0 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
+         1 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
       ]);
    }
 
@@ -347,13 +370,13 @@ class Migration extends \GLPITestCase {
             'field'     => 'my_field',
             'format'    => 'datetime',
             'options'   => [],
-            'sql'       => "ALTER TABLE `my_table` ADD `my_field` DATETIME DEFAULT NULL   "
+            'sql'       => "ALTER TABLE `my_table` ADD `my_field` TIMESTAMP NULL DEFAULT NULL   "
          ], [
             'table'     => 'my_table',
             'field'     => 'my_field',
             'format'    => 'datetime',
             'options'   => ['value' => '2018-06-04 08:16:38'],
-            'sql'       => "ALTER TABLE `my_table` ADD `my_field` DATETIME DEFAULT '2018-06-04 08:16:38'   "
+            'sql'       => "ALTER TABLE `my_table` ADD `my_field` TIMESTAMP DEFAULT '2018-06-04 08:16:38'   "
          ], [
             'table'     => 'my_table',
             'field'     => 'my_field',
@@ -408,6 +431,16 @@ class Migration extends \GLPITestCase {
             'format'    => 'integer',
             'options'   => ['first' => true],
             'sql'       => "ALTER TABLE `my_table` ADD `my_field` INT(11) NOT NULL DEFAULT '0'   FIRST  "
+         ], [
+            'table'     => 'my_table',
+            'field'     => 'my_field',
+            'format'    => 'integer',
+            'options'   => ['value' => '-2', 'update' => '0', 'condition' => 'WHERE `id` = 0'],
+            'sql'       => [
+               "ALTER TABLE `my_table` ADD `my_field` INT(11) NOT NULL DEFAULT '-2'   ",
+               "UPDATE `my_table`
+                        SET `my_field` = 0 WHERE `id` = 0",
+            ]
          ]
       ];
    }
@@ -428,7 +461,11 @@ class Migration extends \GLPITestCase {
          }
       )->isIdenticalTo("Change of the database layout - my_tableTask completed.");
 
-      $this->array($this->queries)->isIdenticalTo([$sql]);
+      if (!is_array($sql)) {
+         $sql = [$sql];
+      }
+
+      $this->array($this->queries)->isIdenticalTo($sql);
    }
 
    public function testFormatBooleanBadDefault() {
@@ -608,5 +645,225 @@ class Migration extends \GLPITestCase {
             "ALTER TABLE `glpi_newtable` ADD UNIQUE `id` (`id`)",
          ]
       );
+   }
+
+   /**
+    * Test Migration::renameItemtype().
+    * Case: failure as source table does not exists.
+    */
+   public function testRenameItemtypeWhenSourceTableDoesNotExists() {
+      global $DB;
+      $DB = $this->db;
+
+      $this->calling($this->db)->tableExists = false;
+
+      $migration = $this->migration;
+      $this->exception(
+         function() use ($migration) {
+            $migration->renameItemtype('SomeOldType', 'NewName');
+         }
+      )->isInstanceOf(\RuntimeException::class)
+      ->message
+      ->contains('Table "glpi_someoldtypes" does not exists.');
+   }
+
+   /**
+    * Test Migration::renameItemtype().
+    * Case: failure as destination table already exists.
+    */
+   public function testRenameItemtypeWhenDestinationTableAlreadyExists() {
+      global $DB;
+      $DB = $this->db;
+
+      $this->calling($this->db)->tableExists = true;
+
+      $this->exception(
+         function() {
+            $this->migration->renameItemtype('SomeOldType', 'NewName');
+         }
+      )->isInstanceOf(\RuntimeException::class)
+      ->message
+      ->contains('Table "glpi_someoldtypes" cannot be renamed as table "glpi_newnames" already exists.');
+   }
+
+   /**
+    * Test Migration::renameItemtype().
+    * Case: failure as foreign key field already in use somewhere.
+    */
+   public function testRenameItemtypeWhenDestinationFieldAlreadyExists() {
+      global $DB;
+      $DB = $this->db;
+
+      $this->calling($this->db)->tableExists = function ($table) {
+         return $table === 'glpi_someoldtypes';
+      };
+      $this->calling($this->db)->fieldExists = true;
+      $this->calling($this->db)->request = new \ArrayIterator([
+         [
+            'TABLE_NAME' => 'glpi_item_with_fkey', 'COLUMN_NAME' => 'someoldtypes_id'
+         ]
+      ]);
+
+      $this->exception(
+         function() {
+            $this->migration->renameItemtype('SomeOldType', 'NewName');
+         }
+      )->isInstanceOf(\RuntimeException::class)
+      ->message
+      ->contains('Field "someoldtypes_id" cannot be renamed in table "glpi_item_with_fkey" as "newnames_id" is field already exists.');
+   }
+
+   /**
+    * Test Migration::renameItemtype().
+    * Case: success.
+    */
+   public function testRenameItemtype() {
+      global $DB;
+      $DB = $this->db;
+
+      $this->calling($this->db)->tableExists = function ($table) {
+         return $table === 'glpi_someoldtypes';
+      };
+      $this->calling($this->db)->fieldExists = function ($table, $field) {
+         return preg_match('/^someoldtypes_id/', $field);
+      };
+      $this->calling($this->db)->request = function ($request) {
+         if (isset($request['WHERE']['OR'][0])
+             && $request['WHERE']['OR'][0] === ['column_name'  => 'someoldtypes_id']) {
+            // Request used for foreign key fields
+            return new \ArrayIterator([
+               ['TABLE_NAME' => 'glpi_oneitem_with_fkey',     'COLUMN_NAME' => 'someoldtypes_id'],
+               ['TABLE_NAME' => 'glpi_anotheritem_with_fkey', 'COLUMN_NAME' => 'someoldtypes_id'],
+               ['TABLE_NAME' => 'glpi_anotheritem_with_fkey', 'COLUMN_NAME' => 'someoldtypes_id_tech'],
+            ]);
+         }
+         if (isset($request['WHERE']['OR'][0])
+             && $request['WHERE']['OR'][0] === ['column_name'  => 'itemtype']) {
+            // Request used for itemtype fields
+            return new \ArrayIterator([
+               ['TABLE_NAME' => 'glpi_computers', 'COLUMN_NAME' => 'itemtype'],
+               ['TABLE_NAME' => 'glpi_users',     'COLUMN_NAME' => 'itemtype'],
+               ['TABLE_NAME' => 'glpi_stuffs',    'COLUMN_NAME' => 'itemtype_source'],
+               ['TABLE_NAME' => 'glpi_stuffs',    'COLUMN_NAME' => 'itemtype_dest'],
+            ]);
+         }
+         return [];
+      };
+
+      // Test renaming with DB structure update
+      $this->output(
+         function () {
+            $this->migration->renameItemtype('SomeOldType', 'NewName');
+            $this->migration->executeMigration();
+         }
+      )->isIdenticalTo(
+         implode(
+            '',
+            [
+               '============================ Rename "SomeOldType" itemtype to "NewName" ============================' . "\n",
+               'Rename "glpi_someoldtypes" table to "glpi_newnames"',
+               'Rename "someoldtypes_id" foreign keys to "newnames_id" in all tables',
+               'Rename "SomeOldType" itemtype to "NewName" in all tables',
+               'Change of the database layout - glpi_oneitem_with_fkey',
+               'Change of the database layout - glpi_anotheritem_with_fkey',
+               'Task completed.',
+            ]
+         )
+      );
+
+      $this->array($this->queries)->isIdenticalTo([
+         "RENAME TABLE `glpi_someoldtypes` TO `glpi_newnames`",
+         "ALTER TABLE `glpi_oneitem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ",
+         "ALTER TABLE `glpi_anotheritem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ,\n"
+         . "CHANGE `someoldtypes_id_tech` `newnames_id_tech` INT(11) NOT NULL DEFAULT '0'   ",
+         "UPDATE `glpi_computers` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
+         "UPDATE `glpi_users` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
+         "UPDATE `glpi_stuffs` SET `itemtype_source` = 'NewName' WHERE `itemtype_source` = 'SomeOldType'",
+         "UPDATE `glpi_stuffs` SET `itemtype_dest` = 'NewName' WHERE `itemtype_dest` = 'SomeOldType'",
+      ]);
+
+      // Test renaming without DB structure update
+      $this->queries = [];
+
+      $this->output(
+         function () {
+            $this->migration->renameItemtype('SomeOldType', 'NewName', false);
+            $this->migration->executeMigration();
+         }
+      )->isIdenticalTo(
+         implode(
+            '',
+            [
+               '============================ Rename "SomeOldType" itemtype to "NewName" ============================' . "\n",
+               'Rename "SomeOldType" itemtype to "NewName" in all tables',
+               'Task completed.',
+            ]
+         )
+      );
+
+      $this->array($this->queries)->isIdenticalTo([
+         "UPDATE `glpi_computers` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
+         "UPDATE `glpi_users` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
+         "UPDATE `glpi_stuffs` SET `itemtype_source` = 'NewName' WHERE `itemtype_source` = 'SomeOldType'",
+         "UPDATE `glpi_stuffs` SET `itemtype_dest` = 'NewName' WHERE `itemtype_dest` = 'SomeOldType'",
+      ]);
+   }
+
+   public function testChangeSearchOption() {
+      global $DB;
+      $DB = $this->db;
+
+      $this->calling($this->db)->request = function ($request) {
+         if (!isset($request['FROM'])) {
+            return new \ArrayIterator([]);
+         }
+         if ($request['FROM'] === \DisplayPreference::getTable()) {
+            return new \ArrayIterator([
+               [
+                  'id'        => 0,
+                  'itemtype'  => 'Computer',
+                  'num'       => 40,
+               ],
+               [
+                  'id'        => 1,
+                  'itemtype'  => 'Computer',
+                  'num'       => 41,
+               ],
+               [
+                  'id'        => 2,
+                  'itemtype'  => 'Monitor',
+                  'num'       => 40,
+               ]
+            ]);
+         } else if ($request['FROM'] === \SavedSearch::getTable()) {
+            return new \ArrayIterator([
+               [
+                  'id'        => 0,
+                  'itemtype'  => 'Computer',
+                  'query'     => 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Budget&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=4&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer'
+               ],
+               [
+                  'id'        => 1,
+                  'itemtype'  => 'Budget',
+                  'query'     => 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Computer&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=40&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer'
+               ],
+               [
+                  'id'        => 2,
+                  'itemtype'  => 'Monitor',
+                  'query'     => 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Budget&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=40&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Monitor'
+               ]
+            ]);
+         }
+         return new \ArrayIterator([]);
+      };
+
+      $this->migration->changeSearchOption('Computer', 40, 100);
+      $this->migration->executeMigration();
+
+      $this->array($this->queries)->isIdenticalTo([
+         "UPDATE `glpi_displaypreferences` SET `num` = '100' WHERE `itemtype` = 'Computer' AND `num` = '40'",
+         "UPDATE `glpi_savedsearches` SET `query` = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=100&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Budget&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=4&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE `id` = '0'",
+         "UPDATE `glpi_savedsearches` SET `query` = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Computer&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=100&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE `id` = '1'",
+      ]);
    }
 }

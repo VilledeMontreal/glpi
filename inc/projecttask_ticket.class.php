@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -140,8 +140,6 @@ class ProjectTask_Ticket extends CommonDBRelation{
     * @param $projecttask ProjectTask object
    **/
    static function showForProjectTask(ProjectTask $projecttask) {
-      global $DB, $CFG_GLPI;
-
       $ID = $projecttask->getField('id');
       if (!$projecttask->can($ID, READ)) {
          return false;
@@ -221,10 +219,14 @@ class ProjectTask_Ticket extends CommonDBRelation{
          $i = 0;
          foreach ($tickets as $data) {
             Session::addToNavigateListItems('Ticket', $data["id"]);
-            Ticket::showShort($data['id'], ['followups'              => false,
-                                                 'row_num'                => $i,
-                                                 'type_for_massiveaction' => __CLASS__,
-                                                 'id_for_massiveaction'   => $data['linkid']]);
+            Ticket::showShort(
+               $data['id'],
+               [
+                  'row_num'                => $i,
+                  'type_for_massiveaction' => __CLASS__,
+                  'id_for_massiveaction'   => $data['linkid']
+               ]
+            );
             $i++;
          }
       }
@@ -264,7 +266,9 @@ class ProjectTask_Ticket extends CommonDBRelation{
          $used[$data['id']]    = $data['id'];
       }
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($ticket->fields['status'], array_merge($ticket->getClosedStatusArray(),
+                                                              $ticket->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='projecttaskticket_form$rand' id='projecttaskticket_form$rand'
                  method='post' action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -310,16 +314,22 @@ class ProjectTask_Ticket extends CommonDBRelation{
 
          echo "</td>";
 
+         if (count($finished_states_ids)) {
+            $where = [
+               'OR'  => [
+                  'projectstates_id'   => $finished_states_ids,
+                  'is_template'        => 1
+               ]
+            ];
+         } else {
+            $where = ['is_template' => 1];
+         }
+
          $excluded_projects_it = $DB->request(
             [
                'SELECT' => ['id'],
                'FROM'   => Project::getTable(),
-               'WHERE'  => [
-                  'OR' => [
-                     'projectstates_id' => $finished_states_ids,
-                     'is_template'      => 1
-                  ]
-               ],
+               'WHERE'  => $where
             ]
          );
          $excluded_projects_ids = [];
@@ -328,18 +338,27 @@ class ProjectTask_Ticket extends CommonDBRelation{
          }
          echo "<td class='right'>";
          echo "<span id='results_projects$rand'>";
-         ProjectTask::dropdown([
+
+         $dd_params = [
             'used'        => $used,
             'entity'      => $ticket->getEntityID(),
             'entity_sons' => $ticket->isRecursive(),
-            'condition'   => [
-               'NOT' => [
-                  'glpi_projecttasks.projectstates_id'   => $finished_states_ids,
-                  'glpi_projecttasks.projects_id'        => $excluded_projects_ids
-               ]
-            ],
             'displaywith' => ['id']
-         ]);
+         ];
+
+         $condition = [];
+         if (count($finished_states_ids)) {
+            $condition['glpi_projecttasks.projectstates_id'] = $finished_states_ids;
+         }
+         if (count($excluded_projects_ids)) {
+            $condition['glpi_projecttasks.projects_id'] = $excluded_projects_ids;
+         }
+
+         if (count($condition)) {
+            $dd_params['condition'] = ['NOT' => $condition];
+         }
+
+         ProjectTask::dropdown($dd_params);
          echo "</span>";
 
          echo "</td><td width='20%'>";
@@ -357,7 +376,7 @@ class ProjectTask_Ticket extends CommonDBRelation{
       if ($numrows) {
          $columns = ['projectname'      => Project::getTypeName(Session::getPluralNumber()),
                           'name'             => ProjectTask::getTypeName(Session::getPluralNumber()),
-                          'tname'            => __('Type'),
+                          'tname'            => _n('Type', 'Types', 1),
                           'sname'            => __('Status'),
                           'percent_done'     => __('Percent done'),
                           'plan_start_date'  => __('Planned start date'),
@@ -377,9 +396,9 @@ class ProjectTask_Ticket extends CommonDBRelation{
          }
 
          if (isset($_GET["sort"]) && !empty($_GET["sort"]) && isset($columns[$_GET["sort"]])) {
-            $sort = "`".$_GET["sort"]."`";
+            $sort = $_GET["sort"];
          } else {
-            $sort = "`plan_start_date` $order, `name`";
+            $sort = ["plan_start_date $order", 'name'];
          }
          $iterator = $DB->request([
             'SELECT'    => [
@@ -450,7 +469,7 @@ class ProjectTask_Ticket extends CommonDBRelation{
                if ($key[0] == '_') {
                   $header .= "<th>$val</th>";
                } else {
-                  $header .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
+                  $header .= "<th".($sort == "$key" ? " class='order_$order'" : '').">".
                               "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
                                  (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
                }

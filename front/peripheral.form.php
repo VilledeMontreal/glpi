@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -105,7 +105,10 @@ if (isset($_POST["add"])) {
 
 } else {
    Html::header(Peripheral::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "assets", "peripheral");
-   $peripheral->display(['id'           => $_GET["id"],
-                              'withtemplate' => $_GET["withtemplate"]]);
+   $peripheral->display([
+      'id'           => $_GET["id"],
+      'withtemplate' => $_GET["withtemplate"],
+      'formoptions'  => "data-track-changes=true"
+   ]);
    Html::footer();
 }

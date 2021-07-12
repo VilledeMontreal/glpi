@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,7 +30,7 @@
  * ---------------------------------------------------------------------
  */
 
-use Zend\Cache\Psr\SimpleCache\SimpleCacheDecorator;
+use atoum\atoum;
 
 // Main GLPI test case. All tests should extends this class.
 
@@ -38,43 +38,95 @@ class GLPITestCase extends atoum {
    private $int;
    private $str;
    protected $cached_methods = [];
-   protected $nscache;
-
-   public function setUp() {
-      // By default, no session, not connected
-      $_SESSION = [
-         'glpi_use_mode'         => Session::NORMAL_MODE,
-         'glpi_currenttime'      => date("Y-m-d H:i:s"),
-         'glpiis_ids_visible'    => 0
-      ];
-   }
+   protected $has_failed = false;
 
    public function beforeTestMethod($method) {
+      // By default, no session, not connected
+      $this->resetSession();
+
       if (in_array($method, $this->cached_methods)) {
-         $this->nscache = 'glpitestcache' . GLPI_VERSION;
-         global $GLPI_CACHE;
          //run with cache
          define('CACHED_TESTS', true);
-         //ZendCache does not works with PHP5 acpu...
-         $adapter = (version_compare(PHP_VERSION, '7.0.0') >= 0) ? 'apcu' : 'apc';
-         $storage = \Zend\Cache\StorageFactory::factory([
-            'adapter'   => $adapter,
-            'options'   => [
-               'namespace' => $this->nscache
-            ]
-         ]);
-         $GLPI_CACHE = new SimpleCacheDecorator($storage);
       }
    }
 
    public function afterTestMethod($method) {
-      if (in_array($method, $this->cached_methods)) {
-         global $GLPI_CACHE;
-         if ($GLPI_CACHE != null) {
-            $GLPI_CACHE->clear();
-         }
-         $GLPI_CACHE = false;
+      global $GLPI_CACHE;
+      $GLPI_CACHE->clear();
+
+      global $PHPLOGGER;
+      $handlers = $PHPLOGGER->getHandlers();
+      foreach ($handlers as $handler) {
+         $records  = $handler->getRecords();
+         $messages = array_column($records, 'message');
+         $this->integer(count($records))
+            ->isEqualTo(
+               0,
+               sprintf(
+                  'Unexpected logs records found in %s::%s() test: %s',
+                  static::class,
+                  $method,
+                  "\n" . implode("\n", $messages)
+               )
+            );
       }
+
+      if (isset($_SESSION['MESSAGE_AFTER_REDIRECT']) && !$this->has_failed) {
+         unset($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO]);
+         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo(
+            [],
+            sprintf(
+               "Some messages has not been handled in %s::%s:\n%s",
+               static::class,
+               $method,
+               print_r($_SESSION['MESSAGE_AFTER_REDIRECT'], true)
+            )
+         );
+      }
+   }
+
+   protected function resetSession() {
+      Session::destroy();
+      Session::start();
+
+      $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
+      $_SESSION['glpiactive_entity'] = 0;
+
+      global $CFG_GLPI;
+      foreach ($CFG_GLPI['user_pref_field'] as $field) {
+         if (!isset($_SESSION["glpi$field"]) && isset($CFG_GLPI[$field])) {
+            $_SESSION["glpi$field"] = $CFG_GLPI[$field];
+         }
+      }
+   }
+
+   protected function hasSessionMessages(int $level, array $messages): void {
+      $this->has_failed = true;
+      $this->boolean(isset($_SESSION['MESSAGE_AFTER_REDIRECT'][$level]))->isTrue('No messages for selected level!');
+      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][$level])->isIdenticalTo(
+         $messages,
+         'Expecting ' . print_r($messages, true) . 'got: ' . print_r($_SESSION['MESSAGE_AFTER_REDIRECT'][$level], true)
+      );
+      unset($_SESSION['MESSAGE_AFTER_REDIRECT'][$level]); //reset
+      $this->has_failed = false;
+   }
+
+   protected function hasNoSessionMessages(array $levels) {
+      foreach ($levels as $level) {
+         $this->hasNoSessionMessage($level);
+      }
+   }
+
+   protected function hasNoSessionMessage(int $level) {
+      $this->has_failed = true;
+      $this->boolean(isset($_SESSION['MESSAGE_AFTER_REDIRECT'][$level]))->isFalse(
+         sprintf(
+            'Messages for level %s are present in session: %s',
+            $level,
+            print_r($_SESSION['MESSAGE_AFTER_REDIRECT'][$level] ?? [], true)
+         )
+      );
+      $this->has_failed = false;
    }
 
    /**

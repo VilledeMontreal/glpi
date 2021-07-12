@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -53,11 +53,14 @@ if ($_POST["idtable"] && class_exists($_POST["idtable"])) {
 
    $field_id = Html::cleanId("dropdown_".$_POST["name"].$rand);
 
-   $p        = ['value'               => 0,
-                     'valuename'           => Dropdown::EMPTY_VALUE,
-                     'itemtype'            => $_POST["idtable"],
-                     'display_emptychoice' => true,
-                     'displaywith'         => ['otherserial', 'serial']];
+   $p        = [
+      'value'               => 0,
+      'valuename'           => Dropdown::EMPTY_VALUE,
+      'itemtype'            => $_POST["idtable"],
+      'display_emptychoice' => true,
+      'displaywith'         => ['otherserial', 'serial'],
+      '_idor_token'         => Session::getNewIDORToken($_POST["idtable"]),
+   ];
    if (isset($_POST['value'])) {
       $p['value'] = $_POST['value'];
    }
@@ -72,6 +75,9 @@ if ($_POST["idtable"] && class_exists($_POST["idtable"])) {
    }
    if (isset($_POST['used'][$_POST['idtable']])) {
       $p['used'] = $_POST['used'][$_POST['idtable']];
+   }
+   if (isset($_POST['width'])) {
+      $p['width'] = $_POST['width'];
    }
 
    echo  Html::jsAjaxDropdown($_POST["name"], $field_id,

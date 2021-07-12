@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -37,6 +37,10 @@ Html::header_nocache();
 
 Session::checkLoginUser();
 
+if (!Session::haveRight('datacenter', UPDATE)) {
+   http_response_code(403);
+   die;
+}
 if (isset($_REQUEST['action'])) {
    $answer = [];
 

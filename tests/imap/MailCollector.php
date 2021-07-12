@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -32,9 +32,14 @@
 
 namespace tests\units;
 
-use \atoum;
-
 use \DbTestCase;
+use ITILFollowup;
+use Laminas\Mail\Storage\Message;
+use NotificationTarget;
+use NotificationTargetSoftwareLicense;
+use NotificationTargetTicket;
+use SoftwareLicense;
+use Ticket;
 
 class MailCollector extends DbTestCase {
    private $collector;
@@ -60,11 +65,12 @@ class MailCollector extends DbTestCase {
                   'passwd'               => '',
                   'accepted'             => '',
                   'refused'              => '',
-                  'use_kerberos'         => '',
                   'errors'               => '',
                   'use_mail_date'        => '',
                   'date_creation'        => '',
-                  'requester_field'      => ''
+                  'requester_field'      => '',
+                  'add_cc_to_observer'   => '',
+                  'collect_only_unread'  => ''
                ]);
    }
 
@@ -106,6 +112,7 @@ class MailCollector extends DbTestCase {
    }
 
    public function testPrepareInput() {
+      $_SESSION['glpicronuserrunning'] = 'cron_phpunit';
       $this->newTestedInstance();
 
       $oinput = [
@@ -113,11 +120,10 @@ class MailCollector extends DbTestCase {
          'is_active' => true
       ];
 
-      $this->array($this->testedInstance->prepareInput($oinput, 'add'))
-         ->isIdenticalTo([
-            'passwd'    => \Toolbox::encrypt($oinput["passwd"], GLPIKEY),
-            'is_active' => true
-         ]);
+      $prepared = $this->testedInstance->prepareInput($oinput, 'add');
+      $this->array($prepared)
+         ->boolean['is_active']->isTrue()
+         ->string['passwd']->isNotEqualTo($oinput['passwd']);
 
       //empty password means no password.
       $oinput = [
@@ -160,6 +166,7 @@ class MailCollector extends DbTestCase {
    }
 
    public function testCounts() {
+      $_SESSION['glpicronuserrunning'] = 'cron_phpunit';
       $this->newTestedInstance();
 
       $this->integer($this->testedInstance->countActiveCollectors())->isIdenticalTo(0);
@@ -189,6 +196,198 @@ class MailCollector extends DbTestCase {
       $this->integer($this->testedInstance->countCollectors())->isIdenticalTo(1);
    }
 
+   protected function messageIdHeaderProvider() {
+      $root_ent_id = getItemByTypeName('Entity', '_test_root_entity', true);
+
+      $ticket_notif = new NotificationTargetTicket($root_ent_id, 'test_event', getItemByTypeName('Ticket', '_ticket01'));
+      $soft_notif = new NotificationTargetSoftwareLicense($root_ent_id, 'test_event', getItemByTypeName('SoftwareLicense', '_test_softlic_1'));
+      $base_notif = new NotificationTarget();
+
+      return [
+         [
+            'headers'  => [],
+            'expected' => false,
+         ],
+         [
+            'headers'  => [
+               'message-id' => 'donotknow',
+            ],
+            'expected' => false,
+         ],
+         [
+            'headers'  => [
+               'message-id' => $ticket_notif->getMessageID(), // ticket format
+            ],
+            'expected' => true,
+         ],
+         [
+            'headers'  => [
+               'message-id' => $soft_notif->getMessageID(), // new format with object relation
+            ],
+            'expected' => true,
+         ],
+         [
+            'headers'  => [
+               'message-id' => $base_notif->getMessageID(), // new format without object relation
+            ],
+            'expected' => true,
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider messageIdHeaderProvider
+    */
+   public function testIsMessageSentByGlpi(array $headers, bool $expected) {
+      $this->newTestedInstance();
+
+      $message = new Message(
+         [
+            'headers' => $headers,
+            'content' => 'Message contents...',
+         ]
+      );
+
+      $this->boolean($this->testedInstance->isMessageSentByGlpi($message))->isEqualTo($expected);
+   }
+
+   protected function itemReferenceHeaderProvider() {
+      $root_ent_id = getItemByTypeName('Entity', '_test_root_entity', true);
+
+      $ticket_id = getItemByTypeName('Ticket', '_ticket01', true);
+      $ticket_notif = new NotificationTargetTicket($root_ent_id, 'test_event', getItemByTypeName('Ticket', '_ticket01'));
+
+      $soft_id   = getItemByTypeName('SoftwareLicense', '_test_softlic_1', true);
+      $soft_notif = new NotificationTargetSoftwareLicense($root_ent_id, 'test_event', getItemByTypeName('SoftwareLicense', '_test_softlic_1'));
+
+      $time1 = time() - 548;
+      $time2 = $time1 - 1567;
+      $rand1 = rand();
+      $rand2 = rand();
+      $uname1 = 'localhost';
+      $uname2 = 'mail.glpi-project.org';
+
+      return [
+         // invalid header
+         [
+            'headers'           => [
+               'in-reply-to' => 'notavalidvalue',
+               'references'  => 'donotknow',
+            ],
+            'expected_itemtype' => null,
+            'expected_items_id' => null,
+            'accepted'          => true,
+         ],
+         // ticket header format - found item
+         [
+            'headers'           => [
+               'in-reply-to' => $ticket_notif->getMessageID(),
+            ],
+            'expected_itemtype' => Ticket::class,
+            'expected_items_id' => $ticket_id,
+            'accepted'          => true,
+         ],
+         [
+            'headers'           => [
+               'references'  => $ticket_notif->getMessageID(),
+            ],
+            'expected_itemtype' => Ticket::class,
+            'expected_items_id' => $ticket_id,
+            'accepted'          => true,
+         ],
+         // ticket header format - invalid items_id
+         [
+            'headers'           => [
+               'in-reply-to' => "GLPI-9999999.{$time2}.{$rand2}@{$uname1}",
+            ],
+            'expected_itemtype' => null,
+            'expected_items_id' => null,
+            'accepted'          => true,
+         ],
+         // other items header format - found item
+         [
+            'headers'           => [
+               'in-reply-to' => $soft_notif->getMessageID(),
+            ],
+            'expected_itemtype' => SoftwareLicense::class,
+            'expected_items_id' => $soft_id,
+            'accepted'          => true,
+         ],
+         [
+            'headers'           => [
+               'references'  => $soft_notif->getMessageID(),
+            ],
+            'expected_itemtype' => SoftwareLicense::class,
+            'expected_items_id' => $soft_id,
+            'accepted'          => true,
+         ],
+         [
+            'headers'           => [
+               'in-reply-to' => 'notavalidvalue',
+               'references'  => $soft_notif->getMessageID(),
+            ],
+            'expected_itemtype' => SoftwareLicense::class,
+            'expected_items_id' => $soft_id,
+            'accepted'          => true,
+         ],
+         [
+            'headers'           => [
+               'in-reply-to' => $soft_notif->getMessageID(),
+               'references'  => 'donotknow',
+            ],
+            'expected_itemtype' => SoftwareLicense::class,
+            'expected_items_id' => $soft_id,
+            'accepted'          => true,
+         ],
+         // other items header format - invalid itemtype
+         [
+            'headers'           => [
+               'references'  => "GLPI-UnknownType-{$soft_id}.{$time2}.{$rand2}@{$uname1}",
+            ],
+            'expected_itemtype' => null,
+            'expected_items_id' => null,
+            'accepted'          => true,
+         ],
+         // other items header format - invalid items_id
+         [
+            'headers'           => [
+               'references'  => "GLPI-SoftwareLicense-9999999.{$time1}.{$rand1}@{$uname2}",
+            ],
+            'expected_itemtype' => null,
+            'expected_items_id' => null,
+            'accepted'          => true,
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider itemReferenceHeaderProvider
+    */
+   public function testGetItemFromHeader(
+      array $headers,
+      ?string $expected_itemtype,
+      ?int $expected_items_id,
+      bool $accepted
+   ) {
+      $this->newTestedInstance();
+
+      $message = new Message(
+         [
+            'headers' => $headers,
+            'content' => 'Message contents...',
+         ]
+      );
+
+      $item = $this->testedInstance->getItemFromHeaders($message);
+
+      if ($expected_itemtype === null) {
+         $this->variable($item)->isNull();
+      } else {
+         $this->object($item)->isInstanceOf($expected_itemtype);
+         $this->integer($item->getId())->isEqualTo($expected_items_id);
+      }
+   }
+
    private function doConnect() {
       if (null === $this->collector) {
          $this->newTestedInstance();
@@ -199,26 +398,31 @@ class MailCollector extends DbTestCase {
       }
 
       $this->mailgate_id = (int)$collector->add([
-         'name'         => 'testuser',
-         'login'        => 'testuser',
-         'is_active'    => true,
-         'passwd'       => 'applesauce',
-         'mail_server'  => '127.0.0.1',
-         'server_type'  => '/imap',
-         'server_port'  => 143,
-         'server_ssl'   => '',
-         'server_cert'  => '/novalidate-cert'
+         'name'                  => 'testuser',
+         'login'                 => 'testuser',
+         'is_active'             => true,
+         'passwd'                => 'applesauce',
+         'mail_server'           => 'dovecot',
+         'server_type'           => '/imap',
+         'server_port'           => 143,
+         'server_ssl'            => '',
+         'server_cert'           => '/novalidate-cert',
+         'add_cc_to_observer'    => 1,
+         'collect_only_unread'   => 1,
+         'requester_field'       => \MailCollector::REQUESTER_FIELD_REPLY_TO,
       ]);
+
       $this->integer($this->mailgate_id)->isGreaterThan(0);
 
       $this->boolean($collector->getFromDB($this->mailgate_id))->isTrue();
-      $this->string($collector->fields['host'])->isIdenticalTo('{127.0.0.1:143/imap/novalidate-cert}');
+      $this->string($collector->fields['host'])->isIdenticalTo('{dovecot:143/imap/novalidate-cert}');
       $collector->connect();
       $this->variable($collector->fields['errors'])->isEqualTo(0);
    }
 
    public function testCollect() {
       global $DB;
+      $_SESSION['glpicronuserrunning'] = 'cron_phpunit';
 
       //assign email to user
       $nuid = getItemByTypeName('User', 'normal', true);
@@ -239,99 +443,475 @@ class MailCollector extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
-      /* FUPs
-      $ticket = new \Ticket();
-      $tid = $ticket->add([
-         'name'                  => 'database issue',
-         'content'               => 'It seems one field from the last migration has not been added in my database.',
-         '_users_id_requester'   => $tuid
-      ]);
-      $this->integer($tid)->isGreaterThan(0);
-      $DB->update(\Ticket::getTable(), ['id' => 1155], ['id' => $tid]);*/
-
-      //$collector = new \mock\MailCollector;
-      //$this->calling($collector)->getReplyMatch = "/GLPI-Ticket-(1155)/";
-      //$this->collector = $collector;
-
+      // Collect all mails
       $this->doConnect();
+      $this->collector->maxfetch_emails = 1000; // Be sure to fetch all mails from test suite
       $msg = $this->collector->collect($this->mailgate_id);
-      $this->variable($msg)->isIdenticalTo('Number of messages: available=8, retrieved=8, refused=2, errors=1, blacklisted=0');
-      $rejecteds = iterator_to_array($DB->request(['FROM' => \NotImportedEmail::getTable()]));
 
-      $this->array($rejecteds)->hasSize(2);
-      foreach ($rejecteds as $rejected) {
-         $this->array($rejected)
-            ->variable['from']->isIdenticalTo('unknown@glpi-project.org')
-            ->variable['reason']->isEqualTo(\NotImportedEmail::USER_UNKNOWN);
+      $total_count                     = count(glob(GLPI_ROOT . '/tests/emails-tests/*.eml'));
+      $expected_refused_count          = 2;
+      $expected_error_count            = 2;
+      $expected_blacklist_count        = 1;
+      $expected_expected_already_seen  = 0;
+
+      $this->variable($msg)->isIdenticalTo(
+         sprintf(
+            'Number of messages: available=%1$s, already imported=%2$d, retrieved=%3$s, refused=%4$s, errors=%5$s, blacklisted=%6$s',
+            $total_count,
+            $expected_expected_already_seen,
+            $total_count - $expected_expected_already_seen,
+            $expected_refused_count,
+            $expected_error_count,
+            $expected_blacklist_count
+         )
+      );
+
+      // Check not imported emails
+      $not_imported_specs = [
+         [
+            'subject' => 'Have a problem, can you help me?',
+            'from'    => 'unknown@glpi-project.org',
+            'to'      => 'unittests@glpi-project.org',
+            'reason'  => \NotImportedEmail::USER_UNKNOWN,
+         ],
+         [
+            'subject' => 'Test\'ed issue',
+            'from'    => 'unknown@glpi-project.org',
+            'to'      => 'unittests@glpi-project.org',
+            'reason'  => \NotImportedEmail::USER_UNKNOWN,
+         ],
+         [
+            'subject' => null, // Subject is empty has mail was not processed
+            'from'    => '', // '' as value is not nullable in DB
+            'to'      => '', // '' as value is not nullable in DB
+            'reason'  => \NotImportedEmail::FAILED_OPERATION,
+         ]
+      ];
+      $iterator = $DB->request(['FROM' => \NotImportedEmail::getTable()]);
+      $this->integer(count($iterator))->isIdenticalTo(count($not_imported_specs));
+
+      $not_imported_values = [];
+      while ($data = $iterator->next()) {
+         $not_imported_values[] = [
+            'subject' => $data['subject'],
+            'from'    => $data['from'],
+            'to'      => $data['to'],
+            'reason'  => $data['reason'],
+         ];
+         $this->integer($data['mailcollectors_id'])->isIdenticalTo($this->mailgate_id);
       }
+      $this->array($not_imported_values)->isIdenticalTo($not_imported_specs);
 
-      $iterator = $DB->request([
-         'SELECT' => ['t.id', 't.name', 'tu.users_id'],
-         'FROM'   => \Ticket::getTable() . " AS t",
-         'INNER JOIN'   => [
-            \Ticket_User::getTable() . " AS tu"  => [
-               'ON'  => [
-                  't'   => 'id',
-                  'tu'  => 'tickets_id'
-               ]
+      // Check created tickets and their actors
+      $actors_specs = [
+         // Mails having "tech" user as requester
+         [
+            'users_id'      => $tuid,
+            'actor_type'    => \CommonITILActor::REQUESTER,
+            'tickets_names' => [
+               'PHP fatal error',
+               'Ticket with observer',
+               'Re: [GLPI #0038927] Update - Issues with new Windows 10 machine',
+               'A message without to header',
             ]
          ],
-         'WHERE'  => [
-            'tu.users_id'  => $tuid,
-            'tu.type'      => \CommonITILActor::REQUESTER
-         ]
-      ]);
-
-      $this->integer(count($iterator))->isIdenticalTo(2);
-      $names = [];
-      while ($data = $iterator->next()) {
-         $names[] = $data['name'];
-      }
-
-      $expected_names = [
-         'PHP fatal error',
-         'Re: [GLPI #0001155] New ticket database issue'
-      ];
-      $this->array($names)->isIdenticalTo($expected_names);
-
-      $iterator = $DB->request([
-         'SELECT' => ['t.id', 't.name', 'tu.users_id'],
-         'FROM'   => \Ticket::getTable() . " AS t",
-         'INNER JOIN'   => [
-            \Ticket_User::getTable() . " AS tu"  => [
-               'ON'  => [
-                  't'   => 'id',
-                  'tu'  => 'tickets_id'
-               ]
+         // Mails having "normal" user as requester
+         [
+            'users_id'      => $nuid,
+            'actor_type'    => \CommonITILActor::REQUESTER,
+            'tickets_names' => [
+               'Test import mail avec emoticons unicode',
+               'Test images',
+               'Test\'ed issue',
+               'Test Email from Outlook',
+               'No contenttype',
+               'проверка',
+               'тест2',
+               'Inlined image with no Content-Disposition',
+               'This is a mail without subject.', // No subject = name is set using ticket contents
+               'Image tag splitted on multiple lines',
+               'Attachement having filename using RFC5987 (multiple lines)',
+               'Attachement having filename using RFC5987 (single line)',
+               'Mono-part HTML message',
+               '24.1 Test attachment with long multibyte filename',
+               '24.2 Test attachment with short multibyte filename',
+               '25 - Test attachment with invalid chars for OS',
+               '26 Illegal char in body',
             ]
          ],
-         'WHERE'  => [
-            'tu.users_id'  => $nuid,
-            'tu.type'      => \CommonITILActor::REQUESTER
-         ]
-      ]);
-
-      $this->integer(count($iterator))->isIdenticalTo(3);
-      $names = [];
-      while ($data = $iterator->next()) {
-         $names[] = $data['name'];
-      }
-
-      $expected_names = [
-         'Test import mail avec emoticons unicode',
-         'Test images',
-         'Test\'ed issue'
+         // Mails having "normal" user as observer (add_cc_to_observer = true)
+         [
+            'users_id'      => $nuid,
+            'actor_type'    => \CommonITILActor::OBSERVER,
+            'tickets_names' => [
+               'Ticket with observer',
+            ]
+         ],
       ];
-      $this->array($names)->isIdenticalTo($expected_names);
 
-      /* FUPs
-       * A followup should have een created from mail 04
-       * but I've not been able to setup tests correctly on this point.
-      $iterator = $DB->request(['FROM' => \ITILFollowup::getTable()]);
-      var_dump('Checking fups');
-      while ($data = $iterator->next()) {
-         print_r($data);
+      // Tickets on which content should be checked (key is ticket name)
+      $tickets_contents = [
+         // Plain text on mono-part email
+         'PHP fatal error' => 'On some cases, doing the following:&lt;br /&gt;# blahblah&lt;br /&gt;&lt;br /&gt;Will cause a PHP fatal error:&lt;br /&gt;# blahblah&lt;br /&gt;&lt;br /&gt;Best regards,',
+         // HTML on multi-part email
+         'Re: [GLPI #0038927] Update - Issues with new Windows 10 machine' => '&lt;p&gt;This message have reply to header, requester should be get from this header.&lt;/p&gt;',
+         'Mono-part HTML message' => '&lt;p&gt;This HTML message does not use &lt;strong&gt;"multipart/alternative"&lt;/strong&gt; format.&lt;/p&gt;',
+         '26 Illegal char in body' => '这是很坏的Minus C Blabla',
+      ];
+
+      foreach ($actors_specs as $actor_specs) {
+         $iterator = $DB->request([
+            'SELECT' => ['t.id', 't.name', 't.content', 'tu.users_id'],
+            'FROM'   => \Ticket::getTable() . " AS t",
+            'INNER JOIN'   => [
+               \Ticket_User::getTable() . " AS tu"  => [
+                  'ON'  => [
+                     't'   => 'id',
+                     'tu'  => 'tickets_id'
+                  ]
+               ]
+            ],
+            'WHERE'  => [
+               'tu.users_id'  => $actor_specs['users_id'],
+               'tu.type'      => $actor_specs['actor_type'],
+            ]
+         ]);
+
+         $this->integer(count($iterator))->isIdenticalTo(count($actor_specs['tickets_names']));
+
+         $names = [];
+         while ($data = $iterator->next()) {
+            $name = $data['name'];
+
+            if (array_key_exists($name, $tickets_contents)) {
+               $this->string($data['content'])->isEqualTo($tickets_contents[$name]);
+            }
+
+            $this->string($data['content'])->notContains('cid:'); // check that image were correctly imported
+
+            $names[] = $name;
+         }
+
+         $this->array($names)->isIdenticalTo($actor_specs['tickets_names']);
       }
-       */
+
+      // Check creation of expected documents
+      $expected_docs = [
+         '00-logoteclib.png',
+         // Space is missing between "France" and "très" due to a bug in laminas-mail
+         '01-screenshot-2018-4-12-observatoire-francetres-haut-debit.png',
+         '01-test.JPG',
+         '15-image001.png',
+         '18-blank.gif',
+         '19-secl-chas.gif',
+         '20-special-chars.gif',
+         '24.1-zhang-wen-jian-ming-jiang-dao-zhi-nei-rong-chu-zhi-biao-tou-zhong-de-lian-xu-xing.txt',
+         '24.2-zhong-guo-zi-fu.txt',
+         '25-new-text-document.txt',
+      ];
+
+      $iterator = $DB->request(
+         [
+            'SELECT' => ['d.filename'],
+            'FROM'   => \Document::getTable() . " AS d",
+            'INNER JOIN'   => [
+               \Document_Item::getTable() . " AS d_item"  => [
+                  'ON'  => [
+                     'd'      => 'id',
+                     'd_item' => 'documents_id',
+                     [
+                        'AND' => [
+                           'd_item.itemtype'      => 'Ticket',
+                           'd_item.date_creation' => $_SESSION["glpi_currenttime"],
+                        ]
+                     ]
+                  ]
+               ]
+            ]
+         ]
+      );
+
+      $filenames = [];
+      while ($data = $iterator->next()) {
+         $filenames[] = $data['filename'];
+      }
+      $this->array($filenames)->isIdenticalTo($expected_docs);
+
+      $this->integer(count($iterator))->isIdenticalTo(count($expected_docs));
+
+      // Check creation of expected followups
+      $expected_followups = [
+         [
+            'items_id' => 100,
+            'users_id' => $tuid,
+            'content'  => 'This is a reply that references Ticket 100 in In-Reply-To header.&lt;br /&gt;It should be added as followup.',
+         ],
+         [
+            'items_id' => 100,
+            'users_id' => $tuid,
+            'content'  => 'This is a reply that references Ticket 100 in References header.&lt;br /&gt;It should be added as followup.',
+         ],
+         [
+            'items_id' => 101,
+            'users_id' => $tuid,
+            'content'  => 'This is a reply that references Ticket 101 in its subject.&lt;br /&gt;It should be added as followup.',
+         ]
+      ];
+
+      foreach ($expected_followups as $expected_followup) {
+         $this->integer(countElementsInTable(ITILFollowup::getTable(), $expected_followup))->isEqualTo(1);
+      }
+   }
+
+   protected function mailServerProtocolsProvider() {
+      return [
+         [
+            'cnx_string'        => '',
+            'expected_type'     => '',
+            'expected_protocol' => null,
+            'expected_storage'  => null,
+         ],
+         [
+            'cnx_string'        => '{mail.domain.org/imap}',
+            'expected_type'     => 'imap',
+            'expected_protocol' => \Laminas\Mail\Protocol\Imap::class,
+            'expected_storage'  => \Laminas\Mail\Storage\Imap::class,
+         ],
+         [
+            'cnx_string'        => '{mail.domain.org/imap/ssl/debug}INBOX',
+            'expected_type'     => 'imap',
+            'expected_protocol' => \Laminas\Mail\Protocol\Imap::class,
+            'expected_storage'  => \Laminas\Mail\Storage\Imap::class,
+         ],
+         [
+            'cnx_string'        => '{mail.domain.org/pop}',
+            'expected_type'     => 'pop',
+            'expected_protocol' => \Laminas\Mail\Protocol\Pop3::class,
+            'expected_storage'  => \Laminas\Mail\Storage\Pop3::class,
+         ],
+         [
+            'cnx_string'        => '{mail.domain.org/pop/ssl/tls}',
+            'expected_type'     => 'pop',
+            'expected_protocol' => \Laminas\Mail\Protocol\Pop3::class,
+            'expected_storage'  => \Laminas\Mail\Storage\Pop3::class,
+         ],
+         [
+            'cnx_string'        => '{mail.domain.org/unknown-type/ssl}',
+            'expected_type'     => '',
+            'expected_protocol' => null,
+            'expected_storage'  => null,
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider mailServerProtocolsProvider
+    */
+   public function testGetMailServerProtocols(
+      string $cnx_string,
+      string $expected_type,
+      ?string $expected_protocol,
+      ?string $expected_storage
+   ) {
+      $type = \Toolbox::parseMailServerConnectString($cnx_string)['type'];
+
+      $this->string($type)->isEqualTo($expected_type);
+
+      if ($expected_protocol !== null) {
+         $this->object(\Toolbox::getMailServerProtocolInstance($type))->isInstanceOf($expected_protocol);
+      } else {
+         $this->variable(\Toolbox::getMailServerProtocolInstance($type))->isNull();
+      }
+
+      $params = [
+         'host'     => 'dovecot',
+         'user'     => 'testuser',
+         'password' => 'applesauce',
+      ];
+      if ($expected_storage !== null) {
+         $this->object(\Toolbox::getMailServerStorageInstance($type, $params))->isInstanceOf($expected_storage);
+      } else {
+         $this->variable(\Toolbox::getMailServerStorageInstance($type, $params))->isNull();
+      }
+   }
+
+
+   protected function mailServerProtocolsHookProvider() {
+      // Create valid classes
+      eval(<<<CLASS
+class PluginTesterFakeProtocol implements Glpi\Mail\Protocol\ProtocolInterface {
+   public function setNoValidateCert(bool \$novalidatecert) {}
+   public function connect(\$host, \$port = null, \$ssl = false) {}
+   public function login(\$user, \$password) {}
+}
+class PluginTesterFakeStorage extends Laminas\Mail\Storage\Imap {
+   public function __construct(\$params) {}
+   public function close() {}
+}
+CLASS
+      );
+
+      return [
+         // Check that invalid hook result does not alter core protocols specs
+         [
+            'hook_result'        => 'invalid result',
+            'type'               => 'imap',
+            'expected_warning'   => 'Invalid value returned by "mail_server_protocols" hook.',
+            'expected_protocol'  => 'Laminas\Mail\Protocol\Imap',
+            'expected_storage'   => 'Laminas\Mail\Storage\Imap',
+         ],
+         // Check that hook cannot alter core protocols specs
+         [
+            'hook_result'        => [
+               'imap' => [
+                  'label'    => 'Override test',
+                  'protocol' => 'SomeClass',
+                  'storage'  => 'SomeClass',
+               ],
+            ],
+            'type'               => 'imap',
+            'expected_warning'   => 'Protocol "imap" is already defined and cannot be overwritten.',
+            'expected_protocol'  => 'Laminas\Mail\Protocol\Imap',
+            'expected_storage'   => 'Laminas\Mail\Storage\Imap',
+         ],
+         // Check that hook cannot alter core protocols specs
+         [
+            'hook_result'        => [
+               'pop' => [
+                  'label'    => 'Override test',
+                  'protocol' => 'SomeClass',
+                  'storage'  => 'SomeClass',
+               ],
+            ],
+            'type'               => 'pop',
+            'expected_warning'   => 'Protocol "pop" is already defined and cannot be overwritten.',
+            'expected_protocol'  => 'Laminas\Mail\Protocol\Pop3',
+            'expected_storage'   => 'Laminas\Mail\Storage\Pop3',
+         ],
+         // Check that class must exists
+         [
+            'hook_result'        => [
+               'custom-protocol' => [
+                  'label'    => 'Invalid class',
+                  'protocol' => 'SomeClass1',
+                  'storage'  => 'SomeClass2',
+               ],
+            ],
+            'type'               => 'custom-protocol',
+            'expected_warning'   => 'Invalid specs for protocol "custom-protocol".',
+            'expected_protocol'  => null,
+            'expected_storage'   => null,
+         ],
+         // Check that class must implements expected functions
+         [
+            'hook_result'        => [
+               'custom-protocol' => [
+                  'label'    => 'Invalid class',
+                  'protocol' => 'Plugin',
+                  'storage'  => 'Migration',
+               ],
+            ],
+            'type'               => 'custom-protocol',
+            'expected_warning'   => 'Invalid specs for protocol "custom-protocol".',
+            'expected_protocol'  => null,
+            'expected_storage'   => null,
+         ],
+         // Check valid case using class names
+         [
+            'hook_result'        => [
+               'custom-protocol' => [
+                  'label'    => 'Custom email protocol',
+                  'protocol' => 'PluginTesterFakeProtocol',
+                  'storage'  => 'PluginTesterFakeStorage',
+               ],
+            ],
+            'type'               => 'custom-protocol',
+            'expected_warning'   => null,
+            'expected_protocol'  => 'PluginTesterFakeProtocol',
+            'expected_storage'   => 'PluginTesterFakeStorage',
+         ],
+         // Check valid case using callback
+         [
+            'hook_result'        => [
+               'custom-protocol' => [
+                  'label'    => 'Custom email protocol',
+                  'protocol' => function () { return new \PluginTesterFakeProtocol(); },
+                  'storage'  => function (array $params) { return new \PluginTesterFakeStorage($params); },
+               ],
+            ],
+            'type'               => 'custom-protocol',
+            'expected_warning'   => null,
+            'expected_protocol'  => 'PluginTesterFakeProtocol',
+            'expected_storage'   => 'PluginTesterFakeStorage',
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider mailServerProtocolsHookProvider
+    */
+   public function testGetAdditionnalMailServerProtocols(
+      $hook_result,
+      string $type,
+      ?string $expected_warning,
+      ?string $expected_protocol,
+      ?string $expected_storage
+   ) {
+      global $PLUGIN_HOOKS;
+
+      $hooks_backup = $PLUGIN_HOOKS;
+
+      $PLUGIN_HOOKS['mail_server_protocols']['tester'] = function () use ($hook_result) {
+         return $hook_result;
+      };
+
+      // Get protocol
+      $protocol  = null;
+      $getProtocol = function () use ($type, &$protocol) {
+         $protocol = \Toolbox::getMailServerProtocolInstance($type);
+      };
+      if ($expected_warning !== null) {
+         $this->when($getProtocol)
+            ->error()
+            ->withType(E_USER_WARNING)
+            ->withMessage($expected_warning)
+            ->exists();
+      } else {
+         $getProtocol();
+      }
+
+      // Get storage
+      $storage   = null;
+      $getStorage = function () use ($type, &$storage) {
+         $params = [
+            'host'     => 'dovecot',
+            'user'     => 'testuser',
+            'password' => 'applesauce',
+         ];
+         $storage = \Toolbox::getMailServerStorageInstance($type, $params);
+      };
+      if ($expected_warning !== null) {
+         $this->when($getStorage)
+         ->error()
+         ->withType(E_USER_WARNING)
+         ->withMessage($expected_warning)
+         ->exists();
+      } else {
+         $getStorage();
+      }
+
+      $PLUGIN_HOOKS = $hooks_backup;
+
+      if ($expected_protocol !== null) {
+         $this->object($protocol)->isInstanceOf($expected_protocol);
+      } else {
+         $this->variable($protocol)->isNull();
+      }
+
+      if ($expected_storage !== null) {
+         $this->object($storage)->isInstanceOf($expected_storage);
+      } else {
+         $this->variable($storage)->isNull();
+      }
    }
 }

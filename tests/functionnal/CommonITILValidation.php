@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -64,7 +64,7 @@ class CommonITILValidation extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
-      $guser = new \Group_user();
+      $guser = new \Group_User();
       $this->integer(
          (int)$guser->add([
             'groups_id' => $gid,
@@ -72,7 +72,7 @@ class CommonITILValidation extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
-      $guser = new \Group_user();
+      $guser = new \Group_User();
       $this->integer(
          (int)$guser->add([
             'groups_id' => $gid,
@@ -80,7 +80,7 @@ class CommonITILValidation extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
-      $guser = new \Group_user();
+      $guser = new \Group_User();
       $this->integer(
          (int)$guser->add([
             'groups_id' => $gid,
@@ -211,12 +211,7 @@ class CommonITILValidation extends DbTestCase {
          'status'       => \CommonITILValidation::REFUSED
       ]);
 
-      $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo([
-         ERROR => [
-            'If approval is denied, specify a reason.'
-         ]
-      ]);
-      $_SESSION['MESSAGE_AFTER_REDIRECT'] = []; //reset
+      $this->hasSessionMessages(ERROR, ['If approval is denied, specify a reason.']);
       $this->boolean($res)->isFalse();
 
       $this->boolean(
@@ -272,5 +267,115 @@ class CommonITILValidation extends DbTestCase {
 
       $this->boolean($ticket->getFromDB($tid))->isTrue();
       $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);*/
+   }
+
+   protected function testComputeValidationProvider(): array {
+      return [
+         // 100% validation required
+         [
+            'accepted'           => 0,
+            'refused'            => 0,
+            'validation_percent' => 100,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 10,
+            'refused'            => 0,
+            'validation_percent' => 100,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 90,
+            'refused'            => 0,
+            'validation_percent' => 100,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 100,
+            'refused'            => 0,
+            'validation_percent' => 100,
+            'result'             => \CommonITILValidation::ACCEPTED,
+         ],
+         [
+            'accepted'           => 0,
+            'refused'            => 10,
+            'validation_percent' => 100,
+            'result'             => \CommonITILValidation::REFUSED,
+         ],
+         // 50% validation required
+         [
+            'accepted'           => 0,
+            'refused'            => 0,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 10,
+            'refused'            => 0,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 50,
+            'refused'            => 0,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::ACCEPTED,
+         ],
+         [
+            'accepted'           => 0,
+            'refused'            => 10,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 0,
+            'refused'            => 50,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 0,
+            'refused'            => 60,
+            'validation_percent' => 50,
+            'result'             => \CommonITILValidation::REFUSED,
+         ],
+         // 0% validation required
+         [
+            'accepted'           => 0,
+            'refused'            => 0,
+            'validation_percent' => 0,
+            'result'             => \CommonITILValidation::WAITING,
+         ],
+         [
+            'accepted'           => 10,
+            'refused'            => 0,
+            'validation_percent' => 0,
+            'result'             => \CommonITILValidation::ACCEPTED,
+         ],
+         [
+            'accepted'           => 0,
+            'refused'            => 10,
+            'validation_percent' => 0,
+            'result'             => \CommonITILValidation::REFUSED,
+         ],
+      ];
+   }
+
+   /**
+    * @dataprovider testComputeValidationProvider
+    */
+   public function testComputeValidation(
+      int $accepted,
+      int $refused,
+      int $validation_percent,
+      int $result
+   ): void {
+      $test_result = \CommonITILValidation::computeValidation(
+         $accepted,
+         $refused,
+         $validation_percent
+      );
+
+      $this->integer($test_result)->isEqualTo($result);
    }
 }

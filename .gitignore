@@ -1,7 +1,9 @@
 /config/config_db*
-/config/config_path.php
+/config/glpi.key
+/config/glpicrypt.key
 /config/local_define.php
 /tests/config_db*
+/marketplace/
 /plugins/
 /files/
 /.buildpath
@@ -16,7 +18,10 @@
 /vendor/
 phpunit.xml
 /tests/code-coverage/
+/tests/coverage-*/
 /tests/files/
+/tests/.env
+/tests/glpicrypt.key
 /config/based_config.php
 /config/config.php
 /config/define.php
@@ -31,3 +36,4 @@ phpunit.xml
 .package.hash
 /public/build/
 /public/lib/
+/tests/web/error.log

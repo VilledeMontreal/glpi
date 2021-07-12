@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -59,7 +59,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 0.84
 **/
-class RSSFeed extends CommonDBVisible {
+class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria {
 
    // From CommonDBTM
    public $dohistory                   = true;
@@ -248,7 +248,7 @@ class RSSFeed extends CommonDBVisible {
     *
     * @return array
     */
-   static public function getVisibilityCriteria($forceall = false) {
+   static public function getVisibilityCriteria(bool $forceall = false): array {
       $where = [self::getTable() . '.users_id' => Session::getLoginUserID()];
       $join = [];
 
@@ -409,7 +409,8 @@ class RSSFeed extends CommonDBVisible {
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
          'massiveaction'      => false,
-         'forcegroupby'       => true
+         'forcegroupby'       => true,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -525,7 +526,7 @@ class RSSFeed extends CommonDBVisible {
          switch ($item->getType()) {
             case 'RSSFeed' :
                $showtab = [1 => __('Content')];
-               if (session::haveRight('rssfeed_public', UPDATE)) {
+               if (Session::haveRight('rssfeed_public', UPDATE)) {
                   if ($_SESSION['glpishow_count_on_tabs']) {
                      $nb = $item->countVisibilities();
                   }
@@ -645,8 +646,6 @@ class RSSFeed extends CommonDBVisible {
     *     - target filename : where to go when done.
     **/
    function showForm($ID, $options = []) {
-      global $CFG_GLPI;
-
       // Test _rss cache directory. I permission trouble : unable to edit
       if (Toolbox::testWriteAccessToDirectory(GLPI_RSS_DIR) > 0) {
          echo "<div class='center'>";
@@ -657,8 +656,6 @@ class RSSFeed extends CommonDBVisible {
       }
 
       $this->initForm($ID, $options);
-
-      $canedit = $this->can($ID, UPDATE);
 
       $this->showFormHeader($options);
 
@@ -795,7 +792,7 @@ class RSSFeed extends CommonDBVisible {
          foreach ($feed->get_items(0, $this->fields['max_items']) as $item) {
             $link = $item->get_permalink();
             echo "<tr class='tab_bg_1'><td>";
-            echo HTML::convDateTime($item->get_date('Y-m-d H:i:s'));
+            echo Html::convDateTime($item->get_date('Y-m-d H:i:s'));
             echo "</td><td>";
             if (!is_null($link)) {
                echo "<a target='_blank' href='$link'>".$item->get_title().'</a>';
@@ -879,8 +876,7 @@ class RSSFeed extends CommonDBVisible {
          if (!empty($CFG_GLPI["proxy_user"])) {
             $prx_opt[CURLOPT_HTTPAUTH]     = CURLAUTH_ANYSAFE;
             $prx_opt[CURLOPT_PROXYUSERPWD] = $CFG_GLPI["proxy_user"].":".
-                                             Toolbox::decrypt($CFG_GLPI["proxy_passwd"],
-                                                              GLPIKEY);
+                                             Toolbox::sodiumDecrypt($CFG_GLPI["proxy_passwd"]);
          }
          $feed->set_curl_options($prx_opt);
       }
@@ -908,20 +904,19 @@ class RSSFeed extends CommonDBVisible {
     *
     * @param $personal boolean   display rssfeeds created by me ? (true by default)
     *
-    * @return Nothing (display function)
+    * @return void
     **/
    static function showListForCentral($personal = true) {
       global $DB, $CFG_GLPI;
 
       $users_id             = Session::getLoginUserID();
-      $today                = date('Y-m-d');
-      $now                  = date('Y-m-d H:i:s');
 
       $table = self::getTable();
       $criteria = [
-         'SELECT' => "$table.*",
-         'FROM'   => $table,
-         'ORDER'  => "$table.name"
+         'SELECT'   => "$table.*",
+         'DISTINCT' => true,
+         'FROM'     => $table,
+         'ORDER'    => "$table.name"
       ];
 
       if ($personal) {
@@ -981,7 +976,7 @@ class RSSFeed extends CommonDBVisible {
       if (($personal && self::canCreate())
             || (!$personal && Session::haveRight('rssfeed_public', CREATE))) {
          echo "<span class='floatright'>";
-         echo "<a href='".RssFeed::getFormURL()."'>";
+         echo "<a href='".RSSFeed::getFormURL()."'>";
          echo "<img src='".$CFG_GLPI["root_doc"]."/pics/plus.png' alt='".__s('Add')."' title=\"".
                 __s('Add')."\"></a></span>";
       }
@@ -992,7 +987,7 @@ class RSSFeed extends CommonDBVisible {
          usort($items, ['SimplePie', 'sort_items']);
          foreach ($items as $item) {
             echo "<tr class='tab_bg_1'><td>";
-            echo HTML::convDateTime($item->get_date('Y-m-d H:i:s'));
+            echo Html::convDateTime($item->get_date('Y-m-d H:i:s'));
             echo "</td><td>";
             $link = $item->feed->get_permalink();
             if (empty($link)) {
@@ -1039,5 +1034,10 @@ class RSSFeed extends CommonDBVisible {
          $values = parent::getRights();
       }
       return $values;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-rss";
    }
 }

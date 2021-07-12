@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -51,7 +51,7 @@ class Group_KnowbaseItem extends CommonDBRelation {
    /**
     * Get groups for a knowbaseitem
     *
-    * @param $knowbaseitems_id ID of the knowbaseitem
+    * @param integer $knowbaseitems_id ID of the knowbaseitem
     *
     * @return array of groups linked to a knowbaseitem
    **/

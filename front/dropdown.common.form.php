@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -121,7 +121,13 @@ if (isset($_POST["add"])) {
    }
 
 } else if (isset($_GET['_in_modal'])) {
-   Html::popHeader($dropdown->getTypeName(1), $_SERVER['PHP_SELF']);
+   Html::popHeader(
+      $dropdown->getTypeName(1),
+      $_SERVER['PHP_SELF'],
+      false,
+      $dropdown->first_level_menu,
+      $dropdown->second_level_menu, $dropdown->getType()
+   );
    $dropdown->showForm($_GET["id"]);
    Html::popFooter();
 
@@ -131,7 +137,9 @@ if (isset($_POST["add"])) {
    if (!isset($options)) {
       $options = [];
    }
-   $options['id'] = $_GET["id"];
+   $options['id'] = $_GET['id'];
+   $options['formoptions'] = ($options['formoptions'] ?? '') . ' data-track-changes=true';
+
    $dropdown->display($options);
    Html::footer();
 }

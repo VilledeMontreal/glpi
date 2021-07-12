@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -108,8 +108,6 @@ class Group extends CommonTreeDropdown {
       // Ticket rules use various _groups_id_*
       Rule::cleanForItemAction($this, '_groups_id%');
       Rule::cleanForItemCriteria($this, '_groups_id%');
-      // GROUPS for RuleMailcollector
-      Rule::cleanForItemCriteria($this, 'GROUPS');
    }
 
 
@@ -135,7 +133,7 @@ class Group extends CommonTreeDropdown {
                if ($item->getField('is_usergroup')
                    && Group::canUpdate()
                    && Session::haveRight("user", User::UPDATEAUTHENT)
-                   && AuthLdap::useAuthLdap()) {
+                   && AuthLDAP::useAuthLdap()) {
                   $ong[3] = __('LDAP directory link');
                }
                return $ong;
@@ -177,6 +175,7 @@ class Group extends CommonTreeDropdown {
       $ong = [];
 
       $this->addDefaultFormTab($ong);
+      $this->addImpactTab($ong, $options);
       $this->addStandardTab('Group', $ong, $options);
       if (isset($this->fields['is_usergroup'])
           && $this->fields['is_usergroup']) {
@@ -201,12 +200,12 @@ class Group extends CommonTreeDropdown {
    /**
    * Print the group form
    *
-   * @param $ID      integer ID of the item
-   * @param $options array
+   * @param integer $ID  ID of the item
+   * @param array   $options
    *     - target filename : where to go when done.
    *     - withtemplate boolean : template or basic item
    *
-   * @return Nothing (display)
+   * @return void|boolean (display) Returns false if there is a rights error.
    **/
    function showForm($ID, $options = []) {
 
@@ -218,8 +217,8 @@ class Group extends CommonTreeDropdown {
       echo "<td>";
       Html::autocompletionTextField($this, "name");
       echo "</td>";
-      echo "<td rowspan='10' class='middle'>".__('Comments')."</td>";
-      echo "<td class='middle' rowspan='10'>";
+      echo "<td rowspan='12' class='middle'>".__('Comments')."</td>";
+      echo "<td class='middle' rowspan='12'>";
       echo "<textarea cols='45' rows='8' name='comment' >".$this->fields["comment"]."</textarea>";
       echo "</td></tr>";
 
@@ -236,13 +235,13 @@ class Group extends CommonTreeDropdown {
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Requester')."</td>";
+      echo "<td>"._n('Requester', 'Requesters', 1)."</td>";
       echo "<td>";
       Dropdown::showYesNo('is_requester', $this->fields['is_requester']);
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Watcher')."</td>";
+      echo "<td>"._n('Watcher', 'Watchers', 1)."</td>";
       echo "<td>";
       Dropdown::showYesNo('is_watcher', $this->fields['is_watcher']);
       echo "</td></tr>";
@@ -253,7 +252,7 @@ class Group extends CommonTreeDropdown {
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Task')."</td><td>";
+      echo "<td>"._n('Task', 'Tasks', 1)."</td><td>";
       Dropdown::showYesNo('is_task', $this->fields['is_task']);
       echo "</td></tr>";
 
@@ -281,13 +280,11 @@ class Group extends CommonTreeDropdown {
       echo "<td>"._n('Item', 'Items', Session::getPluralNumber())."</td>";
       echo "<td>";
       Dropdown::showYesNo('is_itemgroup', $this->fields['is_itemgroup']);
-      echo "</td><td colspan='2'></td></tr>";
+      echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td>"._n('User', 'Users', Session::getPluralNumber())."</td><td>";
+      echo "<td>".User::getTypeName(Session::getPluralNumber())."</td><td>";
       Dropdown::showYesNo('is_usergroup', $this->fields['is_usergroup']);
-      echo "</td>";
-      echo "<td colspan='2' class='center'>";
       echo "</td></tr>";
 
       $this->showFormButtons($options);
@@ -299,7 +296,7 @@ class Group extends CommonTreeDropdown {
    /**
     * Print a good title for group pages
     *
-    *@return nothing (display)
+    *@return void
     **/
    function title() {
       global $CFG_GLPI;
@@ -307,7 +304,7 @@ class Group extends CommonTreeDropdown {
       $buttons = [];
       if (Group::canUpdate()
           && Session::haveRight("user", User::UPDATEAUTHENT)
-          && AuthLdap::useAuthLdap()) {
+          && AuthLDAP::useAuthLdap()) {
 
          $buttons["ldap.group.php"] = __('LDAP directory link');
          $title                     = "";
@@ -321,18 +318,18 @@ class Group extends CommonTreeDropdown {
    }
 
 
-   /**
-    * @see CommonDBTM::getSpecificMassiveActions()
-   **/
    function getSpecificMassiveActions($checkitem = null) {
 
       $isadmin = static::canUpdate();
       $actions = parent::getSpecificMassiveActions($checkitem);
       if ($isadmin) {
          $prefix                            = 'Group_User'.MassiveAction::CLASS_ACTION_SEPARATOR;
-         $actions[$prefix.'add']            = _x('button', 'Add a user');
-         $actions[$prefix.'add_supervisor'] = _x('button', 'Add a manager');
-         $actions[$prefix.'add_delegatee']  = _x('button', 'Add a delegatee');
+         $actions[$prefix.'add']            = "<i class='ma-icon fas fa-user-plus'></i>".
+                                              _x('button', 'Add a user');
+         $actions[$prefix.'add_supervisor'] = "<i class='ma-icon fas fa-user-tie'></i>".
+                                              _x('button', 'Add a manager');
+         $actions[$prefix.'add_delegatee']  = "<i class='ma-icon fas fa-user-check'></i>".
+                                              _x('button', 'Add a delegatee');
          $actions[$prefix.'remove']         = _x('button', 'Remove a user');
       }
 
@@ -340,11 +337,6 @@ class Group extends CommonTreeDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
 
       $input = $ma->getInput();
@@ -379,11 +371,6 @@ class Group extends CommonTreeDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -419,13 +406,14 @@ class Group extends CommonTreeDropdown {
    function rawSearchOptions() {
       $tab = parent::rawSearchOptions();
 
-      if (AuthLdap::useAuthLdap()) {
+      if (AuthLDAP::useAuthLdap()) {
          $tab[] = [
             'id'                 => '3',
             'table'              => $this->getTable(),
             'field'              => 'ldap_field',
             'name'               => __('Attribute of the user containing its groups'),
-            'datatype'           => 'string'
+            'datatype'           => 'string',
+            'autocomplete'       => true,
          ];
 
          $tab[] = [
@@ -433,7 +421,8 @@ class Group extends CommonTreeDropdown {
             'table'              => $this->getTable(),
             'field'              => 'ldap_value',
             'name'               => __('Attribute value'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
+            'autocomplete'       => true,
          ];
 
          $tab[] = [
@@ -441,7 +430,8 @@ class Group extends CommonTreeDropdown {
             'table'              => $this->getTable(),
             'field'              => 'ldap_group_dn',
             'name'               => __('Group DN'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
+            'autocomplete'       => true,
          ];
       }
 
@@ -449,7 +439,7 @@ class Group extends CommonTreeDropdown {
          'id'                 => '11',
          'table'              => $this->getTable(),
          'field'              => 'is_requester',
-         'name'               => __('Requester'),
+         'name'               => _n('Requester', 'Requesters', 1),
          'datatype'           => 'bool'
       ];
 
@@ -558,7 +548,7 @@ class Group extends CommonTreeDropdown {
 
       if (Group::canUpdate()
           && Session::haveRight("user", User::UPDATEAUTHENT)
-          && AuthLdap::useAuthLdap()) {
+          && AuthLDAP::useAuthLdap()) {
          echo "<tr class='tab_bg_1'>";
          echo "<th colspan='2' class='center'>".__('In users')."</th></tr>";
 
@@ -747,7 +737,7 @@ class Group extends CommonTreeDropdown {
     * @param $tech   boolean  false search groups_id, true, search groups_id_tech
    **/
    function showItems($tech) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       $rand = mt_rand();
 
@@ -773,7 +763,7 @@ class Group extends CommonTreeDropdown {
       echo "<table class='tab_cadre_fixe'>";
       echo "<tr class='tab_bg_1'><th colspan='3'>$title</tr>";
       echo "<tr class='tab_bg_1'><td class='center'>";
-      echo __('Type')."&nbsp;";
+      echo _n('Type', 'Types', 1)."&nbsp;";
       Dropdown::showItemType($types,
                              ['value'      => $type,
                                    'name'       => 'onlytype',
@@ -822,7 +812,7 @@ class Group extends CommonTreeDropdown {
                                          'check_itemtype'   => 'Group',
                                          'check_items_id'   => $ID,
                                          'container'        => 'mass'.__CLASS__.$rand,
-                                         'extraparams'      => ['is_tech' => $tech,
+                                         'extraparams'      => ['is_tech' => $tech ? 1 : 0,
                                                                   'massive_action_fields' => ['field']],
                                          'specific_actions' => [__CLASS__.
                                                                     MassiveAction::CLASS_ACTION_SEPARATOR.
@@ -841,7 +831,7 @@ class Group extends CommonTreeDropdown {
          }
          $header_end    = '</th>';
 
-         $header_end .= "<th>".__('Type')."</th><th>".__('Name')."</th><th>".__('Entity')."</th>";
+         $header_end .= "<th>"._n('Type', 'Types', 1)."</th><th>".__('Name')."</th><th>".Entity::getTypeName(1)."</th>";
          if ($tree || $user) {
             $header_end .= "<th>".
                              sprintf(__('%1$s / %2$s'), self::getTypeName(1), User::getTypeName(1)).
@@ -960,5 +950,10 @@ class Group extends CommonTreeDropdown {
             'itemtype' => self::class,
          ]
       ) > 0;
+   }
+
+
+   static function getIcon() {
+      return "fas fa-users";
    }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -47,7 +47,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 0.84
  **/
-class Lock {
+class Lock extends CommonGLPI {
 
    static function getTypeName($nb = 0) {
       return _n('Lock', 'Locks', $nb);
@@ -173,80 +173,101 @@ class Lock {
             echo "<td class='left' width='95%'>" . $line['name'] . "</td>";
             echo "</tr>\n";
          }
+      }
 
-         //Software versions
-         $computer_sv = new Computer_SoftwareVersion();
-         $params = ['is_dynamic'    => 1,
-                         'is_deleted'    => 1,
-                         'computers_id'  => $ID];
-         $first  = true;
-         $query  = "SELECT `csv`.`id` AS `id`,
-                           `sv`.`name` AS `version`,
-                           `s`.`name` AS `software`
-                    FROM `glpi_computers_softwareversions` AS csv
-                    LEFT JOIN `glpi_softwareversions` AS sv
-                       ON (`csv`.`softwareversions_id` = `sv`.`id`)
-                    LEFT JOIN `glpi_softwares` AS s
-                       ON (`sv`.`softwares_id` = `s`.`id`)
-                    WHERE `csv`.`is_deleted` = 1
-                          AND `csv`.`is_dynamic` = 1
-                          AND `csv`.`computers_id` = '$ID'";
-         foreach ($DB->request($query) as $line) {
-            if ($first) {
-               echo "<tr><th colspan='2'>".Software::getTypeName(Session::getPluralNumber())."</th></tr>\n";
-               $first = false;
-            }
+      //Software versions
+      $item_sv = new Item_SoftwareVersion();
+      $item_sv_table = Item_SoftwareVersion::getTable();
 
-            echo "<tr class='tab_bg_1'>";
+      $iterator = $DB->request([
+         'SELECT'    => [
+            'isv.id AS id',
+            'sv.name AS version',
+            's.name AS software'
+         ],
+         'FROM'      => "{$item_sv_table} AS isv",
+         'LEFT JOIN' => [
+            'glpi_softwareversions AS sv' => [
+               'FKEY' => [
+                  'isv' => 'softwareversions_id',
+                  'sv'  => 'id'
+               ]
+            ],
+            'glpi_softwares AS s'         => [
+               'FKEY' => [
+                  'sv'  => 'softwares_id',
+                  's'   => 'id'
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            'isv.is_deleted'  => 1,
+            'isv.is_dynamic'  => 1,
+            'isv.items_id'    => $ID,
+            'isv.itemtype'    => $itemtype,
+         ]
+      ]);
+      echo "<tr><th colspan='2'>".Software::getTypeName(Session::getPluralNumber())."</th></tr>\n";
+      while ($data = $iterator->next()) {
+         echo "<tr class='tab_bg_1'>";
 
-            echo "<td class='center' width='10'>";
-            if ($computer_sv->can($line['id'], UPDATE) || $computer_sv->can($line['id'], PURGE)) {
-               $header = true;
-               echo "<input type='checkbox' name='Computer_SoftwareVersion[" . $line['id'] . "]'>";
-            }
-            echo "</td>";
-
-            echo "<td class='left' width='95%'>" . $line['software']." ".$line['version'] . "</td>";
-            echo "</tr>\n";
-
+         echo "<td class='center' width='10'>";
+         if ($item_sv->can($data['id'], UPDATE) || $item_sv->can($data['id'], PURGE)) {
+            $header = true;
+            echo "<input type='checkbox' name='Item_SoftwareVersion[" . $data['id'] . "]'>";
          }
+         echo "</td>";
 
-         //Software licenses
-         $computer_sl = new Computer_SoftwareLicense();
-         $params = ['is_dynamic'    => 1,
-                         'is_deleted'    => 1,
-                         'computers_id'  => $ID];
-         $first  = true;
-         $query  = "SELECT `csv`.`id` AS `id`,
-                           `sv`.`name` AS `version`,
-                           `s`.`name` AS `software`
-                    FROM `glpi_computers_softwarelicenses` AS csv
-                    LEFT JOIN `glpi_softwarelicenses` AS sv
-                       ON (`csv`.`softwarelicenses_id` = `sv`.`id`)
-                    LEFT JOIN `glpi_softwares` AS s
-                       ON (`sv`.`softwares_id` = `s`.`id`)
-                    WHERE `csv`.`is_deleted` = 1
-                          AND `csv`.`is_dynamic` = 1
-                          AND `csv`.`computers_id` = '$ID'";
-         foreach ($DB->request($query) as $line) {
-            if ($first) {
-               echo "<tr><th colspan='2'>".SoftwareLicense::getTypeName(Session::getPluralNumber())."</th>".
-                     "</tr>\n";
-               $first = false;
-            }
+         echo "<td class='left' width='95%'>" . $data['software']." ".$data['version'] . "</td>";
+         echo "</tr>\n";
+      }
 
-            echo "<tr class='tab_bg_1'>";
+      //Software licenses
+      $item_sl = new Item_SoftwareLicense();
+      $item_sl_table = Item_SoftwareLicense::getTable();
 
-            echo "<td class='center' width='10'>";
-            if ($computer_sl->can($line['id'], UPDATE) || $computer_sl->can($line['id'], PURGE)) {
-               $header = true;
-               echo "<input type='checkbox' name='Computer_SoftwareLicense[" . $line['id'] . "]'>";
-            }
-            echo "</td>";
+      $iterator = $DB->request([
+         'SELECT'    => [
+            'isl.id AS id',
+            'sl.name AS version',
+            's.name AS software'
+         ],
+         'FROM'      => "{$item_sl_table} AS isl",
+         'LEFT JOIN' => [
+            'glpi_softwarelicenses AS sl' => [
+               'FKEY' => [
+                  'isl' => 'softwarelicenses_id',
+                  'sl'  => 'id'
+               ]
+            ],
+            'glpi_softwares AS s'         => [
+               'FKEY' => [
+                  'sl'  => 'softwares_id',
+                  's'   => 'id'
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            'isl.is_deleted'  => 1,
+            'isl.is_dynamic'  => 1,
+            'isl.items_id'    => $ID,
+            'isl.itemtype'    => $itemtype,
+         ]
+      ]);
 
-            echo "<td class='left' width='95%'>" . $line['software']." ".$line['version'] . "</td>";
-            echo "</tr>\n";
+      echo "<tr><th colspan='2'>".SoftwareLicense::getTypeName(Session::getPluralNumber())."</th></tr>\n";
+      while ($data = $iterator->next()) {
+         echo "<tr class='tab_bg_1'>";
+
+         echo "<td class='center' width='10'>";
+         if ($item_sl->can($data['id'], UPDATE) || $item_sl->can($data['id'], PURGE)) {
+            $header = true;
+            echo "<input type='checkbox' name='Item_SoftwareLicense[" . $data['id'] . "]'>";
          }
+         echo "</td>";
+
+         echo "<td class='left' width='95%'>" . $data['software']." ".$data['version'] . "</td>";
+         echo "</tr>\n";
       }
 
       $first  = true;
@@ -279,12 +300,14 @@ class Lock {
 
       $first = true;
       $networkname = new NetworkName();
-      $params = ['`glpi_networknames`.`is_dynamic`' => 1,
-                      '`glpi_networknames`.`is_deleted`' => 1,
-                      '`glpi_networknames`.`itemtype`'   => 'NetworkPort',
-                      '`glpi_networknames`.`items_id`'   => '`glpi_networkports`.`id`',
-                      '`glpi_networkports`.`items_id`'   => $ID,
-                      '`glpi_networkports`.`itemtype`'   => $itemtype];
+      $params = [
+         'glpi_networknames.is_dynamic' => 1,
+         'glpi_networknames.is_deleted' => 1,
+         'glpi_networknames.itemtype'   => 'NetworkPort',
+         'glpi_networknames.items_id'   => new QueryExpression($DB->quoteName('glpi_networkports.id')),
+         'glpi_networkports.items_id'   => $ID,
+         'glpi_networkports.itemtype'   => $itemtype
+      ];
       $params['FIELDS'] = ['glpi_networknames' => 'id'];
       foreach ($DB->request(['glpi_networknames', 'glpi_networkports'], $params) as $line) {
          $networkname->getFromDB($line['id']);
@@ -309,14 +332,16 @@ class Lock {
 
       $first  = true;
       $ipaddress = new IPAddress();
-      $params = ['`glpi_ipaddresses`.`is_dynamic`' => 1,
-                      '`glpi_ipaddresses`.`is_deleted`' => 1,
-                      '`glpi_ipaddresses`.`itemtype`'   => 'Networkname',
-                      '`glpi_ipaddresses`.`items_id`'   => '`glpi_networknames`.`id`',
-                      '`glpi_networknames`.`itemtype`'  => 'NetworkPort',
-                      '`glpi_networknames`.`items_id`'  => '`glpi_networkports`.`id`',
-                      '`glpi_networkports`.`items_id`'  => $ID,
-                      '`glpi_networkports`.`itemtype`'  => $itemtype];
+      $params = [
+         'glpi_ipaddresses.is_dynamic' => 1,
+         'glpi_ipaddresses.is_deleted' => 1,
+         'glpi_ipaddresses.itemtype'   => 'NetworkName',
+         'glpi_ipaddresses.items_id'   => new QueryExpression($DB->quoteName('glpi_networknames.id')),
+         'glpi_networknames.itemtype'  => 'NetworkPort',
+         'glpi_networknames.items_id'  => new QueryExpression($DB->quoteName('glpi_networkports.id')),
+         'glpi_networkports.items_id'  => $ID,
+         'glpi_networkports.itemtype'  => $itemtype
+      ];
       $params['FIELDS'] = ['glpi_ipaddresses' => 'id'];
       foreach ($DB->request(['glpi_ipaddresses',
                                   'glpi_networknames',
@@ -359,16 +384,29 @@ class Lock {
             $associated_table = getTableForItemType($associated_type);
             $fk               = getForeignKeyFieldForTable($associated_table);
 
-            $query = "SELECT `i`.`id`,
-                             `t`.`designation` AS `name`
-                      FROM `".getTableForItemType($type)."` AS i
-                      LEFT JOIN `$associated_table` AS t
-                         ON (`t`.`id` = `i`.`$fk`)
-                      WHERE `itemtype` = '$itemtype'
-                            AND `items_id` = '$ID'
-                            AND `is_dynamic` = 1
-                            AND `is_deleted` = 1";
-            foreach ($DB->request($query) as $data) {
+            $iterator = $DB->request([
+               'SELECT'    => [
+                  'i.id',
+                  't.designation AS name'
+               ],
+               'FROM'      => getTableForItemType($type) . ' AS i',
+               'LEFT JOIN' => [
+                  "$associated_table AS t"   => [
+                     'ON' => [
+                        't'   => 'id',
+                        'i'   => $fk
+                     ]
+                  ]
+               ],
+               'WHERE'     => [
+                  'itemtype'     => $itemtype,
+                  'items_id'     => $ID,
+                  'is_dynamic'   => 1,
+                  'is_deleted'   => 1
+               ]
+            ]);
+
+            while ($data = $iterator->next()) {
                echo "<tr class='tab_bg_1'>";
 
                echo "<td class='center' width='10'>";
@@ -435,12 +473,13 @@ class Lock {
    /**
     * Get infos to build an SQL query to get locks fields in a table
     *
-    * @param $itemtype       itemtype of the item to look for locked fields
-    * @param $baseitemtype   itemtype of the based item
+    * @param string $itemtype      itemtype of the item to look for locked fields
+    * @param string $baseitemtype  itemtype of the based item
     *
-    * @return an array which contains necessary informations to build the SQL query
+    * @return array  which contains necessary information to build the SQL query
    **/
    static function getLocksQueryInfosByItemType($itemtype, $baseitemtype) {
+      global $DB;
 
       $condition = [];
       $table     = false;
@@ -469,29 +508,32 @@ class Lock {
             break;
 
          case 'NetworkName' :
-            $condition = ['`glpi_networknames`.`is_dynamic`' => 1,
-                               '`glpi_networknames`.`is_deleted`' => 1,
-                               '`glpi_networknames`.`itemtype`'   => 'NetworkPort',
-                               '`glpi_networknames`.`items_id`'   => '`glpi_networkports`.`id`',
-                               '`glpi_networkports`.`itemtype`'   => $baseitemtype];
+            $condition = [
+               'glpi_networknames.is_dynamic' => 1,
+               'glpi_networknames.is_deleted' => 1,
+               'glpi_networknames.itemtype'   => 'NetworkPort',
+               'glpi_networknames.items_id'   => new QueryExpression($DB->quoteName('glpi_networkports.id')),
+               'glpi_networkports.itemtype'   => $baseitemtype
+            ];
             $condition['FIELDS']
                        = ['glpi_networknames' => 'id'];
             $table     = ['glpi_networknames', 'glpi_networkports'];
-            $field     = '`glpi_networkports`.`items_id`';
+            $field     = 'glpi_networkports.items_id';
             break;
 
          case 'IPAddress' :
-            $condition = ['`glpi_ipaddresses`.`is_dynamic`' => 1,
-                               '`glpi_ipaddresses`.`is_deleted`' => 1,
-                               '`glpi_ipaddresses`.`itemtype`'   => 'NetworkName',
-                               '`glpi_ipaddresses`.`items_id`'   => '`glpi_networknames`.`id`',
-                               '`glpi_networknames`.`itemtype`'   => 'NetworkPort',
-                               '`glpi_networknames`.`items_id`'   => '`glpi_networkports`.`id`',
-                               '`glpi_networkports`.`itemtype`'   => $baseitemtype];
+            $condition = [
+               'glpi_ipaddresses.is_dynamic'   => 1,
+               'glpi_ipaddresses.is_deleted'   => 1,
+               'glpi_ipaddresses.itemtype'     => 'NetworkName',
+               'glpi_ipaddresses.items_id'     => 'glpi_networknames.id',
+               'glpi_networknames.itemtype'    => 'NetworkPort',
+               'glpi_networknames.items_id'    => 'glpi_networkports.id',
+               'glpi_networkports.itemtype'    => $baseitemtype];
             $condition['FIELDS']
                        = ['glpi_ipaddresses' => 'id'];
             $table     = ['glpi_ipaddresses', 'glpi_networknames', 'glpi_networkports'];
-            $field     = '`glpi_networkports`.`items_id`';
+            $field     = 'glpi_networkports.items_id';
             break;
 
          case 'Item_Disk' :
@@ -505,18 +547,22 @@ class Lock {
             break;
 
          case 'ComputerVirtualMachine' :
-            $condition = ['is_dynamic' => 1,
-                               'is_deleted' => 1];
+            $condition = [
+               'is_dynamic' => 1,
+               'is_deleted' => 1,
+               'itemtype'   => $itemtype];
             $table     = 'glpi_computervirtualmachines';
             $field     = 'computers_id';
             break;
 
          case 'SoftwareVersion' :
-            $condition = ['is_dynamic' => 1,
-                               'is_deleted' => 1];
-            $table     = 'glpi_computers_softwareversions';
-            $field     = 'computers_id';
-            $type      = 'Computer_SoftwareVersion';
+            $condition = [
+               'is_dynamic' => 1,
+               'is_deleted' => 1,
+               'itemtype'   => $itemtype];
+            $table     = 'glpi_items_softwareversions';
+            $field     = 'items_id';
+            $type      = 'Item_SoftwareVersion';
             break;
 
          default :
@@ -542,7 +588,7 @@ class Lock {
     * @since 0.85
     *
     * @see CommonDBTM::getMassiveActionsForItemtype()
-   **/
+    **/
    static function getMassiveActionsForItemtype(array &$actions, $itemtype, $is_deleted = 0,
                                                 CommonDBTM $checkitem = null) {
 
@@ -560,21 +606,21 @@ class Lock {
     * @since 0.85
     *
     * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
+    **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
 
       switch ($ma->getAction()) {
          case 'unlock' :
             $types = ['Monitor'                => _n('Monitor', 'Monitors', Session::getPluralNumber()),
-                           'Peripheral'             => _n('Device', 'Devices', Session::getPluralNumber()),
-                           'Printer'                => _n('Printer', 'Printers', Session::getPluralNumber()),
-                           'SoftwareVersion'        => _n('Version', 'Versions', Session::getPluralNumber()),
-                           'NetworkPort'            => _n('Network port', 'Network ports', Session::getPluralNumber()),
-                           'NetworkName'            => _n('Network name', 'Network names', Session::getPluralNumber()),
-                           'IPAddress'              => _n('IP address', 'IP addresses', Session::getPluralNumber()),
-                           'Item_Disk'              => _n('Volume', 'Volumes', Session::getPluralNumber()),
+                           'Peripheral'             => Peripheral::getTypeName(Session::getPluralNumber()),
+                           'Printer'                => Printer::getTypeName(Session::getPluralNumber()),
+                           'SoftwareVersion'        => SoftwareVersion::getTypeName(Session::getPluralNumber()),
+                           'NetworkPort'            => NetworkPort::getTypeName(Session::getPluralNumber()),
+                           'NetworkName'            => NetworkName::getTypeName(Session::getPluralNumber()),
+                           'IPAddress'              => IPAddress::getTypeName(Session::getPluralNumber()),
+                           'Item_Disk'              => Item_Disk::getTypeName(Session::getPluralNumber()),
                            'Device'                 => _n('Component', 'Components', Session::getPluralNumber()),
-                           'ComputerVirtualMachine' => _n('Virtual machine', 'Virtual machines', Session::getPluralNumber())];
+                           'ComputerVirtualMachine' => ComputerVirtualMachine::getTypeName(Session::getPluralNumber())];
 
             echo __('Select the type of the item that must be unlock');
             echo "<br><br>\n";
@@ -595,7 +641,7 @@ class Lock {
     * @since 0.85
     *
     * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
+    **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $baseitem,
                                                        array $ids) {
       global $DB;

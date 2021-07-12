@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -196,16 +196,7 @@ class Group_User extends CommonDBRelation{
             'used'      => $used,
             'condition' => [
                'is_usergroup' => 1,
-               [
-                  'OR' => [
-                     ['entities_id' => $_SESSION['glpiactive_entity']],
-                     [
-                        'entities_id' => array_merge([0], $_SESSION['glpiactiveentities']),
-                        'is_recursive' => 1
-                     ]
-                  ]
-               ]
-            ]
+            ] + getEntitiesRestrictCriteria(Group::getTable(), '', '', true)
          ];
          Group::dropdown($params);
          echo "</td><td>".__('Manager')."</td><td>";
@@ -317,10 +308,9 @@ class Group_User extends CommonDBRelation{
     * @param $crit            String   for criteria (for default dropdown)
    **/
    private static function showAddUserForm(Group $group, $used_ids, $entityrestrict, $crit) {
-      global $CFG_GLPI, $DB;
-
       $rand = mt_rand();
-      $res  = User::getSqlSearchResult(true, "all", $entityrestrict, 0, $used_ids);
+      $res  = User::getSqlSearchResult(true, "all", $entityrestrict, 0, $used_ids, '', 0, -1, 0, 1);
+
       $nb = count($res);
 
       if ($nb) {
@@ -335,6 +325,7 @@ class Group_User extends CommonDBRelation{
 
          User::dropdown(['right'  => "all",
                               'entity' => $entityrestrict,
+                              'with_no_right' => true,
                               'used'   => $used_ids]);
 
          echo "</td><td>".__('Manager')."</td><td>";
@@ -358,11 +349,11 @@ class Group_User extends CommonDBRelation{
     *
     * @since 0.83
     *
-    * @param $group              Group object
-    * @param $members   Array    filled on output of member (filtered)
-    * @param $ids       Array    of ids (not filtered)
-    * @param $crit      String   filter (is_manager, is_userdelegate) (default '')
-    * @param $tree      Boolean  true to include member of sub-group (default 0)
+    * @param Group           $group    Group object
+    * @param array           $members  Array filled on output of member (filtered)
+    * @param array           $ids      Array of ids (not filtered)
+    * @param string          $crit     Filter (is_manager, is_userdelegate) (default '')
+    * @param boolean|integer $tree     True to include member of sub-group (default 0)
     *
     * @return String tab of entity for restriction
    **/
@@ -389,34 +380,39 @@ class Group_User extends CommonDBRelation{
       }
 
       // All group members
+      $pu_table = Profile_User::getTable();
       $iterator = $DB->request([
-         'SELECT'       => [
+         'SELECT' => [
             'glpi_users.id',
+            'glpi_groups_users.id AS linkid',
             'glpi_groups_users.groups_id',
             'glpi_groups_users.is_dynamic AS is_dynamic',
             'glpi_groups_users.is_manager AS is_manager',
             'glpi_groups_users.is_userdelegate AS is_userdelegate'
          ],
-         'DISTINCT'     => true,
-         'FROM'         => self::getTable(),
-         'INNER JOIN'   => [
-            User::getTable()           => [
+         'DISTINCT'  => true,
+         'FROM'      => self::getTable(),
+         'LEFT JOIN' => [
+            User::getTable() => [
                'ON' => [
-                  self::getTable()  => 'users_id',
-                  User::getTable()  => 'id'
+                  self::getTable() => 'users_id',
+                  User::getTable() => 'id'
                ]
             ],
-            Profile_User::getTable()   => [
+            $pu_table => [
                'ON' => [
-                  Profile_User::getTable()   => 'users_id',
-                  User::getTable()           => 'id'
+                  $pu_table        => 'users_id',
+                  User::getTable() => 'id'
                ]
             ]
          ],
-         'WHERE'        => [
-            self::getTable() . '.groups_id'  => $restrict
-         ] + getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, 1),
-         'ORDERBY'      => [
+         'WHERE' => [
+            self::getTable() . '.groups_id'  => $restrict,
+            'OR' => [
+               "$pu_table.entities_id" => null
+            ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
+         ],
+         'ORDERBY' => [
             User::getTable() . '.realname',
             User::getTable() . '.firstname',
             User::getTable() . '.name'
@@ -446,7 +442,7 @@ class Group_User extends CommonDBRelation{
     * @param $group  Group object: the group
    **/
    static function showForGroup(Group $group) {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       $ID = $group->getID();
       if (!User::canView()
@@ -606,12 +602,14 @@ class Group_User extends CommonDBRelation{
     * @see CommonDBRelation::getRelationMassiveActionsSpecificities()
    **/
    static function getRelationMassiveActionsSpecificities() {
-      global $CFG_GLPI;
-
       $specificities                           = parent::getRelationMassiveActionsSpecificities();
 
       $specificities['select_items_options_1'] = ['right'     => 'all'];
-      $specificities['select_items_options_2'] = ['condition' => ['is_usergroup' => 1]];
+      $specificities['select_items_options_2'] = [
+         'condition' => [
+            'is_usergroup' => 1,
+         ] + getEntitiesRestrictCriteria(Group::getTable(), '', '', true)
+      ];
 
       // Define normalized action for add_item and remove_item
       $specificities['normalized']['add'][]    = 'add_supervisor';
@@ -626,11 +624,6 @@ class Group_User extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBRelation::getRelationInputForProcessingOfMassiveActions()
-   **/
    static function getRelationInputForProcessingOfMassiveActions($action, CommonDBTM $item,
                                                                  array $ids, array $input) {
       switch ($action) {
@@ -680,7 +673,7 @@ class Group_User extends CommonDBRelation{
          'id'                 => '4',
          'table'              => 'glpi_groups',
          'field'              => 'completename',
-         'name'               => __('Group'),
+         'name'               => Group::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -689,7 +682,7 @@ class Group_User extends CommonDBRelation{
          'id'                 => '5',
          'table'              => 'glpi_users',
          'field'              => 'name',
-         'name'               => __('User'),
+         'name'               => User::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown',
          'right'              => 'all'
@@ -720,8 +713,6 @@ class Group_User extends CommonDBRelation{
     * @param $only_dynamic (false by default
    **/
    static function deleteGroups($user_ID, $only_dynamic = false) {
-      global $DB;
-
       $crit['users_id'] = $user_ID;
       if ($only_dynamic) {
          $crit['is_dynamic'] = '1';
@@ -788,5 +779,112 @@ class Group_User extends CommonDBRelation{
       $params['SELECT'][] = self::getTable() . '.is_manager';
       $params['SELECT'][] = self::getTable() . '.is_userdelegate';
       return $params;
+   }
+
+
+   function post_addItem() {
+      global $DB;
+
+      // add new user to plannings
+      $groups_id  = $this->fields['groups_id'];
+      $planning_k = 'group_'.$groups_id.'_users';
+
+      // find users with the current group in their plannings
+      $user_inst = new User;
+      $users = $user_inst->find([
+         'plannings' => ['LIKE', "%$planning_k%"]
+      ]);
+
+      // add the new user to found plannings
+      $query = $DB->buildUpdate(
+         User::getTable(), [
+            'plannings' => new QueryParam(),
+         ], [
+            'id'        => new QueryParam()
+         ]
+      );
+      $stmt = $DB->prepare($query);
+      $in_transaction = $DB->inTransaction();
+      if (!$in_transaction) {
+         $DB->beginTransaction();
+      }
+      foreach ($users as $user) {
+         $users_id  = $user['id'];
+         $plannings = importArrayFromDB($user['plannings']);
+         $nb_users  = count($plannings['plannings'][$planning_k]['users']);
+
+         // add the planning for the user
+         $plannings['plannings'][$planning_k]['users']['user_'.$this->fields['users_id']]= [
+            'color'   => Planning::getPaletteColor('bg', $nb_users),
+            'display' => true,
+            'type'    => 'user'
+         ];
+
+         // if current user logged, append also to its session
+         if ($users_id == Session::getLoginUserID()) {
+            $_SESSION['glpi_plannings'] = $plannings;
+         }
+
+         // save the planning completed to db
+         $json_plannings = exportArrayToDB($plannings);
+         $stmt->bind_param('si', $json_plannings, $users_id);
+         $stmt->execute();
+      }
+
+      if (!$in_transaction) {
+         $DB->commit();
+      }
+      $stmt->close();
+   }
+
+
+   function post_purgeItem() {
+      global $DB;
+
+      // remove user from plannings
+      $groups_id  = $this->fields['groups_id'];
+      $planning_k = 'group_'.$groups_id.'_users';
+
+      // find users with the current group in their plannings
+      $user_inst = new User;
+      $users = $user_inst->find([
+         'plannings' => ['LIKE', "%$planning_k%"]
+      ]);
+
+      // remove the deleted user to found plannings
+      $query = $DB->buildUpdate(
+         User::getTable(), [
+            'plannings' => new QueryParam(),
+         ], [
+            'id'        => new QueryParam()
+         ]
+      );
+      $stmt = $DB->prepare($query);
+      $in_transaction = $DB->inTransaction();
+      if (!$in_transaction) {
+         $DB->beginTransaction();
+      }
+      foreach ($users as $user) {
+         $users_id  = $user['id'];
+         $plannings = importArrayFromDB($user['plannings']);
+
+         // delete planning for the user
+         unset($plannings['plannings'][$planning_k]['users']['user_'.$this->fields['users_id']]);
+
+         // if current user logged, append also to its session
+         if ($users_id == Session::getLoginUserID()) {
+            $_SESSION['glpi_plannings'] = $plannings;
+         }
+
+         // save the planning completed to db
+         $json_plannings = exportArrayToDB($plannings);
+         $stmt->bind_param('si', $json_plannings, $users_id);
+         $stmt->execute();
+      }
+
+      if (!$in_transaction) {
+         $DB->commit();
+      }
+      $stmt->close();
    }
 }

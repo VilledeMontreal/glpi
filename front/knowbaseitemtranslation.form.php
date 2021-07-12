@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -67,7 +67,7 @@ if (isset($_POST['add'])) {
    }
    Html::redirect($translation->getFormURLWithID($_GET['id']));
 } else if (isset($_GET["id"])) {
-   Html::header(KnowbaseItem::getTypeName(1), $_SERVER['PHP_SELF'], "tools", "knowbaseitem");
+
    // modifier un item dans la base de connaissance
    $translation->check($_GET["id"], READ);
 

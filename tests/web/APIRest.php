@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,13 +30,17 @@
  * ---------------------------------------------------------------------
  */
 
-namespace tests\units;
+namespace tests\units\Glpi\Api;
 
 use \APIBaseClass;
+use Glpi\Tests\Web\Deprecated\Computer_SoftwareLicense;
+use Glpi\Tests\Web\Deprecated\Computer_SoftwareVersion;
+use Glpi\Tests\Web\Deprecated\TicketFollowup;
 use \GuzzleHttp;
 use GuzzleHttp\Exception\ClientException;
+use ITILFollowup;
 
-/* Test for inc/api.class.php */
+/* Test for inc/api/api.class.php */
 
 /**
  * @engine isolate
@@ -46,10 +50,23 @@ class APIRest extends APIBaseClass {
    public function beforeTestMethod($method) {
       global $CFG_GLPI;
 
+      // Clear test server log
+      if (!file_exists(__DIR__ . '/error.log')) {
+         touch(__DIR__ . '/error.log');
+      }
+      file_put_contents(__DIR__ . '/error.log', "");
+
       $this->http_client = new GuzzleHttp\Client();
       $this->base_uri    = trim($CFG_GLPI['url_base_api'], "/")."/";
 
       parent::beforeTestMethod($method);
+   }
+
+   public function afterTestMethod($method) {
+      global $CFG_GLPI;
+
+      // Check that no errors occured on the test server
+      $this->string(file_get_contents(__DIR__ . '/error.log'))->isEmpty();
    }
 
    protected function doHttpRequest($verb = "get", $relative_uri = "", $params = []) {
@@ -71,7 +88,17 @@ class APIRest extends APIBaseClass {
       }
    }
 
-   protected function query($resource = "", $params = [], $expected_code = 200, $expected_symbol = '') {
+   protected function query(
+      $resource = "",
+      $params = [],
+      $expected_codes = [200],
+      $expected_symbol = '',
+      bool $no_decode = false
+   ) {
+      if (!is_array($expected_codes)) {
+         $expected_codes = [$expected_codes];
+      }
+
       $verb         = isset($params['verb'])
                         ? $params['verb']
                         : 'GET';
@@ -101,26 +128,33 @@ class APIRest extends APIBaseClass {
          $res = $this->doHttpRequest($verb, $relative_uri, $params);
       } catch (ClientException $e) {
          $response = $e->getResponse();
-         if ($response->getStatusCode() != $expected_code) {
+         if (!in_array($response->getStatusCode(), $expected_codes)) {
             //throw exceptions not expected
             throw $e;
          }
-         $this->variable($response->getStatusCode())->isEqualTo($expected_code);
+         $this->array($expected_codes)->contains($response->getStatusCode());
          $body = json_decode($e->getResponse()->getBody());
          $this->array($body)
             ->hasKey('0')
             ->string[0]->isIdenticalTo($expected_symbol);
-         return;
+         return $body;
       }
-      //retrieve data
-      $body            = $res->getBody();
-      $data            = json_decode($body, true);
-      if (is_array($data)) {
-         $data['headers'] = $res->getHeaders();
+
+      // retrieve data
+      $body = $res->getBody();
+
+      if ($no_decode) {
+         $data = $body;
+      } else {
+         $data = json_decode($body, true);
+         if (is_array($data)) {
+            $data['headers'] = $res->getHeaders();
+         }
       }
+
       // common tests
       $this->variable($res)->isNotNull();
-      $this->variable($res->getStatusCode())->isEqualTo($expected_code);
+      $this->array($expected_codes)->contains($res->getStatusCode());
       return $data;
    }
 
@@ -203,7 +237,7 @@ class APIRest extends APIBaseClass {
          $token = $user->getAuthToken('api_token');
       }
 
-      $res = $this->doHttpRequest('GET', 'initSession/',
+      $res = $this->doHttpRequest('GET', 'initSession?get_full_session=true',
                                          ['headers' => [
                                              'Authorization' => "user_token $token"
                                          ]]);
@@ -215,6 +249,8 @@ class APIRest extends APIBaseClass {
       $data = json_decode($body, true);
       $this->variable($data)->isNotFalse();
       $this->array($data)->hasKey('session_token');
+      $this->array($data)->hasKey('session');
+      $this->integer((int) $data['session']['glpiID'])->isEqualTo($uid);
    }
 
    /**
@@ -368,5 +404,284 @@ class APIRest extends APIBaseClass {
          unset($data['headers']);
       }
       $this->integer(count($data))->isEqualTo(1);
+   }
+
+   /**
+    * @tags   api
+    * @covers API::userPicture
+    */
+   public function testUserPicture() {
+      $pic = "test_picture.png";
+      $params = ['headers' => ['Session-Token' => $this->session_token]];
+      $id = getItemByTypeName('User', 'glpi', true);
+      $user = new \User();
+
+      /**
+       * Case 1: normal execution
+       */
+
+      // Copy pic to tmp folder so it can be set to a user
+      copy("tests/$pic", GLPI_TMP_DIR . "/$pic");
+
+      // Load GLPI user
+      $this->boolean($user->getFromDB($id))->isTrue();
+
+      // Set a pic URL
+      $success = $user->update([
+         'id'      => $id,
+         '_picture' => [$pic],
+      ]);
+      $this->boolean($success)->isTrue();
+
+      // Get updated pic url
+      $pic = $user->fields['picture'];
+      $this->string($pic)->isNotEmpty();
+
+      // Check pic was moved correctly into _picture folder
+      $this->boolean(file_exists(GLPI_PICTURE_DIR . "/$pic"))->isTrue();
+      $file_content = file_get_contents(GLPI_PICTURE_DIR . "/$pic");
+      $this->string($file_content)->isNotEmpty();
+
+      // Request
+      $response = $this->query("User/$id/Picture", $params, 200, '', true);
+      $this->string($response->__toString())->isEqualTo($file_content);
+
+      /**
+       * Case 2: user doens't exist
+       */
+
+      // Request
+      $response = $this->query("User/99999999/Picture", $params, 400, "ERROR");
+      $this->array($response)->hasSize(2);
+      $this->string($response[1])->contains("Bad request: user with id '99999999' not found");
+
+      /**
+       * Case 3: user with no pictures
+       */
+
+      // Remove pic URL
+      $success = $user->update([
+         'id'             => $id,
+         '_blank_picture' => true,
+      ]);
+      $this->boolean($success)->isTrue();
+
+      // Request
+      $response = $this->query("User/$id/Picture", $params, 204);
+      $this->variable($response)->isNull();
+   }
+
+   protected function deprecatedProvider() {
+      return [
+         ['provider' => TicketFollowup::class],
+         ['provider' => Computer_SoftwareVersion::class],
+         ['provider' => Computer_SoftwareLicense::class],
+      ];
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedGetItem(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype = $provider::getDeprecatedType();
+      $itemtype            = $provider::getCurrentType();
+      $deprecated_fields   = $provider::getDeprecatedFields();
+      $add_input           = $provider::getCurrentAddInput();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      // Insert data for tests
+      $item = new $itemtype();
+      $item_id = $item->add($add_input);
+      $this->integer($item_id);
+
+      // Call API
+      $data = $this->query("$deprecated_itemtype/$item_id", [
+         'headers' => $headers,
+      ], 200);
+      $this->array($data)
+         ->hasSize(count($deprecated_fields) + 1) // + 1 for headers
+         ->hasKeys($deprecated_fields);
+
+      // Clean db to prevent unicity failure on next run
+      $item->delete(['id' => $item_id]);
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedGetItems(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype = $provider::getDeprecatedType();
+      $itemtype            = $provider::getCurrentType();
+      $deprecated_fields   = $provider::getDeprecatedFields();
+      $add_input           = $provider::getCurrentAddInput();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      // Insert data for tests (we need at least one item)
+      $item = new $itemtype();
+      $item_id = $item->add($add_input);
+      $this->integer($item_id);
+
+      // Call API
+      $data = $this->query("$deprecated_itemtype", [
+         'headers' => $headers,
+      ], [200, 206]);
+      $this->array($data);
+      unset($data["headers"]);
+
+      foreach ($data as $row) {
+         $this->array($row)
+            ->hasSize(count($deprecated_fields))
+            ->hasKeys($deprecated_fields);
+      }
+
+      // Clean db to prevent unicity failure on next run
+      $item->delete(['id' => $item_id]);
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedCreateItems(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype   = $provider::getDeprecatedType();
+      $itemtype              = $provider::getCurrentType();
+      $input                 = $provider::getDeprecatedAddInput();
+      $expected_after_insert = $provider::getExpectedAfterInsert();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      $item = new $itemtype();
+
+      // Call API
+      $data = $this->query("$deprecated_itemtype", [
+         'headers' => $headers,
+         'verb'    => "POST",
+         'json'    => ['input' => $input]
+      ], 201);
+
+      $this->integer($data['id']);
+      $this->boolean($item->getFromDB($data['id']))->isTrue();
+
+      foreach ($expected_after_insert as $field => $value) {
+         $this->variable($item->fields[$field])->isEqualTo($value);
+      }
+
+      // Clean db to prevent unicity failure on next run
+      $item->delete(['id' => $data['id']]);
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedUpdateItems(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype   = $provider::getDeprecatedType();
+      $itemtype              = $provider::getCurrentType();
+      $add_input             = $provider::getCurrentAddInput();
+      $update_input          = $provider::getDeprecatedUpdateInput();
+      $expected_after_update = $provider::getExpectedAfterUpdate();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      // Insert data for tests
+      $item = new $itemtype();
+      $item_id = $item->add($add_input);
+      $this->integer($item_id);
+
+      // Call API
+      $this->query("$deprecated_itemtype/$item_id", [
+         'headers' => $headers,
+         'verb'    => "PUT",
+         'json'    => ['input' => $update_input]
+      ], 200);
+
+      // Check expected values
+      $this->boolean($item->getFromDB($item_id))->isTrue();
+
+      foreach ($expected_after_update as $field => $value) {
+         $this->variable($item->fields[$field])->isEqualTo($value);
+      }
+
+      // Clean db to prevent unicity failure on next run
+      $item->delete(['id' => $item_id]);
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedDeleteItems(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype   = $provider::getDeprecatedType();
+      $itemtype              = $provider::getCurrentType();
+      $add_input             = $provider::getCurrentAddInput();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      // Insert data for tests
+      $item = new $itemtype();
+      $item_id = $item->add($add_input);
+      $this->integer($item_id);
+
+      // Call API
+      $this->query("$deprecated_itemtype/$item_id", [
+         'headers' => $headers,
+         'verb'    => "DELETE",
+      ], 200, "", true);
+
+      $this->boolean($item->getFromDB($item_id))->isFalse();
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedListSearchOptions(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype   = $provider::getDeprecatedType();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      $data = $this->query("listSearchOptions/$deprecated_itemtype/", [
+         'headers' => $headers,
+      ]);
+
+      $expected = file_get_contents(
+         __DIR__ . "/../deprecated-searchoptions/$deprecated_itemtype.json"
+      );
+      $this->string($expected)->isNotEmpty();
+
+      unset($data['headers']);
+      $json_data = json_encode($data, JSON_PRETTY_PRINT);
+      $this->string($json_data)->isEqualTo($expected);
+   }
+
+   /**
+    * @dataProvider deprecatedProvider
+    */
+   public function testDeprecatedSearch(string $provider) {
+      // Get params from provider
+      $deprecated_itemtype       = $provider::getDeprecatedType();
+      $deprecated_itemtype_query = $provider::getDeprecatedSearchQuery();
+      $itemtype                  = $provider::getCurrentType();
+      $itemtype_query            = $provider::getCurrentSearchQuery();
+
+      $headers = ['Session-Token' => $this->session_token];
+
+      $deprecated_data = $this->query(
+         "search/$deprecated_itemtype?$deprecated_itemtype_query",
+         ['headers' => $headers],
+         [200, 206]
+      );
+
+      $data = $this->query(
+         "search/$itemtype?$itemtype_query",
+         ['headers' => $headers],
+         [200, 206]
+      );
+      $this->string($deprecated_data['rawdata']['sql']['search'])
+         ->isEqualTo($data['rawdata']['sql']['search']);
    }
 }

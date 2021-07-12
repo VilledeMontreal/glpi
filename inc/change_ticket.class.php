@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -63,11 +63,6 @@ class Change_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (static::canView()) {
@@ -92,9 +87,6 @@ class Change_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-   **/
    static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0) {
 
       switch ($item->getType()) {
@@ -110,11 +102,6 @@ class Change_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
 
       switch ($ma->getAction()) {
@@ -141,11 +128,6 @@ class Change_Ticket extends CommonDBRelation{
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -269,7 +251,9 @@ class Change_Ticket extends CommonDBRelation{
          $used[$data['id']]    = $data['id'];
       }
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($change->fields['status'], array_merge($change->getClosedStatusArray(),
+                                                              $change->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='changeticket_form$rand' id='changeticket_form$rand' method='post'
                 action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -279,10 +263,13 @@ class Change_Ticket extends CommonDBRelation{
 
          echo "<tr class='tab_bg_2'><td>";
          echo "<input type='hidden' name='changes_id' value='$ID'>";
-         Ticket::dropdown(['used'        => $used,
-                                'entity'      => $change->getEntityID(),
-                                'entity_sons' => $change->isRecursive(),
-                                'displaywith' => ['id']]);
+         Ticket::dropdown([
+            'used'        => $used,
+            'entity'      => $change->getEntityID(),
+            'entity_sons' => $change->isRecursive(),
+            'displaywith' => ['id'],
+            'condition'   => Ticket::getOpenCriteria()
+         ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
          echo "</td></tr>";
@@ -323,10 +310,14 @@ class Change_Ticket extends CommonDBRelation{
          $i = 0;
          foreach ($tickets as $data) {
             Session::addToNavigateListItems('Ticket', $data["id"]);
-            Ticket::showShort($data['id'], ['followups'              => false,
-                                                 'row_num'                => $i,
-                                                 'type_for_massiveaction' => __CLASS__,
-                                                 'id_for_massiveaction'   => $data['linkid']]);
+            Ticket::showShort(
+               $data['id'],
+               [
+                  'row_num'                => $i,
+                  'type_for_massiveaction' => __CLASS__,
+                  'id_for_massiveaction'   => $data['linkid']
+               ]
+            );
             $i++;
          }
          Ticket::commonListHeader(Search::HTML_OUTPUT, 'mass'.__CLASS__.$rand);
@@ -389,7 +380,9 @@ class Change_Ticket extends CommonDBRelation{
          $used[$data['id']]    = $data['id'];
       }
 
-      if ($canedit) {
+      if ($canedit
+          && !in_array($ticket->fields['status'], array_merge($ticket->getClosedStatusArray(),
+                                                              $ticket->getSolvedStatusArray()))) {
          echo "<div class='firstbloc'>";
          echo "<form name='changeticket_form$rand' id='changeticket_form$rand' method='post'
                action='".Toolbox::getItemTypeFormURL(__CLASS__)."'>";
@@ -398,8 +391,11 @@ class Change_Ticket extends CommonDBRelation{
          echo "<tr class='tab_bg_2'><th colspan='3'>".__('Add a change')."</th></tr>";
          echo "<tr class='tab_bg_2'><td>";
          echo "<input type='hidden' name='tickets_id' value='$ID'>";
-         Change::dropdown(['used'        => $used,
-                                'entity'      => $ticket->getEntityID()]);
+         Change::dropdown([
+            'used'      => $used,
+            'entity'    => $ticket->getEntityID(),
+            'condition' => Change::getOpenCriteria(),
+         ]);
          echo "</td><td class='center'>";
          echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
          echo "</td><td>";

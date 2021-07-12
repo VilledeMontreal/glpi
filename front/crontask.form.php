@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -78,7 +78,7 @@ if (isset($_POST['execute'])) {
    if (!isset($_GET["id"]) || empty($_GET["id"])) {
       exit();
    }
-   Html::header(Crontask::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], 'config', 'crontask');
+   Html::header(CronTask::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], 'config', 'crontask');
    $crontask->display(['id' =>$_GET["id"]]);
    Html::footer();
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -122,6 +122,8 @@ class Dropdown extends DbTestCase {
    public function testGetDropdownName() {
       global $CFG_GLPI;
 
+      $encoded_sep = \Toolbox::clean_cross_side_scripting_deep(' > ');
+
       $ret = \Dropdown::getDropdownName('not_a_known_table', 1);
       $this->string($ret)->isIdenticalTo('&nbsp;');
 
@@ -130,20 +132,20 @@ class Dropdown extends DbTestCase {
       $subCat = getItemByTypeName('TaskCategory', '_subcat_1');
 
       // basic test returns string only
-      $expected = $cat->fields['name']." > ".$subCat->fields['name'];
+      $expected = $cat->fields['name'].$encoded_sep.$subCat->fields['name'];
       $ret = \Dropdown::getDropdownName('glpi_taskcategories', $subCat->getID());
       $this->string($ret)->isIdenticalTo($expected);
 
       // test of return with comments
-      $expected = ['name'    => $cat->fields['name']." > ".$subCat->fields['name'],
-                        'comment' => "<span class='b'>Complete name</span>: ".$cat->fields['name']." > "
+      $expected = ['name'    => $cat->fields['name'].$encoded_sep.$subCat->fields['name'],
+                        'comment' => "<span class='b'>Complete name</span>: ".$cat->fields['name'].$encoded_sep
                                     .$subCat->fields['name']."<br><span class='b'>&nbsp;Comments&nbsp;</span>"
                                     .$subCat->fields['comment']];
       $ret = \Dropdown::getDropdownName( 'glpi_taskcategories', $subCat->getID(), true );
       $this->array($ret)->isIdenticalTo($expected);
 
       // test of return without $tooltip
-      $expected = ['name'    => $cat->fields['name']." > ".$subCat->fields['name'],
+      $expected = ['name'    => $cat->fields['name'].$encoded_sep.$subCat->fields['name'],
                         'comment' => $subCat->fields['comment']];
       $ret = \Dropdown::getDropdownName( 'glpi_taskcategories', $subCat->getID(), true, true, false );
       $this->array($ret)->isIdenticalTo($expected);
@@ -152,7 +154,7 @@ class Dropdown extends DbTestCase {
       $CFG_GLPI['translate_dropdowns'] = 1;
       $_SESSION["glpilanguage"] = \Session::loadLanguage( 'fr_FR' );
       $_SESSION['glpi_dropdowntranslations'] = \DropdownTranslation::getAvailableTranslations($_SESSION["glpilanguage"]);
-      $expected = ['name'    => 'FR - _cat_1 > FR - _subcat_1',
+      $expected = ['name'    => 'FR - _cat_1' . $encoded_sep . 'FR - _subcat_1',
                         'comment' => 'FR - Commentaire pour sous-catégorie _subcat_1'];
       $ret = \Dropdown::getDropdownName( 'glpi_taskcategories', $subCat->getID(), true, true, false );
       // switch back to default language
@@ -275,34 +277,43 @@ class Dropdown extends DbTestCase {
 
    public function dataGetValueWithUnit() {
       return [
-            [1,         'auto',        '1024 Kio'],
-            [1025,      'auto',        '1 Gio'],
-            ['1 025',   'auto',        '1 Gio'],
-            [1,         'year',        '1 year'],
-            [2,         'year',        '2 years'],
-            [3,         '%',           '3%'],
-            ['foo',     'bar',         'foo bar'],
-            [1,         'month',       '1 month'],
-            [2,         'month',       '2 months'],
-            ['any',     '',            'any'],
-            [1,         'day',         '1 day'],
-            [2,         'day',         '2 days'],
-            [1,         'hour',        '1 hour'],
-            [2,         'hour',        '2 hours'],
-            [1,         'minute',      '1 minute'],
-            [2,         'minute',      '2 minutes'],
-            [1,         'second',      '1 second'],
-            [2,         'second',      '2 seconds'],
-            [1,         'millisecond', '1 millisecond'],
-            [2,         'millisecond', '2 milliseconds'],
+            [1,      'auto',        null, '1024 Kio'],
+            [1,      'auto',        null, '1024 Kio'],
+            [1025,   'auto',        null, '1 Gio'],
+            [1,      'year',        null, '1 year'],
+            [2,      'year',        null, '2 years'],
+            [3,      '%',           null, '3%'],
+            ['foo',  'bar',         null, 'foo bar'],
+            [1,      'month',       null, '1 month'],
+            [2,      'month',       null, '2 months'],
+            ['any',  '',            null, 'any'],
+            [1,      'day',         null, '1 day'],
+            [2,      'day',         null, '2 days'],
+            [1,      'hour',        null, '1 hour'],
+            [2,      'hour',        null, '2 hours'],
+            [1,      'minute',      null, '1 minute'],
+            [2,      'minute',      null, '2 minutes'],
+            [1,      'second',      null, '1 second'],
+            [2,      'second',      null, '2 seconds'],
+            [1,      'millisecond', null, '1 millisecond'],
+            [2,      'millisecond', null, '2 milliseconds'],
+            [10,     'bar',         null, '10 bar'],
+
+            [3.3597, '%',           0,    '3%'],
+            [3.3597, '%',           2,    '3.36%'],
+            [3.3597, '%',           6,    '3.359700%'],
+            [3579,   'day',         0,    '3&nbsp;579 days'],
       ];
    }
 
    /**
     * @dataProvider dataGetValueWithUnit
     */
-   public function testGetValueWithUnit($input, $unit, $expected) {
-      $this->string(\Dropdown::getValueWithUnit($input, $unit))->isIdenticalTo($expected);
+   public function testGetValueWithUnit($input, $unit, $decimals, $expected) {
+      $value = $decimals !== null
+         ? \Dropdown::getValueWithUnit($input, $unit, $decimals)
+         : \Dropdown::getValueWithUnit($input, $unit);
+      $this->string($value)->isIdenticalTo($expected);
    }
 
    protected function getDropdownValueProvider() {
@@ -625,7 +636,126 @@ class Dropdown extends DbTestCase {
                ],
                'count' => 1
             ]
-         ]
+         ], [
+            // search using id on CommonTreeDropdown but without "glpiis_ids_visible" set to true -> no results
+            'params' => [
+               'display_emptychoice'   => 0,
+               'itemtype'              => 'TaskCategory',
+               'searchText'            => getItemByTypeName('TaskCategory', '_subcat_1', true),
+            ],
+            'expected'  => [
+               'results' => [
+               ],
+               'count' => 0
+            ],
+            'session_params' => [
+               'glpiis_ids_visible' => false
+            ]
+         ], [
+            // search using id on CommonTreeDropdown with "glpiis_ids_visible" set to true -> results
+            'params' => [
+               'display_emptychoice'   => 0,
+               'itemtype'              => 'TaskCategory',
+               'searchText'            => getItemByTypeName('TaskCategory', '_subcat_1', true),
+            ],
+            'expected'  => [
+               'results' => [
+                  0 => [
+                     'text'      => 'Root entity',
+                     'children'  => [
+                        0 => [
+                           'id'             => getItemByTypeName('TaskCategory', '_cat_1', true),
+                           'text'           => '_cat_1',
+                           'level'          => 1,
+                           'disabled'       => true
+                        ],
+                        1 => [
+                           'id'             => getItemByTypeName('TaskCategory', '_subcat_1', true),
+                           'text'           => '_subcat_1 (' . getItemByTypeName('TaskCategory', '_subcat_1', true) . ')',
+                           'level'          => 2,
+                           'title'          => '_cat_1 > _subcat_1 - Comment for sub-category _subcat_1',
+                           'selection_text' => '_cat_1 > _subcat_1',
+                        ]
+                     ]
+                  ]
+               ],
+               'count' => 1
+            ],
+            'session_params' => [
+               'glpiis_ids_visible' => true
+            ]
+         ], [
+            // search using id on "not a CommonTreeDropdown" but without "glpiis_ids_visible" set to true -> no results
+            'params' => [
+               'display_emptychoice'   => 0,
+               'itemtype'              => 'DocumentType',
+               'searchText'            => getItemByTypeName('DocumentType', 'markdown', true),
+            ],
+            'expected'  => [
+               'results' => [
+               ],
+               'count' => 0
+            ],
+            'session_params' => [
+               'glpiis_ids_visible' => false
+            ]
+         ], [
+            // search using id on "not a CommonTreeDropdown" with "glpiis_ids_visible" set to true -> results
+            'params' => [
+               'display_emptychoice'   => 0,
+               'itemtype'              => 'DocumentType',
+               'searchText'            => getItemByTypeName('DocumentType', 'markdown', true),
+            ],
+            'expected'  => [
+               'results' => [
+                  0 => [
+                     'id'             => getItemByTypeName('DocumentType', 'markdown', true),
+                     'text'           => 'markdown (' . getItemByTypeName('DocumentType', 'markdown', true) . ')',
+                     'title'          => 'markdown',
+                  ]
+               ],
+               'count' => 1
+            ],
+            'session_params' => [
+               'glpiis_ids_visible' => true
+            ]
+         ], [
+            'params' => [
+               'display_emptychoice' => 0,
+               'itemtype'            => 'ComputerModel',
+            ],
+            'expected'  => [
+               'results'   => [
+                  [
+                     'id'     => getItemByTypeName('ComputerModel', '_test_computermodel_1', true),
+                     'text'   => '_test_computermodel_1 - CMP_ADEAF5E1',
+                     'title'  => '_test_computermodel_1 - CMP_ADEAF5E1',
+                  ],
+                  [
+                     'id'     => getItemByTypeName('ComputerModel', '_test_computermodel_2', true),
+                     'text'   => '_test_computermodel_2 - CMP_567AEC68',
+                     'title'  => '_test_computermodel_2 - CMP_567AEC68',
+                  ]
+               ],
+               'count'     => 2
+            ]
+         ], [
+            'params' => [
+               'display_emptychoice' => 0,
+               'itemtype'            => 'ComputerModel',
+               'searchText'          => 'CMP_56',
+            ],
+            'expected'  => [
+               'results'   => [
+                  [
+                     'id'     => getItemByTypeName('ComputerModel', '_test_computermodel_2', true),
+                     'text'   => '_test_computermodel_2 - CMP_567AEC68',
+                     'title'  => '_test_computermodel_2 - CMP_567AEC68',
+                  ]
+               ],
+               'count'     => 1
+            ]
+         ],
       ];
    }
 
@@ -633,6 +763,8 @@ class Dropdown extends DbTestCase {
     * @dataProvider getDropdownValueProvider
     */
    public function testGetDropdownValue($params, $expected, $session_params = []) {
+      $this->login();
+
       $bkp_params = [];
       //set session params if any
       if (count($session_params)) {
@@ -643,6 +775,8 @@ class Dropdown extends DbTestCase {
             $_SESSION[$param] = $value;
          }
       }
+
+      $params['_idor_token'] = $this->generateIdor($params);
 
       $result = \Dropdown::getDropdownValue($params, false);
 
@@ -661,6 +795,8 @@ class Dropdown extends DbTestCase {
    }
 
    protected function getDropdownConnectProvider() {
+      $encoded_sep = \Toolbox::clean_cross_side_scripting_deep('>');
+
       return [
          [
             'params'    => [
@@ -674,7 +810,7 @@ class Dropdown extends DbTestCase {
                      'text' => '-----',
                   ],
                   1 => [
-                     'text' => 'Root entity > _test_root_entity',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_all', true),
@@ -687,7 +823,7 @@ class Dropdown extends DbTestCase {
                      ]
                   ],
                   2 => [
-                     'text' => 'Root entity > _test_root_entity > _test_child_1',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity {$encoded_sep} _test_child_1",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_ent1', true),
@@ -696,7 +832,7 @@ class Dropdown extends DbTestCase {
                      ]
                   ],
                   3 => [
-                     'text' => 'Root entity > _test_root_entity > _test_child_2',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity {$encoded_sep} _test_child_2",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_ent2', true),
@@ -724,7 +860,7 @@ class Dropdown extends DbTestCase {
                      'text' => '-----',
                   ],
                   1 => [
-                     'text' => 'Root entity > _test_root_entity',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_all', true),
@@ -733,7 +869,7 @@ class Dropdown extends DbTestCase {
                      ]
                   ],
                   2 => [
-                     'text' => 'Root entity > _test_root_entity > _test_child_1',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity {$encoded_sep} _test_child_1",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_ent1', true),
@@ -752,7 +888,7 @@ class Dropdown extends DbTestCase {
             'expected'  => [
                'results' => [
                   0 => [
-                     'text' => 'Root entity > _test_root_entity',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_ent0', true),
@@ -771,7 +907,7 @@ class Dropdown extends DbTestCase {
             'expected'  => [
                'results' => [
                   0 => [
-                     'text' => 'Root entity > _test_root_entity',
+                     'text' => "Root entity {$encoded_sep} _test_root_entity",
                      'children' => [
                         0 => [
                            'id'     => getItemByTypeName('Printer', '_test_printer_ent0', true),
@@ -804,6 +940,8 @@ class Dropdown extends DbTestCase {
             $_SESSION[$param] = $value;
          }
       }
+
+      $params['_idor_token'] = $this->generateIdor($params);
 
       $result = \Dropdown::getDropdownConnect($params, false);
 
@@ -986,7 +1124,7 @@ class Dropdown extends DbTestCase {
                      'text'   => '-----',
                   ],
                   1 => [
-                     'id'     => (int)getItemByTypeName('user', '_test_user', true),
+                     'id'     => (int)getItemByTypeName('User', '_test_user', true),
                      'text'   => '_test_user',
                      'title'  => '_test_user - _test_user',
                   ],
@@ -1076,6 +1214,9 @@ class Dropdown extends DbTestCase {
     * @dataProvider getDropdownUsersProvider
     */
    public function testGetDropdownUsers($params, $expected) {
+      $this->login();
+
+      $params['_idor_token'] = \Session::getNewIDORToken('User');
       $result = \Dropdown::getDropdownUsers($params, false);
       $this->array($result)->isIdenticalTo($expected);
    }
@@ -1102,7 +1243,8 @@ class Dropdown extends DbTestCase {
          'display_emptychoice'   => true,
          'entity_restrict'       => 0,
          'page'                  => 1,
-         'page_limit'            => 10
+         'page_limit'            => 10,
+         '_idor_token'           => \Session::getNewIDORToken($location::getType())
       ];
       $values = \Dropdown::getDropdownValue($post);
       $values = (array)json_decode($values);
@@ -1159,7 +1301,8 @@ class Dropdown extends DbTestCase {
          'display_emptychoice'   => true,
          'entity_restrict'       => 0,
          'page'                  => 1,
-         'page_limit'            => 10
+         'page_limit'            => 10,
+         '_idor_token'           => \Session::getNewIDORToken($location::getType())
       ];
       $values = \Dropdown::getDropdownValue($post);
       $values = (array)json_decode($values);
@@ -1189,7 +1332,8 @@ class Dropdown extends DbTestCase {
          'display_emptychoice'   => true,
          'entity_restrict'       => 0,
          'page'                  => 1,
-         'page_limit'            => 10
+         'page_limit'            => 10,
+         '_idor_token'           => \Session::getNewIDORToken($location::getType())
       ];
       $values = \Dropdown::getDropdownValue($post);
       $values = (array)json_decode($values);
@@ -1199,5 +1343,13 @@ class Dropdown extends DbTestCase {
          ->array['results']
             ->hasSize(2);
 
+   }
+
+   private function generateIdor(array $params = []) {
+      $idor_add_params = [];
+      if (isset($params['entity_restrict'])) {
+         $idor_add_params['entity_restrict'] = $params['entity_restrict'];
+      }
+      return \Session::getNewIDORToken(($params['itemtype'] ?? ''), $idor_add_params);
    }
 }

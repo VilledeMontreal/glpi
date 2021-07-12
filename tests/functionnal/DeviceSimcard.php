@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,7 +34,7 @@ namespace tests\units;
 
 use DbTestCase;
 
-class Devicesimcard extends DbTestCase {
+class DeviceSimcard extends DbTestCase {
    private $method;
 
    public function beforeTestMethod($method) {

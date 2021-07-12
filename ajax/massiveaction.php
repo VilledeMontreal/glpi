@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -69,7 +69,7 @@ if (count($actions)) {
          echo Html::hidden($key, ['value' => $val]);
       }
    }
-   echo __('Action');
+   echo _n('Action', 'Actions', 1);
    echo "&nbsp;";
 
    $actions = ['-1' => Dropdown::EMPTY_VALUE] + $actions;

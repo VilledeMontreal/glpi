@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -154,5 +154,38 @@ class Consumable extends \DbTestCase {
                ]
             )
          )->isEqualTo(0);
+   }
+
+   function testInfocomInheritance() {
+      $consumable = new \Consumable();
+
+      $consumable_item = new \ConsumableItem();
+      $cu_id = (int) $consumable_item->add([
+         'name' => 'Test consumable item'
+      ]);
+      $this->integer($cu_id)->isGreaterThan(0);
+
+      $infocom = new \Infocom();
+      $infocom_id = (int) $infocom->add([
+         'itemtype'  => \ConsumableItem::getType(),
+         'items_id'  => $cu_id,
+         'buy_date'  => '2020-10-21',
+         'value'     => '500'
+      ]);
+      $this->integer($infocom_id)->isGreaterThan(0);
+
+      $consumable_id = $consumable->add([
+         'consumableitems_id' => $cu_id
+      ]);
+      $this->integer($consumable_id)->isGreaterThan(0);
+
+      $infocom2 = new \Infocom();
+      $infocom2_id = (int) $infocom2->getFromDBByCrit([
+         'itemtype'  => \Consumable::getType(),
+         'items_id'  => $consumable_id
+      ]);
+      $this->integer($infocom2_id)->isGreaterThan(0);
+      $this->string($infocom2->fields['buy_date'])->isEqualTo($infocom->fields['buy_date']);
+      $this->string($infocom2->fields['value'])->isEqualTo($infocom->fields['value']);
    }
 }

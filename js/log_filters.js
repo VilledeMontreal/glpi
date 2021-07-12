@@ -1,7 +1,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -28,6 +28,9 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
+
+/* global reloadTab */
+
 $(function() {
    var bindShowFiltersBtn = function () {
       $('.show_log_filters').on('click', showFilters);
@@ -35,14 +38,13 @@ $(function() {
 
    var showFilters = function (event) {
       event.preventDefault();
-      /* global reloadTab */
       reloadTab('filters[active]=1');
    };
 
    var bindFilterChange = function () {
       // Workaround to prevent opening of dropdown when removing item using the "x" button.
       // Without this workaround, orphan dropdowns remains in page when reloading tab.
-      $('.log_history_filter_row .select2-hidden-accessible').on('select2:unselecting', function(ev) {
+      $(document).on('select2:unselecting', '.log_history_filter_row .select2-hidden-accessible', function(ev) {
          if (ev.params.args.originalEvent) {
             ev.params.args.originalEvent.stopPropagation();
          }
@@ -56,7 +58,6 @@ $(function() {
       // Prevent dropdown to remain in page after tab has been reload.
       $('.log_history_filter_row .select2-hidden-accessible').select2('close');
 
-      /* global reloadTab */
       reloadTab($('[name^="filters\\["]').serialize());
    };
 

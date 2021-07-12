@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,6 +30,23 @@
  * ---------------------------------------------------------------------
  */
 
-define('GLPI_CONFIG_DIR', __DIR__);
+define('GLPI_CONFIG_DIR', __DIR__ . '/config');
+define('GLPI_PICTURE_DIR', __DIR__ . '/files/_pictures');
+
+define(
+   'PLUGINS_DIRECTORIES',
+   [
+      __DIR__ . '/fixtures/plugins',
+   ]
+);
+
+// Avoid warnings because of missing globals
+$DEBUG_SQL = [
+    'queries' => [],
+    'errors'  => [],
+    'times'   => [],
+];
+
+ini_set("error_log", "tests/web/error.log");
 
 return false;

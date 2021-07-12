@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,11 +38,20 @@ if (!defined('GLPI_ROOT')) {
  * PDU Class
 **/
 class PDU extends CommonDBTM {
-   use DCBreadcrumb;
+   use Glpi\Features\DCBreadcrumb;
+   use Glpi\Features\Clonable;
 
    // From CommonDBTM
    public $dohistory                   = true;
    static $rightname                   = 'datacenter';
+
+   public function getCloneRelations() :array {
+      return [
+         Pdu_Plug::class,
+         Item_Devices::class,
+         NetworkPort::class
+      ];
+   }
 
    static function getTypeName($nb = 0) {
       return _n('PDU', 'PDUs', $nb);
@@ -51,6 +60,7 @@ class PDU extends CommonDBTM {
    function defineTabs($options = []) {
       $ong = [];
       $this->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('Pdu_Plug', $ong, $options)
          ->addStandardTab('Item_Devices', $ong, $options)
          ->addStandardTab('NetworkPort', $ong, $options)
@@ -105,7 +115,7 @@ class PDU extends CommonDBTM {
       $this->showDcBreadcrumb();
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_locations_id$rand'>".__('Location')."</label></td>";
+      echo "<td><label for='dropdown_locations_id$rand'>".Location::getTypeName(1)."</label></td>";
       echo "<td>";
       Location::dropdown([
          'value'  => $this->fields["locations_id"],
@@ -113,7 +123,7 @@ class PDU extends CommonDBTM {
          'rand'   => $rand
       ]);
       echo "</td>";
-      echo "<td><label for='dropdown_pdutypes_id$rand'>".__('Type')."</label></td>";
+      echo "<td><label for='dropdown_pdutypes_id$rand'>"._n('Type', 'Types', 1)."</label></td>";
       echo "<td>";
       PDUType::dropdown([
          'value'  => $this->fields["pdutypes_id"],
@@ -132,7 +142,7 @@ class PDU extends CommonDBTM {
          'rand'   => $rand
       ]);
       echo "</td>";
-      echo "<td><label for='dropdown_manufacturers_id$rand'>".__('Manufacturer')."</label></td>";
+      echo "<td><label for='dropdown_manufacturers_id$rand'>".Manufacturer::getTypeName(1)."</label></td>";
       echo "<td>";
       Manufacturer::dropdown([
          'value' => $this->fields["manufacturers_id"],
@@ -152,7 +162,7 @@ class PDU extends CommonDBTM {
       ]);
 
       echo "</td>";
-      echo "<td><label for='dropdown_pdumodels_id$rand'>".__('Model')."</label></td>";
+      echo "<td><label for='dropdown_pdumodels_id$rand'>"._n('Model', 'Models', 1)."</label></td>";
       echo "<td>";
       PDUModel::dropdown([
          'value'  => $this->fields["pdumodels_id"],
@@ -196,23 +206,7 @@ class PDU extends CommonDBTM {
    }
 
    function rawSearchOptions() {
-      global $CFG_GLPI;
-
-      $tab = [];
-
-      $tab[] = [
-         'id'                 => 'common',
-         'name'               => __('Characteristics')
-      ];
-
-      $tab[] = [
-         'id'                 => '1',
-         'table'              => $this->getTable(),
-         'field'              => 'name',
-         'name'               => __('Name'),
-         'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
-      ];
+      $tab = parent::rawSearchOptions();
 
       $tab[] = [
          'id'                 => '2',
@@ -227,7 +221,7 @@ class PDU extends CommonDBTM {
          'id'                 => '4',
          'table'              => 'glpi_pdutypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -236,7 +230,8 @@ class PDU extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'serial',
          'name'               => __('Serial number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -244,7 +239,8 @@ class PDU extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'otherserial',
          'name'               => __('Inventory number'),
-         'datatype'           => 'string'
+         'datatype'           => 'string',
+         'autocomplete'       => true,
       ];
 
       $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
@@ -262,7 +258,7 @@ class PDU extends CommonDBTM {
          'id'                 => '23',
          'table'              => 'glpi_manufacturers',
          'field'              => 'name',
-         'name'               => __('Manufacturer'),
+         'name'               => Manufacturer::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -289,7 +285,7 @@ class PDU extends CommonDBTM {
          'id'                 => '40',
          'table'              => 'glpi_pdumodels',
          'field'              => 'name',
-         'name'               => __('Model'),
+         'name'               => _n('Model', 'Models', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -301,6 +297,18 @@ class PDU extends CommonDBTM {
          'name'               => __('Group in charge of the hardware'),
          'condition'          => ['is_assign' => 1],
          'datatype'           => 'dropdown'
+      ];
+
+      $tab[] = [
+         'id'                 => '61',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -316,7 +324,7 @@ class PDU extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -333,5 +341,19 @@ class PDU extends CommonDBTM {
             PDU_Rack::class,
          ]
       );
+   }
+
+
+   static function getIcon() {
+      return "fas fa-plug";
+   }
+
+   function prepareInputForAdd($input) {
+      if (isset($input["id"]) && ($input["id"] > 0)) {
+         $input["_oldID"] = $input["id"];
+      }
+      unset($input['id']);
+      unset($input['withtemplate']);
+      return $input;
    }
 }

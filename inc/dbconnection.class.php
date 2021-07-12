@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -53,10 +53,10 @@ class DBConnection extends CommonDBTM {
     *
     * @since 9.1
     *
-    * @param $dbhost
-    * @param $user
-    * @param $password
-    * @param $DBname
+    * @param string $host      The DB host
+    * @param string $user      The DB user
+    * @param string $password  The DB password
+    * @param string $DBname    The name of the DB
     *
     * @return boolean
     *
@@ -77,10 +77,10 @@ class DBConnection extends CommonDBTM {
    /**
     * Create slave DB configuration file
     *
-    * @param host       the slave DB host(s)
-    * @param user       the slave DB user
-    * @param password   the slave DB password
-    * @param DBname     the name of the slave DB
+    * @param string $host      The slave DB host(s)
+    * @param string $user      The slave DB user
+    * @param string $password  The slave DB password
+    * @param string $DBname    The name of the slave DB
     *
     * @return boolean for success
    **/
@@ -126,7 +126,7 @@ class DBConnection extends CommonDBTM {
    /**
     * Read slave DB configuration file
     *
-    * @param $choice integer, host number (default NULL)
+    * @param integer $choice  Host number (default NULL)
     *
     * @return DBmysql object
    **/
@@ -317,7 +317,7 @@ class DBConnection extends CommonDBTM {
    /**
     * Get delay between slave and master
     *
-    * @param $choice integer, host number (default NULL)
+    * @param integer $choice  Host number (default NULL)
     *
     * @return integer
    **/
@@ -332,8 +332,10 @@ class DBConnection extends CommonDBTM {
    /**
     *  Get history max date of a GLPI DB
     *
-    * @param $DBconnection DB conneciton used
-   **/
+    * @param DBMysql $DBconnection DB connection used
+    *
+    * @return int|mixed|null
+    */
    static function getHistoryMaxDate($DBconnection) {
 
       if ($DBconnection->connected) {
@@ -351,18 +353,27 @@ class DBConnection extends CommonDBTM {
     *  Display a common mysql connection error
    **/
    static function displayMySQLError() {
+      global $DB;
+
+      $error = $DB instanceof DBmysql ? $DB->error : 1;
+      switch ($error) {
+         case 2:
+            $en_msg = "Use of mysqlnd driver is required for exchanges with the MySQL server.";
+            $fr_msg = "L'utilisation du driver mysqlnd est requise pour les échanges avec le serveur MySQL.";
+            break;
+         case 1:
+         default:
+            $fr_msg = "Le serveur Mysql est inaccessible. Vérifiez votre configuration.";
+            $en_msg = "A link to the SQL server could not be established. Please check your configuration.";
+            break;
+      }
 
       if (!isCommandLine()) {
          Html::nullHeader("Mysql Error", '');
-         echo "<div class='center'><p class ='b'>
-                A link to the SQL server could not be established. Please check your configuration.
-                </p><p class='b'>
-                Le serveur Mysql est inaccessible. Vérifiez votre configuration</p>
-               </div>";
+         echo "<div class='center'><p class ='b'>$en_msg</p><p class='b'>$fr_msg</p></div>";
          Html::nullFooter();
       } else {
-         echo "A link to the SQL server could not be established. Please check your configuration.\n";
-         echo "Le serveur Mysql est inaccessible. Vérifiez votre configuration\n";
+         echo "$en_msg\n$fr_msg\n";
       }
 
       die(1);
@@ -382,11 +393,11 @@ class DBConnection extends CommonDBTM {
    /**
     * Cron process to check DB replicate state
     *
-    * @param Crontask $task to log and get param
+    * @param CronTask $task to log and get param
     *
     * @return integer
    **/
-   static function cronCheckDBreplicate(Crontask $task) {
+   static function cronCheckDBreplicate(CronTask $task) {
       global $DB;
 
       //Lauch cron only is :
@@ -482,7 +493,7 @@ class DBConnection extends CommonDBTM {
    /**
     * Enable or disable db replication check cron task
     *
-    * @param enable of disable cron task (true by default)
+    * @param boolean $enable Enable or disable cron task (true by default)
    **/
    static function changeCronTaskStatus($enable = true) {
 

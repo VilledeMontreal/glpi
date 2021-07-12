@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -99,7 +99,7 @@ class Item_OperatingSystem extends DbTestCase {
       )
          ->isInstanceOf('GlpitestSQLError')
          ->message
-            ->matches("#Duplicate entry '.+' for key 'unicity'#");
+            ->matches("#Duplicate entry '.+' for key '(".$ios->getTable()."\.)?unicity'#");
 
       $this->integer(
          (int)\Item_OperatingSystem::countForItem($computer)
@@ -225,11 +225,11 @@ class Item_OperatingSystem extends DbTestCase {
       $this->boolean($ios->getFromDB($ios->getID()))->isTrue();
 
       $this->array($ios->fields)
-         ->string['operatingsystems_id']->isIdenticalTo((string)$os->getID())
+         ->integer['operatingsystems_id']->isIdenticalTo($os->getID())
          ->string['itemtype']->isIdenticalTo('Computer')
-         ->string['items_id']->isIdenticalTo((string)$computer->getID())
-         ->string['entities_id']->isIdenticalTo($eid)
-         ->string['is_recursive']->isIdenticalTo('0');
+         ->integer['items_id']->isIdenticalTo($computer->getID())
+         ->integer['entities_id']->isIdenticalTo($eid)
+         ->integer['is_recursive']->isIdenticalTo(0);
 
       $this->boolean($ios->can($ios->getID(), READ))->isTrue();
 
@@ -250,11 +250,11 @@ class Item_OperatingSystem extends DbTestCase {
       )->isTrue();
       $this->boolean($ios->getFromDB($ios->getID()))->isTrue();
       $this->array($ios->fields)
-         ->string['operatingsystems_id']->isIdenticalTo((string)$os->getID())
+         ->integer['operatingsystems_id']->isIdenticalTo($os->getID())
          ->string['itemtype']->isIdenticalTo('Computer')
-         ->string['items_id']->isIdenticalTo((string)$computer->getID())
-         ->string['entities_id']->isIdenticalTo($eid)
-         ->string['is_recursive']->isIdenticalTo('1');
+         ->integer['items_id']->isIdenticalTo($computer->getID())
+         ->integer['entities_id']->isIdenticalTo($eid)
+         ->integer['is_recursive']->isIdenticalTo(1);
 
       //not recursive
       $this->setEntity('Root Entity', true);

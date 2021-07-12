@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -68,12 +68,12 @@ class Document extends DbTestCase {
    /**
     * @dataProvider canApplyOnProvider
     */
-   public function testCanApplyOn($item, $expected) {
+   public function testCanApplyOn($item, $can) {
       $this
          ->given($this->newTestedInstance)
             ->then
                ->boolean($this->testedInstance->canApplyOn($item))
-               ->isIdenticalTo($expected);
+               ->isIdenticalTo($can);
    }
 
    public function testGetItemtypesThatCanHave() {
@@ -319,6 +319,14 @@ class Document extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
+      $this->integer(
+         (int)$document_item->add([
+            'documents_id' => $inlinedDocument->getID(),
+            'items_id'     => $glpiReminder->getID(),
+            'itemtype'     => \Reminder::class,
+         ])
+      )->isGreaterThan(0);
+
       $this->boolean($basicDocument->canViewFile())->isFalse();
       $this->boolean($inlinedDocument->canViewFile())->isFalse();
 
@@ -336,6 +344,14 @@ class Document extends DbTestCase {
       $this->integer(
          (int)$document_item->add([
             'documents_id' => $basicDocument->getID(),
+            'items_id'     => $myReminder->getID(),
+            'itemtype'     => \Reminder::class,
+         ])
+      )->isGreaterThan(0);
+
+      $this->integer(
+         (int)$document_item->add([
+            'documents_id' => $inlinedDocument->getID(),
             'items_id'     => $myReminder->getID(),
             'itemtype'     => \Reminder::class,
          ])
@@ -385,6 +401,16 @@ class Document extends DbTestCase {
             'documents_id' => $basicDocument->getID(),
             'items_id'     => $kbItem->getID(),
             'itemtype'     => \KnowbaseItem::class,
+            'users_id'     => getItemByTypeName('User', 'normal', true),
+         ])
+      )->isGreaterThan(0);
+
+      $this->integer(
+         (int)$document_item->add([
+            'documents_id' => $inlinedDocument->getID(),
+            'items_id'     => $kbItem->getID(),
+            'itemtype'     => \KnowbaseItem::class,
+            'users_id'     => getItemByTypeName('User', 'normal', true),
          ])
       )->isGreaterThan(0);
 
@@ -512,6 +538,14 @@ class Document extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
+      $this->integer(
+         (int)$document_item->add([
+            'documents_id' => $inlinedDocument->getID(),
+            'items_id'     => $item->getID(),
+            'itemtype'     => $itemtype,
+         ])
+      )->isGreaterThan(0);
+
       // post-only cannot see documents if not able to view ITIL (ITIL content)
       $this->login('post-only', 'postonly');
       $_SESSION["glpiactiveprofile"][$item::$rightname] = READ; // force READ write for tested ITIL type
@@ -619,6 +653,15 @@ class Document extends DbTestCase {
          ])
       )->isGreaterThan(0);
 
+      $document_item = new \Document_Item();
+      $this->integer(
+         (int)$document_item->add([
+            'documents_id' => $inlinedDocument->getID(),
+            'items_id'     => $itil->getID(),
+            'itemtype'     => $itil_itemtype,
+         ])
+      )->isGreaterThan(0);
+
       // post-only cannot see documents if not able to view ITIL
       $this->login('post-only', 'postonly');
       $_SESSION["glpiactiveprofile"][$itil::$rightname] = READ; // force READ write for tested ITIL type
@@ -638,5 +681,50 @@ class Document extends DbTestCase {
 
       $this->boolean($inlinedDocument->canViewFile())->isFalse(); // False without params
       $this->boolean($inlinedDocument->canViewFile([$fkey => $itil->getID()]))->isTrue();
+   }
+
+   public function testCronCleanorphans () {
+
+      $this->login(); // must be logged as Document_Item uses Session::getLoginUserID()
+
+      $doc = new \Document();
+
+      $did1 = (int)$doc->add([
+         'name'   => 'test doc'
+      ]);
+      $this->integer($did1)->isGreaterThan(0);
+
+      $did2 = (int)$doc->add([
+         'name'   => 'test doc'
+      ]);
+      $this->integer($did2)->isGreaterThan(0);
+
+      $did3 = (int)$doc->add([
+         'name'   => 'test doc'
+      ]);
+      $this->integer($did3)->isGreaterThan(0);
+
+      // create a ticket and link one document
+      $ticket = new \Ticket;
+      $tickets_id_1 = $ticket->add([
+         'name'            => "test 1",
+         'content'         => "test 1",
+         'entities_id'     => 0,
+         '_documents_id'   => [$did3]
+      ]);
+      $this->integer((int)$tickets_id_1)->isGreaterThan(0);
+      $this->boolean($ticket->getFromDB($tickets_id_1))->isTrue();
+
+      $docitem = new \Document_Item();
+      $this->boolean($docitem->getFromDBByCrit(['itemtype' => 'Ticket', 'items_id' => $tickets_id_1]))->isTrue();
+
+      // launch Cron for closing tickets
+      $mode = - \CronTask::MODE_EXTERNAL; // force
+      \CronTask::launch($mode, 5, 'cleanorphans');
+
+      // check documents presence
+      $this->boolean($doc->getFromDB($did1))->isFalse();
+      $this->boolean($doc->getFromDB($did2))->isFalse();
+      $this->boolean($doc->getFromDB($did3))->isTrue();
    }
 }

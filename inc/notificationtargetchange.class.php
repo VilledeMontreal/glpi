@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -64,8 +64,6 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
 
 
    function getDataForObject(CommonDBTM $item, array $options, $simple = false) {
-      global $CFG_GLPI;
-
       // Common ITIL data
       $data = parent::getDataForObject($item, $options, $simple);
 
@@ -215,7 +213,7 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
 
             $tmp['##validation.answer.title##']
                                  //TRANS: %s is the user name
-                     = sprintf(__('An answer to an an approval request was produced by %s'),
+                     = sprintf(__('An answer to an approval request was produced by %s'),
                                   Html::clean(getUserName($validation['users_id_validate'])));
 
             $tmp['##validation.author##']
@@ -265,15 +263,15 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
                     // 'problem.impacts'           => __('Impacts'),
                     // 'problem.causes'            => __('Causes'),
                     // 'problem.symptoms'          => __('Symptoms'),
-                    'item.name'                 => __('Associated item'),
+                    'item.name'                 => _n('Associated item', 'Associated items', 1),
                     'item.serial'               => __('Serial number'),
                     'item.otherserial'          => __('Inventory number'),
-                    'item.location'             => __('Location'),
-                    'item.model'                => __('Model'),
+                    'item.location'             => Location::getTypeName(1),
+                    'item.model'                => _n('Model', 'Models', 1),
                     'item.contact'              => __('Alternate username'),
                     'item.contactnumber'        => __('Alternate username number'),
-                    'item.user'                 => __('User'),
-                    'item.group'                => __('Group'),
+                    'item.user'                 => User::getTypeName(1),
+                    'item.group'                => Group::getTypeName(1),
                     'change.globalvalidation'   => __('Global approval status'),];
 
       foreach ($tags as $tag => $label) {
@@ -284,16 +282,16 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
       }
 
       //Events specific for validation
-      $tags = ['validation.author'            => __('Requester'),
+      $tags = ['validation.author'            => _n('Requester', 'Requesters', 1),
                     'validation.status'            => __('Status of the approval request'),
                     'validation.submissiondate'    => sprintf(__('%1$s: %2$s'), __('Request'),
-                                                              __('Date')),
+                                                              _n('Date', 'Dates', 1)),
                     'validation.commentsubmission' => sprintf(__('%1$s: %2$s'), __('Request'),
                                                               __('Comments')),
-                    'validation.validationdate'    => sprintf(__('%1$s: %2$s'), __('Validation'),
-                                                             __('Date')),
+                    'validation.validationdate'    => sprintf(__('%1$s: %2$s'), _n('Validation', 'Validations', 1),
+                                                             _n('Date', 'Dates', 1)),
                     'validation.validator'         => __('Decision-maker'),
-                    'validation.commentvalidation' => sprintf(__('%1$s: %2$s'), __('Validation'),
+                    'validation.commentvalidation' => sprintf(__('%1$s: %2$s'), _n('Validation', 'Validations', 1),
                                                              __('Comments'))
       ];
 
@@ -323,10 +321,10 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
 
       //Foreach global tags
       $tags = ['tickets'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
-                    'problems'    => _n('Problem', 'Problems', Session::getPluralNumber()),
+                    'problems'    => Problem::getTypeName(Session::getPluralNumber()),
                     'items'       => _n('Item', 'Items', Session::getPluralNumber()),
                     'validations' => _n('Validation', 'Validations', Session::getPluralNumber()),
-                    'documents'   => _n('Document', 'Documents', Session::getPluralNumber())];
+                    'documents'   => Document::getTypeName(Session::getPluralNumber())];
 
       foreach ($tags as $tag => $label) {
          $this->addTagToList(['tag'     => $tag,
@@ -337,7 +335,7 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
 
       //Tags with just lang
       $tags = ['change.tickets'   => _n('Ticket', 'Tickets', Session::getPluralNumber()),
-                    'change.problems'  => _n('Problem', 'Problems', Session::getPluralNumber()),
+                    'change.problems'  => Problem::getTypeName(Session::getPluralNumber()),
                     'items'            => _n('Item', 'Items', Session::getPluralNumber())];
 
       foreach ($tags as $tag => $label) {
@@ -348,16 +346,16 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
       }
 
       //Tags without lang
-      $tags = ['ticket.id'       => sprintf(__('%1$s: %2$s'), __('Ticket'), __('ID')),
-                    'ticket.date'     => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Date')),
-                    'ticket.url'      => sprintf(__('%1$s: %2$s'), __('Ticket'), __('URL')),
-                    'ticket.title'    => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Title')),
-                    'ticket.content'  => sprintf(__('%1$s: %2$s'), __('Ticket'), __('Description')),
-                    'problem.id'      => sprintf(__('%1$s: %2$s'), __('Problem'), __('ID')),
-                    'problem.date'    => sprintf(__('%1$s: %2$s'), __('Problem'), __('Date')),
-                    'problem.url'     => sprintf(__('%1$s: %2$s'), __('Problem'), __('URL')),
-                    'problem.title'   => sprintf(__('%1$s: %2$s'), __('Problem'), __('Title')),
-                    'problem.content' => sprintf(__('%1$s: %2$s'), __('Problem'), __('Description')),
+      $tags = ['ticket.id'       => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('ID')),
+                    'ticket.date'     => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), _n('Date', 'Dates', 1)),
+                    'ticket.url'      => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('URL')),
+                    'ticket.title'    => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('Title')),
+                    'ticket.content'  => sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('Description')),
+                    'problem.id'      => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('ID')),
+                    'problem.date'    => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), _n('Date', 'Dates', 1)),
+                    'problem.url'     => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('URL')),
+                    'problem.title'   => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('Title')),
+                    'problem.content' => sprintf(__('%1$s: %2$s'), Problem::getTypeName(1), __('Description')),
                     ];
 
       foreach ($tags as $tag => $label) {

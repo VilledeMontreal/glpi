@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -98,6 +98,7 @@ class Notepad extends CommonDBChild {
    /**
     * Duplicate all notepads from a item template to his clone
     *
+    * @deprecated 9.5
     * @since 9.2
     *
     * @param string $itemtype      itemtype of the item
@@ -107,9 +108,16 @@ class Notepad extends CommonDBChild {
    static function cloneItem ($itemtype, $oldid, $newid) {
       global $DB;
 
-      foreach ($DB->request('glpi_notepads',
-                            ['WHERE'  => "`items_id` = '$oldid'
-                                          AND `itemtype` = '$itemtype'"]) as $data) {
+      Toolbox::deprecated('Use clone');
+      $iterator = $DB->request([
+         'FROM'   => self::getTable(),
+         'WHERE'  => [
+            'items_id'  => $oldid,
+            'itemtype'  => $itemtype
+         ]
+      ]);
+
+      while ($data = $iterator->next()) {
          $cd               = new self();
          unset($data['id']);
          $data['items_id'] = $newid;
@@ -118,9 +126,6 @@ class Notepad extends CommonDBChild {
       }
    }
 
-   /**
-    * @see CommonGLPI::getTabNameForItem()
-   **/
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
 
       if (Session::haveRight($item::$rightname, READNOTE)) {
@@ -164,14 +169,28 @@ class Notepad extends CommonDBChild {
       global $DB;
 
       $data = [];
-      $query = "SELECT `glpi_notepads`.*, `glpi_users`.`picture`
-                FROM `glpi_notepads`
-                LEFT JOIN `glpi_users` ON (`glpi_notepads`.`users_id_lastupdater` = `glpi_users`.`id`)
-                WHERE `glpi_notepads`.`itemtype` = '".$item->getType()."'
-                     AND `glpi_notepads`.`items_id` = '".$item->getID()."'
-                ORDER BY `date_mod` DESC";
+      $iterator = $DB->request([
+         'SELECT'    => [
+            'glpi_notepads.*',
+            'glpi_users.picture'
+         ],
+         'FROM'      => self::getTable(),
+         'LEFT JOIN' => [
+            'glpi_users'   => [
+               'ON' => [
+                  self::getTable()  => 'users_id_lastupdater',
+                  'glpi_users'      => 'id'
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            'itemtype'  => $item->getType(),
+            'items_id'  => $item->getID()
+         ],
+         'ORDERBY'   => 'date_mod DESC'
+      ]);
 
-      foreach ($DB->request($query) as $note) {
+      while ($note = $iterator->next()) {
          $data[] = $note;
       }
       return $data;
@@ -274,8 +293,6 @@ class Notepad extends CommonDBChild {
     * @param $withtemplate integer  template or basic item (default 0)
    **/
    static function showForItem(CommonDBTM $item, $withtemplate = 0) {
-      global $CFG_GLPI;
-
       if (!Session::haveRight($item::$rightname, READNOTE)) {
          return false;
       }
@@ -299,9 +316,7 @@ class Notepad extends CommonDBChild {
          echo Html::hidden('items_id', ['value' => $item->getID()]);
 
          echo "<div class='boxnotecontent'>";
-         echo "<div class='floatleft'>";
          echo "<textarea name='content' rows=5 cols=100></textarea>";
-         echo "</div>";
          echo "</div>"; // box notecontent
 
          echo "<div class='boxnoteright'><br>";

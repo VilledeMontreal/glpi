@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -30,6 +30,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Cache\SimpleCache;
 use ScssPhp\ScssPhp\Compiler;
 
 if (!defined('GLPI_ROOT')) {
@@ -46,15 +47,24 @@ class Html {
    /**
     * Clean display value deleting html tags
     *
-    * @param $value string: string value
-    * @param $striptags bool: strip all html tags
-    * @param $keep_bad int:
+    * @param string  $value      string value
+    * @param boolean $striptags  strip all html tags
+    * @param integer $keep_bad
     *          1 : neutralize tag anb content,
     *          2 : remove tag and neutralize content
-    * @return clean value
+    * @return string
    **/
    static function clean($value, $striptags = true, $keep_bad = 2) {
       $value = Html::entity_decode_deep($value);
+
+      // Change <email@domain> to email@domain so it is not removed by htmLawed
+      // Search for strings that is an email surrounded by `<` and `>` but that cannot be an HTML tag:
+      // - absence of quotes indicate that values is not part of an HTML attribute,
+      // - absence of > ensure that ending `>` has not been reached.
+      $regex = "/(<[^\"'>]+?@[^>\"']+?>)/";
+      $value = preg_replace_callback($regex, function($matches) {
+         return substr($matches[1], 1, (strlen($matches[1]) - 2));
+      }, $value);
 
       // Clean MS office tags
       $value = str_replace(["<![if !supportLists]>", "<![endif]>"], '', $value);
@@ -81,19 +91,20 @@ class Html {
       // Neutralize not well formatted html tags
       $value = preg_replace("/(<)([^>]*<)/", "&lt;$2", $value);
 
-      include_once(GLPI_HTMLAWED);
-      $value = htmLawed(
-         $value,
-         [
-            'elements'         => ($striptags) ? 'none' : '',
-            'deny_attribute'   => 'on*',
-            'keep_bad'         => $keep_bad, // 1: neutralize tag and content, 2 : remove tag and neutralize content
-            'comment'          => 1, // 1: remove
-            'cdata'            => 1, // 1: remove
-            'direct_list_nest' => 1, // 1: Allow usage of ul/ol tags nested in other ul/ol tags
-            'schemes'          => 'aim, app, feed, file, ftp, gopher, http, https, !javascript, irc, mailto, news, nntp, sftp, ssh, tel, telnet'
-         ]
-      );
+      $config = Toolbox::getHtmLawedSafeConfig();
+      $config['keep_bad'] = $keep_bad; // 1: neutralize tag and content, 2 : remove tag and neutralize content
+      if ($striptags) {
+         $config['elements'] = 'none';
+      }
+
+      $value = htmLawed($value, $config);
+
+      // Special case : remove the 'denied:' for base64 img in case the base64 have characters
+      // combinaison introduce false positive
+      foreach (['png', 'gif', 'jpg', 'jpeg'] as $imgtype) {
+         $value = str_replace('src="denied:data:image/'.$imgtype.';base64,',
+               'src="data:image/'.$imgtype.';base64,', $value);
+      }
 
       $value = str_replace(["\r\n", "\r"], "\n", $value);
       $value = preg_replace("/(\n[ ]*){2,}/", "\n\n", $value, -1);
@@ -103,11 +114,11 @@ class Html {
 
 
    /**
-    * Recursivly execute html_entity_decode on an Array
+    * Recursivly execute html_entity_decode on an array
     *
-    * @param $value string or array
+    * @param string|array $value
     *
-    * @return array of value (same struct as input)
+    * @return string|array
    **/
    static function entity_decode_deep($value) {
 
@@ -117,11 +128,11 @@ class Html {
 
 
    /**
-    * Recursivly execute htmlentities on an Array
+    * Recursivly execute htmlentities on an array
     *
-    * @param $value string or array
+    * @param string|array $value
     *
-    * @return array of value (same struct as input)
+    * @return string|array
    **/
    static function entities_deep($value) {
 
@@ -133,10 +144,12 @@ class Html {
    /**
     * Convert a date YY-MM-DD to DD-MM-YY for calendar
     *
-    * @param $time       date  date to convert
-    * @param $format           (default null)
+    * @param string       $time    Date to convert
+    * @param integer|null $format  Date format
     *
-    * @return $time or $date
+    * @return null|string
+    *
+    * @see Toolbox::getDateFormats()
    **/
    static function convDate($time, $format = null) {
 
@@ -182,10 +195,10 @@ class Html {
    /**
     * Convert a date YY-MM-DD HH:MM to DD-MM-YY HH:MM for display in a html table
     *
-    * @param $time        datetime  datetime to convert
-    *  @param $format               (default null)
+    * @param string       $time    Datetime to convert
+    * @param integer|null $format  Datetime format
     *
-    * @return $time or $date
+    * @return null|string
    **/
    static function convDateTime($time, $format = null) {
 
@@ -200,9 +213,9 @@ class Html {
    /**
     * Clean string for input text field
     *
-    * @param $string string: input text
+    * @param string $string
     *
-    * @return clean string
+    * @return string
    **/
    static function cleanInputText($string) {
       return preg_replace( '/\'/', '&apos;', preg_replace('/\"/', '&quot;', $string));
@@ -212,9 +225,9 @@ class Html {
    /**
     * Clean all parameters of an URL. Get a clean URL
     *
-    * @param $url string URL
+    * @param string $url
     *
-    * @return clean URL
+    * @return string
    **/
    static function cleanParametersURL($url) {
 
@@ -224,11 +237,11 @@ class Html {
 
 
    /**
-    * Recursivly execute nl2br on an Array
+    * Recursivly execute nl2br on an array
     *
-    * @param $value string or array
+    * @param string|array $value
     *
-    * @return array of value (same struct as input)
+    * @return string|array
    **/
    static function nl2br_deep($value) {
 
@@ -240,10 +253,10 @@ class Html {
    /**
     *  Resume text for followup
     *
-    * @param $string   string   string to resume
-    * @param $length   integer  resume length (default 255)
+    * @param string  $string  string to resume
+    * @param integer $length  resume length (default 255)
     *
-    * @return cut string
+    * @return string
    **/
    static function resume_text($string, $length = 255) {
 
@@ -258,10 +271,10 @@ class Html {
    /**
     *  Resume a name for display
     *
-    * @param $string   string   string to resume
-    * @param $length   integer  resume length (default 255)
+    * @param string  $string  string to resume
+    * @param integer $length  resume length (default 255)
     *
-    * @return cut string
+    * @return string
     **/
    static function resume_name($string, $length = 255) {
 
@@ -276,9 +289,9 @@ class Html {
    /**
     * Clean post value for display in textarea
     *
-    * @param $value string: string value
+    * @param string $value
     *
-    * @return clean value
+    * @return string
    **/
    static function cleanPostForTextArea($value) {
 
@@ -302,12 +315,11 @@ class Html {
    /**
     * Convert a number to correct display
     *
-    * @param $number       float    Number to display
-    * @param $edit         boolean  display number for edition ? (id edit use . in all case)
-    *                               (false by default)
-    * @param $forcedecimal integer  Force decimal number (do not use default value) (default -1)
+    * @param float   $number        Number to display
+    * @param boolean $edit          display number for edition ? (id edit use . in all case)
+    * @param integer $forcedecimal  Force decimal number (do not use default value) (default -1)
     *
-    * @return formatted number
+    * @return string
    **/
    static function formatNumber($number, $edit = false, $forcedecimal = -1) {
       global $CFG_GLPI;
@@ -354,13 +366,15 @@ class Html {
    /**
     * Make a good string from the unix timestamp $sec
     *
-    * @param $time         integer  timestamp
-    * @param $display_sec  boolean  display seconds ? (true by default)
-    * @param $use_days     boolean  use days for display ? (true by default)
+    * @param int|float  $time         timestamp
+    * @param boolean    $display_sec  display seconds ?
+    * @param boolean    $use_days     use days for display ?
     *
     * @return string
    **/
    static function timestampToString($time, $display_sec = true, $use_days = true) {
+
+      $time = (float)$time;
 
       $sign = '';
       if ($time < 0) {
@@ -457,9 +471,9 @@ class Html {
    /**
     * Extract url from web link
     *
-    * @param $value string value
+    * @param string $value
     *
-    * @return clean value
+    * @return string
    **/
    static function weblink_extract($value) {
 
@@ -471,7 +485,7 @@ class Html {
    /**
     * Redirection to $_SERVER['HTTP_REFERER'] page
     *
-    * @return nothing
+    * @return void
    **/
    static function back() {
       self::redirect(self::getBackUrl());
@@ -484,7 +498,7 @@ class Html {
     * @param $dest string: Redirection destination
     * @param $http_response_code string: Forces the HTTP response code to the specified value
     *
-    * @return nothing
+    * @return void
    **/
    static function redirect($dest, $http_response_code = 302) {
 
@@ -516,21 +530,24 @@ class Html {
    /**
     * Redirection to Login page
     *
-    * @param $params       param to add to URL (default '')
+    * @param string $params  param to add to URL (default '')
     * @since 0.85
     *
-    * @return nothing
+    * @return void
    **/
    static function redirectToLogin($params = '') {
-      global $CFG_GLPI;
+      global $CFG_GLPI, $AJAX_INCLUDE;
 
       $dest     = $CFG_GLPI["root_doc"] . "/index.php";
-      $url_dest = preg_replace(
-         '/^' . preg_quote($CFG_GLPI["root_doc"], '/') . '/',
-         '',
-         $_SERVER['REQUEST_URI']
-      );
-      $dest    .= "?redirect=".rawurlencode($url_dest);
+
+      if (!isset($AJAX_INCLUDE)) {
+         $url_dest = preg_replace(
+            '/^' . preg_quote($CFG_GLPI["root_doc"], '/') . '/',
+            '',
+            $_SERVER['REQUEST_URI']
+         );
+         $dest .= "?redirect=" . rawurlencode($url_dest);
+      }
 
       if (!empty($params)) {
          $dest .= '&'.$params;
@@ -543,7 +560,7 @@ class Html {
    /**
     * Display common message for item not found
     *
-    * @return Nothing
+    * @return void
    **/
    static function displayNotFoundError() {
       global $CFG_GLPI, $HEADER_LOADED;
@@ -570,7 +587,7 @@ class Html {
    /**
     * Display common message for privileges errors
     *
-    * @return Nothing (die)
+    * @return void
    **/
    static function displayRightError() {
       self::displayErrorAndDie(__("You don't have permission to perform this action."));
@@ -605,7 +622,7 @@ class Html {
                   $class = 'warn_msg';
                   break;
                case INFO:
-                  $title = __s('Information');
+                  $title = _sn('Information', 'Information', 1);
                   $class = 'info_msg';
                   break;
             }
@@ -655,7 +672,7 @@ class Html {
                      if ($('#message_after_redirect_$msgtype').dialog('isOpen')
                          && !$(e.target).is('.ui-dialog, a')
                          && !$(e.target).closest('.ui-dialog').length) {
-                        $('#message_after_redirect_$msgtype').dialog('close');
+                        $('#message_after_redirect_$msgtype').remove();
                         // redo focus on initial element
                         e.target.focus();
                      }
@@ -683,6 +700,7 @@ class Html {
       displayAjaxMessageAfterRedirect = function() {
          // attach MESSAGE_AFTER_REDIRECT to body
          $('.message_after_redirect').remove();
+         $('[id^=\"message_after_redirect_\"]').remove();
          $.ajax({
             url:  '".$CFG_GLPI['root_doc']."/ajax/displayMessageAfterRedirect.php',
             success: function(html) {
@@ -696,12 +714,12 @@ class Html {
    /**
     * Common Title Function
     *
-    * @param $ref_pic_link    Path to the image to display (default '')
-    * @param $ref_pic_text    Alt text of the icon (default '')
-    * @param $ref_title       Title to display (default '')
-    * @param $ref_btts        Extra items to display array(link=>text...) (default '')
+    * @param string        $ref_pic_link    Path to the image to display (default '')
+    * @param string        $ref_pic_text    Alt text of the icon (default '')
+    * @param string        $ref_title       Title to display (default '')
+    * @param array|string  $ref_btts        Extra items to display array(link=>text...) (default '')
     *
-    * @return nothing
+    * @return void
    **/
    static function displayTitle($ref_pic_link = "", $ref_pic_text = "", $ref_title = "", $ref_btts = "") {
 
@@ -731,7 +749,9 @@ class Html {
    *
    * @since 0.83.1
    *
-   * @param $request SQL request
+   * @param string $request  SQL request
+   *
+   * @return string
    **/
    static function cleanSQLDisplay($request) {
 
@@ -758,8 +778,8 @@ class Html {
     * @return void
    **/
    static function displayDebugInfos($with_session = true, $ajax = false) {
-      global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST, $SQL_TOTAL_TIMER, $DEBUG_AUTOLOAD;
-      $GLPI_CACHE = Config::getCache('cache_db', 'core', false);
+      global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST, $DEBUG_AUTOLOAD;
+      $GLPI_CACHE = Config::getCache('cache_db');
 
       // Only for debug mode so not need to be translated
       if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) { // mode debug
@@ -768,7 +788,7 @@ class Html {
          if (!$ajax) {
             echo "<span class='fa-stack fa-lg' id='see_debug'>
                      <i class='fa fa-circle fa-stack-2x primary-fg-inverse'></i>
-                     <a href='#' class='fa fa-bug fa-stack-1x primary-fg' title='" . __s('Display GLPI debug informations')  . "'>
+                     <a href='#' class='fa fa-bug fa-stack-1x primary-fg' title='" . __s('Display GLPI debug information')  . "'>
                         <span class='sr-only'>See GLPI DEBUG</span>
                      </a>
             </span>";
@@ -786,7 +806,7 @@ class Html {
                echo "<li><a href='#debugsession$rand'>SESSION VARIABLE</a></li>";
             }
             echo "<li><a href='#debugserver$rand'>SERVER VARIABLE</a></li>";
-            if ($GLPI_CACHE instanceof Zend\Cache\Storage\IterableInterface) {
+            if ($GLPI_CACHE instanceof SimpleCache) {
                echo "<li><a href='#debugcache$rand'>CACHE VARIABLE</a></li>";
             }
          }
@@ -798,13 +818,15 @@ class Html {
             echo "took  ".array_sum($DEBUG_SQL['times'])."s</div>";
 
             echo "<table class='tab_cadre'><tr><th>N&#176; </th><th>Queries</th><th>Time</th>";
-            echo "<th>Errors</th></tr>";
+            echo "<th>Rows</th><th>Errors</th></tr>";
 
             foreach ($DEBUG_SQL['queries'] as $num => $query) {
                echo "<tr class='tab_bg_".(($num%2)+1)."'><td>$num</td><td>";
                echo self::cleanSQLDisplay($query);
                echo "</td><td>";
                echo $DEBUG_SQL['times'][$num];
+               echo "</td><td>";
+               echo $DEBUG_SQL['rows'][$num] ?? 0;
                echo "</td><td>";
                if (isset($DEBUG_SQL['errors'][$num])) {
                   echo $DEBUG_SQL['errors'][$num];
@@ -833,13 +855,10 @@ class Html {
             self::printCleanArray($_SERVER, 0, true);
             echo "</div>";
 
-            if ($GLPI_CACHE instanceof Zend\Cache\Storage\IterableInterface) {
+            if ($GLPI_CACHE instanceof SimpleCache) {
                echo "<div id='debugcache$rand'>";
-               $cache_keys = $GLPI_CACHE->getIterator();
-               $cache_contents = [];
-               foreach ($cache_keys as $cache_key) {
-                  $cache_contents[$cache_key] = $GLPI_CACHE->getItem($cache_key);
-               }
+               $cache_keys = $GLPI_CACHE->getAllKnownCacheKeys();
+               $cache_contents = $GLPI_CACHE->getMultiple($cache_keys);
                self::printCleanArray($cache_contents, 0, true);
                echo "</div>";
             }
@@ -920,10 +939,10 @@ class Html {
    /**
     * Simple Error message page
     *
-    * @param $message   string   displayed before dying
-    * @param $minimal            set to true do not display app menu (false by default)
+    * @param string  $message  displayed before dying
+    * @param boolean $minimal  set to true do not display app menu (false by default)
     *
-    * @return nothing as function kill script
+    * @return void
    **/
    static function displayErrorAndDie ($message, $minimal = false) {
       global $CFG_GLPI, $HEADER_LOADED;
@@ -954,7 +973,7 @@ class Html {
     * @param $additionalactions  string   additional actions to do on success confirmation
     *                                     (default '')
     *
-    * @return nothing
+    * @return string
    **/
    static function addConfirmationOnAction($string, $additionalactions = '') {
 
@@ -971,7 +990,7 @@ class Html {
     * @param $additionalactions  string   additional actions to do on success confirmation
     *                                     (default '')
     *
-    * @return confirmation script
+    * @return string confirmation script
    **/
    static function getConfirmationOnActionScript($string, $additionalactions = '') {
 
@@ -1017,7 +1036,7 @@ class Html {
     *                    - percent   current level
     *
     *
-    * @return nothing (display)
+    * @return void
     **/
    static function progressBar($id, array $options = []) {
 
@@ -1061,9 +1080,9 @@ class Html {
    /**
     * Create a Dynamic Progress Bar
     *
-    * @param $msg initial message (under the bar) (default '&nbsp;')
+    * @param string $msg  initial message (under the bar)
     *
-    * @return nothing
+    * @return void
     **/
    static function createProgressBar($msg = "&nbsp;") {
 
@@ -1078,9 +1097,9 @@ class Html {
    /**
     * Change the Message under the Progress Bar
     *
-    * @param $msg message under the bar (default '&nbsp;')
+    * @param string $msg message under the bar
     *
-    * @return nothing
+    * @return void
    **/
    static function changeProgressBarMessage($msg = "&nbsp;") {
 
@@ -1092,11 +1111,11 @@ class Html {
    /**
     * Change the Progress Bar Position
     *
-    * @param $crt   Current Value (less then $max)
-    * @param $tot   Maximum Value
-    * @param $msg   message inside the bar (default is %) (default '')
+    * @param float  $crt   Current Value (less then $tot)
+    * @param float  $tot   Maximum Value
+    * @param string $msg   message inside the bar (default is %)
     *
-    * @return nothing
+    * @return void
    **/
    static function changeProgressBarPosition($crt, $tot, $msg = "") {
 
@@ -1122,14 +1141,14 @@ class Html {
    /**
     * Display a simple progress bar
     *
-    * @param $width       Width    of the progress bar
-    * @param $percent     Percent  of the progress bar
-    * @param $options     array of possible options:
+    * @param integer $width       Width   of the progress bar
+    * @param float   $percent     Percent of the progress bar
+    * @param array   $options     possible options:
     *            - title : string title to display (default Progesssion)
     *            - simple : display a simple progress bar (no title / only percent)
     *            - forcepadding : boolean force str_pad to force refresh (default true)
     *
-    * @return nothing
+    * @return void
    **/
    static function displayProgressBar($width, $percent, $options = []) {
       global $CFG_GLPI;
@@ -1177,15 +1196,15 @@ class Html {
    /**
     * Include common HTML headers
     *
-    * @param string $title  title used for the page (default '')
-    * @param $sector    sector in which the page displayed is (default 'none')
-    * @param $item      item corresponding to the page displayed (default 'none')
-    * @param $option    option corresponding to the page displayed (default '')
+    * @param string $title   title used for the page (default '')
+    * @param string $sector  sector in which the page displayed is
+    * @param string $item    item corresponding to the page displayed
+    * @param string $option  option corresponding to the page displayed
     *
-    * @return nothing
+    * @return void
    **/
    static function includeHeader($title = '', $sector = 'none', $item = 'none', $option = '') {
-      global $CFG_GLPI, $PLUGIN_HOOKS;
+      global $CFG_GLPI, $DB, $PLUGIN_HOOKS;
 
       // complete title with id if exist
       if (isset($_GET['id']) && $_GET['id']) {
@@ -1212,6 +1231,9 @@ class Html {
       // auto desktop / mobile viewport
       echo "<meta name='viewport' content='width=device-width, initial-scale=1'>";
 
+      //detect theme
+      $theme = isset($_SESSION['glpipalette']) ? $_SESSION['glpipalette'] : 'auror';
+
       echo Html::css('public/lib/base.css');
       //JSTree JS part is loaded on demand... But from an ajax call to display entities. Need to have CSS loaded.
       echo Html::css('css/jstree-glpi.css');
@@ -1222,6 +1244,14 @@ class Html {
 
       echo Html::css('public/lib/leaflet.css');
       Html::requireJs('leaflet');
+
+      echo Html::css('public/lib/flatpickr.css');
+      if ($theme != "darker") {
+         echo Html::css('public/lib/flatpickr/themes/light.css');
+      } else {
+         echo Html::css('public/lib/flatpickr/themes/dark.css');
+      }
+      Html::requireJs('flatpickr');
 
       //on demand JS
       if ($sector != 'none' || $item != 'none' || $option != '') {
@@ -1238,6 +1268,10 @@ class Html {
             }
          }
 
+         if (in_array('planning', $jslibs)) {
+            Html::requireJs('planning');
+         }
+
          if (in_array('fullcalendar', $jslibs)) {
             echo Html::css('public/lib/fullcalendar.css',
                            ['media' => '']);
@@ -1249,19 +1283,36 @@ class Html {
             Html::requireJs('gantt');
          }
 
+         if (in_array('kanban', $jslibs)) {
+            Html::requireJs('kanban');
+         }
+
          if (in_array('rateit', $jslibs)) {
             echo Html::css('public/lib/jquery.rateit.css');
             Html::requireJs('rateit');
          }
 
-         if (in_array('colorpicker', $jslibs)) {
-            echo Html::css('public/lib/spectrum-colorpicker.css');
-            Html::requireJs('colorpicker');
+         if (in_array('dashboard', $jslibs)) {
+            echo Html::scss('css/dashboard');
+            Html::requireJs('dashboard');
+         }
+
+         if (in_array('marketplace', $jslibs)) {
+            echo Html::scss('css/marketplace');
+            Html::requireJs('marketplace');
+         }
+
+         if (in_array('rack', $jslibs)) {
+            Html::requireJs('rack');
          }
 
          if (in_array('gridstack', $jslibs)) {
             echo Html::css('public/lib/gridstack.css');
             Html::requireJs('gridstack');
+         }
+
+         if (in_array('sortable', $jslibs)) {
+            Html::requireJs('sortable');
          }
 
          if (in_array('tinymce', $jslibs)) {
@@ -1285,6 +1336,11 @@ class Html {
          if (in_array('codemirror', $jslibs)) {
             echo Html::css('public/lib/codemirror.css');
             Html::requireJs('codemirror');
+         }
+
+         if (in_array('photoswipe', $jslibs)) {
+            echo Html::css('public/lib/photoswipe.css');
+            Html::requireJs('photoswipe');
          }
       }
 
@@ -1313,7 +1369,6 @@ class Html {
       if (isset($_SESSION['glpihighcontrast_css']) && $_SESSION['glpihighcontrast_css']) {
          echo Html::scss('css/highcontrast');
       }
-      $theme = isset($_SESSION['glpipalette']) ? $_SESSION['glpipalette'] : 'auror';
       echo Html::scss('css/palettes/' . $theme);
 
       echo Html::css('css/print.css', ['media' => 'print']);
@@ -1324,45 +1379,82 @@ class Html {
       if (isset($PLUGIN_HOOKS['add_css']) && count($PLUGIN_HOOKS['add_css'])) {
 
          foreach ($PLUGIN_HOOKS["add_css"] as $plugin => $files) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
 
-            $version = Plugin::getInfo($plugin, 'version');
+            $plugin_root_dir = Plugin::getPhpDir($plugin, true);
+            $plugin_web_dir  = Plugin::getWebDir($plugin, false);
+            $version         = Plugin::getInfo($plugin, 'version');
 
             if (!is_array($files)) {
                $files = [$files];
             }
 
             foreach ($files as $file) {
-               $filename = GLPI_ROOT."/plugins/$plugin/$file";
+               $filename = "$plugin_root_dir/$file";
 
                if (!file_exists($filename)) {
                   continue;
                }
 
                if ('scss' === substr(strrchr($filename, '.'), 1)) {
-                  echo Html::scss("plugins/$plugin/$file", ['version' => $version]);
+                  echo Html::scss("$plugin_web_dir/$file", ['version' => $version]);
                } else {
-                  echo Html::css("plugins/$plugin/$file", ['version' => $version]);
+                  echo Html::css("$plugin_web_dir/$file", ['version' => $version]);
                }
             }
          }
       }
 
       // Custom CSS for active entity
-      $entity = new Entity();
-      if (isset($_SESSION['glpiactive_entity'])) {
-         // Apply active entity styles
-         $entity->getFromDB($_SESSION['glpiactive_entity']);
-      } else {
-         // Apply root entity styles
-         $entity->getFromDB('0');
+      if ($DB instanceof DBmysql && $DB->connected) {
+         $entity = new Entity();
+         if (isset($_SESSION['glpiactive_entity'])) {
+            // Apply active entity styles
+            $entity->getFromDB($_SESSION['glpiactive_entity']);
+         } else {
+            // Apply root entity styles
+            $entity->getFromDB('0');
+         }
+         echo $entity->getCustomCssTag();
       }
-      echo $entity->getCustomCssTag();
 
       // AJAX library
       echo Html::script('public/lib/base.js');
+
+      // Locales
+      $locales_domains = ['glpi' => GLPI_VERSION]; // base domain
+      $plugins = Plugin::getPlugins();
+      foreach ($plugins as $plugin) {
+         $locales_domains[$plugin] = Plugin::getInfo($plugin, 'version');
+      }
+      if (isset($_SESSION['glpilanguage'])) {
+         echo Html::scriptBlock(<<<JAVASCRIPT
+            $(function() {
+               i18n.setLocale('{$_SESSION['glpilanguage']}');
+            });
+JAVASCRIPT
+         );
+         foreach ($locales_domains as $locale_domain => $locale_version) {
+            $locales_url = $CFG_GLPI['root_doc'] . '/front/locale.php'
+               . '?domain=' . $locale_domain
+               . '&version=' . $locale_version
+               . ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ? '&debug' : '');
+            $locale_js = <<<JAVASCRIPT
+               $(function() {
+                  $.ajax({
+                     type: 'GET',
+                     url: '{$locales_url}',
+                     success: function(json) {
+                        i18n.loadJSON(json, '{$locale_domain}');
+                     }
+                  });
+               });
+JAVASCRIPT;
+            echo Html::scriptBlock($locale_js);
+         }
+      }
 
       // layout
       if (CommonGLPI::isLayoutWithMain()
@@ -1379,44 +1471,72 @@ class Html {
    /**
     * @since 0.90
     *
-    * @return string
+    * @return array
    **/
    static function getMenuInfos() {
+      global $CFG_GLPI;
 
-      $menu['assets']['title']       = __('Assets');
-      $menu['assets']['types']       = ['Computer', 'Monitor', 'Software',
-                                             'NetworkEquipment', 'Peripheral', 'Printer',
-                                             'CartridgeItem', 'ConsumableItem', 'Phone',
-                                             'Rack', 'Enclosure', 'PDU'];
+      $menu = [
+         'assets' => [
+            'title' => __('Assets'),
+            'types' => array_merge([
+               'Computer', 'Monitor', 'Software',
+               'NetworkEquipment', 'Peripheral', 'Printer',
+               'CartridgeItem', 'ConsumableItem', 'Phone',
+               'Rack', 'Enclosure', 'PDU', 'PassiveDCEquipment'
+            ], $CFG_GLPI['devices_in_menu']),
+            'default' => '/front/dashboard_assets.php'
+         ],
+         'helpdesk' => [
+            'title' => __('Assistance'),
+            'types' => [
+               'Ticket', 'Problem', 'Change',
+               'Planning', 'Stat', 'TicketRecurrent'
+            ],
+            'default' => '/front/dashboard_helpdesk.php'
+         ],
+         'management' => [
+            'title' => __('Management'),
+            'types' => [
+               'SoftwareLicense','Budget', 'Supplier', 'Contact', 'Contract',
+               'Document', 'Line', 'Certificate', 'Datacenter', 'Cluster', 'Domain',
+               'Appliance'
+            ]
+         ],
+         'tools' => [
+            'title' => __('Tools'),
+            'types' => [
+               'Project', 'Reminder', 'RSSFeed', 'KnowbaseItem',
+               'ReservationItem', 'Report', 'MigrationCleaner',
+               'SavedSearch', 'Impact'
+            ]
+         ],
+         'plugins' => [
+            'title' => _n('Plugin', 'Plugins', Session::getPluralNumber()),
+            'types' => []
+         ],
+         'admin' => [
+            'title' => __('Administration'),
+            'types' => [
+               'User', 'Group', 'Entity', 'Rule',
+               'Profile', 'QueuedNotification', 'Glpi\\Event'
+            ]
+         ],
+         'config' => [
+            'title' => __('Setup'),
+            'types' => [
+               'CommonDropdown', 'CommonDevice', 'Notification',
+               'SLM', 'Config', 'FieldUnicity', 'CronTask', 'Auth',
+               'MailCollector', 'Link', 'Plugin'
+            ]
+         ],
 
-      $menu['helpdesk']['title']     = __('Assistance');
-      $menu['helpdesk']['types']     = ['Ticket', 'Problem', 'Change',
-                                             'Planning', 'Stat', 'TicketRecurrent'];
-
-      $menu['management']['title']   = __('Management');
-      $menu['management']['types']   = ['SoftwareLicense','Budget', 'Supplier', 'Contact', 'Contract',
-                                        'Document', 'Line', 'Certificate', 'Datacenter', 'Cluster'];
-
-      $menu['tools']['title']        = __('Tools');
-      $menu['tools']['types']        = ['Project', 'Reminder', 'RSSFeed', 'KnowbaseItem',
-                                             'ReservationItem', 'Report', 'MigrationCleaner',
-                                             'SavedSearch'];
-
-      $menu['plugins']['title']      = _n('Plugin', 'Plugins', Session::getPluralNumber());
-      $menu['plugins']['types']      = [];
-
-      $menu['admin']['title']        = __('Administration');
-      $menu['admin']['types']        = ['User', 'Group', 'Entity', 'Rule',
-                                             'Profile', 'QueuedNotification', 'Backup', 'Glpi\\Event'];
-
-      $menu['config']['title']       = __('Setup');
-      $menu['config']['types']       = ['CommonDropdown', 'CommonDevice', 'Notification',
-                                        'SLM', 'Config', 'FieldUnicity', 'Crontask', 'Auth',
-                                        'MailCollector', 'Link', 'Plugin'];
-
-      // Special items
-      $menu['preference']['title']   = __('My settings');
-      $menu['preference']['default'] = '/front/preference.php';
+         // special items
+         'preference' => [
+            'title' => __('My settings'),
+            'default' => '/front/preference.php'
+         ],
+      ];
 
       return $menu;
    }
@@ -1444,7 +1564,7 @@ class Html {
          if (isset($PLUGIN_HOOKS["menu_toadd"]) && count($PLUGIN_HOOKS["menu_toadd"])) {
 
             foreach ($PLUGIN_HOOKS["menu_toadd"] as $plugin => $items) {
-               if (!Plugin::isPluginLoaded($plugin)) {
+               if (!Plugin::isPluginActive($plugin)) {
                   continue;
                }
                if (count($items)) {
@@ -1467,9 +1587,9 @@ class Html {
             $menu += array_splice($menu, array_search('config', $categories, true), 1);
          }
 
-         foreach ($menu as $category => $datas) {
-            if (isset($datas['types']) && count($datas['types'])) {
-               foreach ($datas['types'] as $type) {
+         foreach ($menu as $category => $entries) {
+            if (isset($entries['types']) && count($entries['types'])) {
+               foreach ($entries['types'] as $type) {
                   if ($data = $type::getMenuContent()) {
                      // Multi menu entries management
                      if (isset($data['is_multi_entries']) && $data['is_multi_entries']) {
@@ -1500,14 +1620,21 @@ class Html {
             }
          }
 
-         $allassets = ['Computer', 'Monitor', 'Peripheral', 'NetworkEquipment', 'Phone',
-                            'Printer'];
+         $allassets = [
+            'Computer',
+            'Monitor',
+            'Peripheral',
+            'NetworkEquipment',
+            'Phone',
+            'Printer'
+         ];
 
          foreach ($allassets as $type) {
             if (isset($menu['assets']['content'][strtolower($type)])) {
                $menu['assets']['content']['allassets']['title']            = __('Global');
                $menu['assets']['content']['allassets']['shortcut']         = '';
                $menu['assets']['content']['allassets']['page']             = '/front/allassets.php';
+               $menu['assets']['content']['allassets']['icon']             = 'fas fa-list';
                $menu['assets']['content']['allassets']['links']['search']  = '/front/allassets.php';
                break;
             }
@@ -1526,18 +1653,18 @@ class Html {
    /**
     * Print a nice HTML head for every page
     *
-    * @param $title     title of the page
-    * @param $url       not used anymore (default '')
-    * @param $sector    sector in which the page displayed is (default 'none')
-    * @param $item      item corresponding to the page displayed (default 'none')
-    * @param $option    option corresponding to the page displayed (default '')
+    * @param string $title   title of the page
+    * @param string $url     not used anymore
+    * @param string $sector  sector in which the page displayed is
+    * @param string $item    item corresponding to the page displayed
+    * @param string $option  option corresponding to the page displayed
    **/
    static function header($title, $url = '', $sector = "none", $item = "none", $option = "") {
       global $CFG_GLPI, $HEADER_LOADED, $DB;
 
       // If in modal : display popHeader
       if (isset($_REQUEST['_in_modal']) && $_REQUEST['_in_modal']) {
-         return self::popHeader($title, $url);
+         return self::popHeader($title, $url, false, $sector, $item, $option);
       }
       // Print a nice HTML-head for every page
       if ($HEADER_LOADED) {
@@ -1619,7 +1746,7 @@ class Html {
    static function footer($keepDB = false) {
       global $CFG_GLPI, $FOOTER_LOADED, $TIMER_DEBUG;
 
-      // If in modal : display popHeader
+      // If in modal : display popFooter
       if (isset($_REQUEST['_in_modal']) && $_REQUEST['_in_modal']) {
          return self::popFooter();
       }
@@ -1670,6 +1797,7 @@ class Html {
       }
       self::displayDebugInfos();
       self::loadJavascript();
+
       echo "</body></html>";
 
       if (!$keepDB) {
@@ -1704,8 +1832,8 @@ class Html {
    /**
     * Print a simple HTML head with links
     *
-    * @param $title        title of the page
-    * @param $links array  of links to display
+    * @param string $title  title of the page
+    * @param array  $links  links to display
    **/
    static function simpleHeader($title, $links = []) {
       global $CFG_GLPI, $HEADER_LOADED;
@@ -1731,6 +1859,25 @@ class Html {
 
       // Preferences + logout link
       echo "<div id='c_preference'>";
+
+      echo "<ul>";
+      echo "<li id='language_link'><a href='".$CFG_GLPI["root_doc"].
+                  "/front/preference.php?forcetab=User\$1' title=\"".
+                  addslashes(Dropdown::getLanguageName($_SESSION['glpilanguage']))."\">".
+                  Dropdown::getLanguageName($_SESSION['glpilanguage'])."</a></li>";
+
+      if (Session::getLoginUserID()) {
+         $logout_url = $CFG_GLPI['root_doc']
+            . '/front/logout.php'
+            . (isset($_SESSION['glpiextauth']) && $_SESSION['glpiextauth'] ? '?noAUTO=1' : '' );
+         echo '<li id="deconnexion">';
+         echo '<a href="' . $logout_url . '" title="' . __s('Logout') . '" class="fa fa-sign-out-alt">';
+         echo '<span class="sr-only">' . __s('Logout') . '</span>';
+         echo '</a>';
+         echo '</li>';
+      }
+      echo "</ul>";
+
       echo "<div class='sep'></div>";
       echo "</div>";
 
@@ -1768,8 +1915,8 @@ class Html {
    /**
     * Print a nice HTML head for help page
     *
-    * @param $title  title of the page
-    * @param $url    not used anymore (default '')
+    * @param string $title  title of the page
+    * @param string $url    not used anymore
    **/
    static function helpHeader($title, $url = '') {
       global $CFG_GLPI, $HEADER_LOADED;
@@ -1836,7 +1983,7 @@ class Html {
       echo "</main>"; // end of "main role='main'"
 
       echo "<footer role='contentinfo' id='footer'>";
-      echo "<table role='presentation' width='100%'><tr><td class='right'>" . self::getCopyrightMessage();
+      echo "<table role='presentation' width='100%'><tr><td class='right'>" . self::getCopyrightMessage(false);
       echo "</td></tr></table></footer>";
 
       self::displayDebugInfos();
@@ -1849,11 +1996,11 @@ class Html {
    /**
     * Print a nice HTML head with no controls
     *
-    * @param $title  title of the page
-    * @param $url    not used anymore (default '')
+    * @param string $title  title of the page
+    * @param string $url    not used anymore
    **/
    static function nullHeader($title, $url = '') {
-      global $CFG_GLPI, $HEADER_LOADED;
+      global $HEADER_LOADED;
 
       if ($HEADER_LOADED) {
          return;
@@ -1889,7 +2036,7 @@ class Html {
     * Print footer for null page
    **/
    static function nullFooter() {
-      global $CFG_GLPI, $FOOTER_LOADED;
+      global $FOOTER_LOADED;
 
       // Print foot for null page
       if ($FOOTER_LOADED) {
@@ -1900,7 +2047,7 @@ class Html {
       if (!isCommandLine()) {
          echo "</div></main>";
 
-         echo "<div id='footer-login'>" . self::getCopyrightMessage() . "</div>";
+         echo "<div id='footer-login'>" . self::getCopyrightMessage(false) . "</div>";
          self::loadJavascript();
          echo "</body></html>";
       }
@@ -1911,12 +2058,22 @@ class Html {
    /**
     * Print a nice HTML head for modal window (nothing to display)
     *
-    * @param $title   title of the page
-    * @param $url     not used anymore (default '')
-    * @param $iframed indicate if page loaded in iframe - css target (default false)
+    * @param string  $title    title of the page
+    * @param string  $url      not used anymore
+    * @param boolean $iframed  indicate if page loaded in iframe - css target
+    * @param string  $sector    sector in which the page displayed is (default 'none')
+    * @param string  $item      item corresponding to the page displayed (default 'none')
+    * @param string  $option    option corresponding to the page displayed (default '')
    **/
-   static function popHeader($title, $url = '', $iframed = false) {
-      global $CFG_GLPI, $HEADER_LOADED;
+   static function popHeader(
+      $title,
+      $url = '',
+      $iframed = false,
+      $sector = "none",
+      $item = "none",
+      $option = ""
+   ) {
+      global $HEADER_LOADED;
 
       // Print a nice HTML-head for every page
       if ($HEADER_LOADED) {
@@ -1924,7 +2081,7 @@ class Html {
       }
       $HEADER_LOADED = true;
 
-      self::includeHeader($title); // Body
+      self::includeHeader($title, $sector, $item, $option); // Body
       echo "<body class='".($iframed? "iframed": "")."'>";
       self::displayMessageAfterRedirect();
    }
@@ -1993,7 +2150,7 @@ class Html {
 
                   if (isset($PLUGIN_HOOKS["helpdesk_menu_entry"][$key])
                         && is_string($PLUGIN_HOOKS["helpdesk_menu_entry"][$key])) {
-                     echo "<a href='".$CFG_GLPI["root_doc"]."/plugins/".$key.$val['page']."'";
+                     echo "<a href='".Plugin::getWebDir($key).$val['page']."'";
                   } else {
                      echo "<a href='".$CFG_GLPI["root_doc"].$val['page']."'";
                   }
@@ -2002,7 +2159,9 @@ class Html {
                   }
                   echo ">";
 
-                  echo $val['title']."</a>";
+                  echo "<i class='fa-fw ".($val['icon'] ?? "")."'></i>&nbsp;";
+                  echo $val['title'];
+                  echo "</a>";
                   echo "</dd>";
                   $i++;
                }
@@ -2066,10 +2225,10 @@ class Html {
    /**
     * show arrow for massives actions : opening
     *
-    * @param $formname  string
-    * @param $fixed     boolean  used tab_cadre_fixe in both tables (false by default)
-    * @param $ontop              display on top of the list (false by default)
-    * @param $onright            display on right of the list (false by default)
+    * @param string  $formname
+    * @param boolean $fixed     used tab_cadre_fixe in both tables
+    * @param boolean $ontop     display on top of the list
+    * @param boolean $onright   display on right of the list
     *
     * @deprecated 0.84
    **/
@@ -2146,7 +2305,7 @@ class Html {
     * @param $container_id  string html of the container of checkboxes link to this check all checkbox
     * @param $rand          string rand value to use (default is auto generated)(default '')
     *
-    * @return Get checkbox string
+    * @return string
    **/
    static function getCheckAllAsCheckbox($container_id, $rand = '') {
 
@@ -2179,11 +2338,11 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $options array of parameters:
-    *                - tag_for_massive tag of the checkboxes to update
-    *                - container_id    if of the container of the checkboxes
+    * @param array $options  array of parameters:
+    *    - tag_for_massive tag of the checkboxes to update
+    *    - container_id    if of the container of the checkboxes
     *
-    * @return the javascript code for jquery criterion or empty string if it is not a
+    * @return string  the javascript code for jquery criterion or empty string if it is not a
     *         massive update checkbox
    **/
    static function getCriterionForMassiveCheckboxes(array $options) {
@@ -2229,19 +2388,19 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $options array of parameters:
-    *                - title         its title
-    *                - name          its name
-    *                - id            its id
-    *                - value         the value to set when checked
-    *                - readonly      can we edit it ?
-    *                - massive_tags  the tag to set for massive checkbox update
-    *                - checked       is it checked or not ?
-    *                - zero_on_empty do we send 0 on submit when it is not checked ?
-    *                - specific_tags HTML5 tags to add
-    *                - criterion     the criterion for massive checkbox
+    * @param array $options  array of parameters:
+    *    - title         its title
+    *    - name          its name
+    *    - id            its id
+    *    - value         the value to set when checked
+    *    - readonly      can we edit it ?
+    *    - massive_tags  the tag to set for massive checkbox update
+    *    - checked       is it checked or not ?
+    *    - zero_on_empty do we send 0 on submit when it is not checked ?
+    *    - specific_tags HTML5 tags to add
+    *    - criterion     the criterion for massive checkbox
     *
-    * @return the HTML code for the checkbox
+    * @return string  the HTML code for the checkbox
    **/
    static function getCheckbox(array $options) {
       global $CFG_GLPI;
@@ -2309,7 +2468,12 @@ class Html {
       $out .= ">";
       $out .= "<label class='label-checkbox' title=\"".$params['title']."\" for='".$params['id']."'>";
       $out .= " <span class='check'></span>";
-      $out .= " <span class='box'></span>";
+      $out .= " <span class='box'";
+      if (isset($params['onclick'])) {
+         $params['onclick'] = htmlspecialchars($params['onclick'], ENT_QUOTES);
+         $out .= " onclick='{$params['onclick']}'";
+      }
+      $out .= "></span>";
       $out .= "&nbsp;";
       $out .= "</label>";
       $out .= "</span>";
@@ -2330,7 +2494,7 @@ class Html {
     *
     * @param $options   array
     *
-    * @return nothing (display only)
+    * @return void
    **/
    static function showCheckbox(array $options = []) {
       echo self::getCheckbox($options);
@@ -2342,11 +2506,11 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $itemtype             Massive action itemtype
-    * @param $id                   ID of the item
-    * @param $options      array
+    * @param string  $itemtype  Massive action itemtype
+    * @param integer $id        ID of the item
+    * @param array   $options
     *
-    * @return get checkbox
+    * @return string
    **/
    static function getMassiveActionCheckBox($itemtype, $id, array $options = []) {
 
@@ -2354,7 +2518,12 @@ class Html {
       if (!isset($options['specific_tags']['data-glpicore-ma-tags'])) {
          $options['specific_tags']['data-glpicore-ma-tags'] = 'common';
       }
+
+      // encode quotes and brackets to prevent maformed name attribute
+      $id = htmlspecialchars($id, ENT_QUOTES);
+      $id = str_replace(['[', ']'], ['&amp;#91;', '&amp;#93;'], $id);
       $options['name']          = "item[$itemtype][".$id."]";
+
       $options['zero_on_empty'] = false;
 
       return self::getCheckbox($options);
@@ -2366,11 +2535,11 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $itemtype             Massive action itemtype
-    * @param $id                   ID of the item
-    * @param $options      array
+    * @param string  $itemtype  Massive action itemtype
+    * @param integer $id        ID of the item
+    * @param array   $options
     *
-    * @return show checkbox
+    * @return void
    **/
    static function showMassiveActionCheckBox($itemtype, $id, array $options = []) {
       echo Html::getMassiveActionCheckBox($itemtype, $id, $options);
@@ -2382,9 +2551,9 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $name given name/id to the form   (default '')
+    * @param string $name  given name/id to the form
     *
-    * @return nothing / display item
+    * @return void
    **/
    static function openMassiveActionsForm($name = '') {
       echo Html::getOpenMassiveActionsForm($name);
@@ -2396,9 +2565,9 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $name given name/id to the form   (default '')
+    * @param string $name  given name/id to the form
     *
-    * @return open form string
+    * @return string
    **/
    static function getOpenMassiveActionsForm($name = '') {
       global $CFG_GLPI;
@@ -2600,102 +2769,131 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $name      name of the element
-    * @param $options  array of possible options:
-    *      - value      : default value to display (default '')
-    *      - maybeempty : may be empty ? (true by default)
-    *      - canedit    :  could not modify element (true by default)
-    *      - min        :  minimum allowed date (default '')
-    *      - max        : maximum allowed date (default '')
-    *      - showyear   : should we set/diplay the year? (true by default)
-    *      - display    : boolean display of return string (default true)
-    *      - rand       : specific rand value (default generated one)
-    *      - yearrange  : set a year range to show in drop-down (default '')
+    * @param string $name     name of the element
+    * @param array  $options  array of possible options:
+    *      - value        : default value to display (default '')
+    *      - maybeempty   : may be empty ? (true by default)
+    *      - canedit      :  could not modify element (true by default)
+    *      - min          :  minimum allowed date (default '')
+    *      - max          : maximum allowed date (default '')
+    *      - showyear     : should we set/diplay the year? (true by default)
+    *      - display      : boolean display of return string (default true)
+    *      - calendar_btn : boolean display calendar icon (default true)
+    *      - clear_btn    : boolean display clear icon (default true)
+    *      - range        : boolean set the datepicket in range mode
+    *      - rand         : specific rand value (default generated one)
+    *      - yearrange    : set a year range to show in drop-down (default '')
+    *      - required     : required field (will add required attribute)
+    *      - placeholder  : text to display when input is empty
+    *      - on_change    : function to execute when date selection changed
     *
-    * @return rand value used if displayes else string
+    * @return integer|string
+    *    integer if option display=true (random part of elements id)
+    *    string if option display=false (HTML code)
    **/
    static function showDateField($name, $options = []) {
       global $CFG_GLPI;
 
-      $p['value']      = '';
-      $p['maybeempty'] = true;
-      $p['canedit']    = true;
-      $p['min']        = '';
-      $p['max']        = '';
-      $p['showyear']   = true;
-      $p['display']    = true;
-      $p['rand']       = mt_rand();
-      $p['yearrange']  = '';
+      $p = [
+         'value'        => '',
+         'defaultDate'  => '',
+         'maybeempty'   => true,
+         'canedit'      => true,
+         'min'          => '',
+         'max'          => '',
+         'showyear'     => false,
+         'display'      => true,
+         'range'        => false,
+         'rand'         => mt_rand(),
+         'calendar_btn' => true,
+         'clear_btn'    => true,
+         'yearrange'    => '',
+         'multiple'     => false,
+         'size'         => 10,
+         'required'     => false,
+         'placeholder'  => '',
+         'on_change'    => '',
+      ];
 
       foreach ($options as $key => $val) {
          if (isset($p[$key])) {
             $p[$key] = $val;
          }
       }
-      $output = "<div class='no-wrap'>";
-      $output .= "<input id='showdate".$p['rand']."' type='text' size='10' name='_$name' ".
-                  "value='".self::convDate($p['value'])."'>";
-      $output .= Html::hidden($name, ['value' => $p['value'],
-                                           'id'    => "hiddendate".$p['rand']]);
-      if ($p['maybeempty'] && $p['canedit']) {
-         $output .= "<span class='fa fa-times-circle pointer' title='".__s('Clear').
-                      "' id='resetdate".$p['rand']."'>" .
-                      "<span class='sr-only'>" . __('Clear') . "</span></span>";
-      }
-      $output .= "</div>";
 
-      $js = '$(function(){';
-      if ($p['maybeempty'] && $p['canedit']) {
-         $js .= "$('#resetdate".$p['rand']."').click(function(){
-                  $('#showdate".$p['rand']."').val('');
-                  $('#hiddendate".$p['rand']."').val('');
-                  });";
-      }
-      $js .= "$( '#showdate".$p['rand']."' ).datepicker({
-                  altField: '#hiddendate".$p['rand']."',
-                  altFormat: 'yy-mm-dd',
-                  firstDay: 1,
-                  showOtherMonths: true,
-                  selectOtherMonths: true,
-                  showButtonPanel: true,
-                  changeMonth: true,
-                  changeYear: true,
-                  showOn: 'both',
-                  showWeek: true,
-                  buttonText: '<i class=\'far fa-calendar-alt\'></i>'";
+      $required = $p['required'] == true
+         ? " required='required'"
+         : "";
+      $disabled = !$p['canedit']
+         ? " disabled='disabled'"
+         : "";
 
-      if (!$p['canedit']) {
-         $js .= ",disabled: true";
-      }
+      $calendar_btn = $p['calendar_btn']
+         ? "<a class='input-button' data-toggle>
+               <i class='far fa-calendar-alt fa-lg pointer'></i>
+            </a>"
+         : "";
+      $clear_btn = $p['clear_btn'] && $p['maybeempty'] && $p['canedit']
+         ? "<a data-clear  title='".__s('Clear')."'>
+               <i class='fa fa-times-circle pointer'></i>
+            </a>"
+         : "";
 
-      if (!empty($p['min'])) {
-         $js .= ",minDate: '".self::convDate($p['min'])."'";
-      }
+      $mode = $p['range']
+         ? "mode: 'range',"
+         : "";
 
-      if (!empty($p['max'])) {
-         $js .= ",maxDate: '".self::convDate($p['max'])."'";
-      }
+      $output = <<<HTML
+      <div class="no-wrap flatpickr" id="showdate{$p['rand']}">
+         <input type="text" name="{$name}" size="{$p['size']}"
+                {$required} {$disabled} data-input placeholder="{$p['placeholder']}">
+         $calendar_btn
+         $clear_btn
+      </div>
+HTML;
 
-      if (!empty($p['yearrange'])) {
-         $js .= ",yearRange: '". $p['yearrange'] ."'";
-      }
+      $date_format = Toolbox::getDateFormat('js');
 
-      switch ($_SESSION['glpidate_format']) {
-         case 1 :
-            $p['showyear'] ? $format='dd-mm-yy' : $format='dd-mm';
-            break;
+      $min_attr = !empty($p['min'])
+         ? "minDate: '{$p['min']}',"
+         : "";
+      $max_attr = !empty($p['max'])
+         ? "maxDate: '{$p['max']}',"
+         : "";
+      $multiple_attr = $p['multiple']
+         ? "mode: 'multiple',"
+         : "";
 
-         case 2 :
-            $p['showyear'] ? $format='mm-dd-yy' : $format='mm-dd';
-            break;
+      $value = is_array($p['value'])
+         ? json_encode($p['value'])
+         : "'{$p['value']}'";
 
-         default :
-            $p['showyear'] ? $format='yy-mm-dd' : $format='mm-dd';
-      }
-      $js .= ",dateFormat: '".$format."'";
+      $locale = Locale::parseLocale($_SESSION['glpilanguage']);
+      $js = <<<JS
+      $(function() {
+         $("#showdate{$p['rand']}").flatpickr({
+            defaultDate: {$value},
+            altInput: true, // Show the user a readable date (as per altFormat), but return something totally different to the server.
+            altFormat: '{$date_format}',
+            dateFormat: 'Y-m-d',
+            wrap: true, // permits to have controls in addition to input (like clear or open date buttons
+            weekNumbers: true,
+            locale: getFlatPickerLocale("{$locale['language']}", "{$locale['region']}"),
+            {$min_attr}
+            {$max_attr}
+            {$multiple_attr}
+            {$mode}
+            onChange: function(selectedDates, dateStr, instance) {
+               {$p['on_change']}
+            },
+            allowInput: true,
+            onClose(dates, currentdatestring, picker){
+               picker.setDate(picker.altInput.value, true, picker.config.altFormat)
+            }
+         });
+      });
+JS;
 
-      $js .= "}).next('.ui-datepicker-trigger').addClass('pointer');";
-      $js .= "});";
       $output .= Html::scriptBlock($js);
 
       if ($p['display']) {
@@ -2711,11 +2909,15 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $name            name of the element
-    * @param $options  array  of possible options:
+    * @param string $name     name of the element
+    * @param array  $options  array  of possible options:
     *   - value      : default value to display (default '')
     *   - display    : boolean display or get string (default true)
     *   - rand       : specific random value (default generated one)
+    *
+    * @return integer|string
+    *    integer if option display=true (random part of elements id)
+    *    string if option display=false (HTML code)
    **/
    static function showColorField($name, $options = []) {
       $p['value']      = '';
@@ -2728,13 +2930,6 @@ class Html {
       }
       $field_id = Html::cleanId("color_".$name.$p['rand']);
       $output   = "<input type='color' id='$field_id' name='$name' value='".$p['value']."'>";
-      $output  .= Html::scriptBlock("$(function() {
-         $('#$field_id').spectrum({
-            preferredFormat: 'hex',
-            showInput: true,
-            showInitial: true
-         });
-      });");
 
       if ($p['display']) {
          echo $output;
@@ -2749,38 +2944,42 @@ class Html {
     *
     * @since 0.84
     *
-    * @param $name            name of the element
-    * @param $options  array  of possible options:
+    * @param string $name     name of the element
+    * @param array  $options  array  of possible options:
     *   - value      : default value to display (default '')
     *   - timestep   : step for time in minute (-1 use default config) (default -1)
     *   - maybeempty : may be empty ? (true by default)
     *   - canedit    : could not modify element (true by default)
     *   - mindate    : minimum allowed date (default '')
     *   - maxdate    : maximum allowed date (default '')
-    *   - mintime    : minimum allowed time (default '')
-    *   - maxtime    : maximum allowed time (default '')
     *   - showyear   : should we set/diplay the year? (true by default)
     *   - display    : boolean display or get string (default true)
     *   - rand       : specific random value (default generated one)
     *   - required   : required field (will add required attribute)
+    *   - on_change    : function to execute when date selection changed
     *
-    * @return rand value used if displayes else string
+    * @return integer|string
+    *    integer if option display=true (random part of elements id)
+    *    string if option display=false (HTML code)
    **/
    static function showDateTimeField($name, $options = []) {
       global $CFG_GLPI;
 
-      $p['value']      = '';
-      $p['maybeempty'] = true;
-      $p['canedit']    = true;
-      $p['mindate']    = '';
-      $p['maxdate']    = '';
-      $p['mintime']    = '';
-      $p['maxtime']    = '';
-      $p['timestep']   = -1;
-      $p['showyear']   = true;
-      $p['display']    = true;
-      $p['rand']       = mt_rand();
-      $p['required']   = false;
+      $p = [
+         'value'      => '',
+         'maybeempty' => true,
+         'canedit'    => true,
+         'mindate'    => '',
+         'maxdate'    => '',
+         'mintime'    => '',
+         'maxtime'    => '',
+         'timestep'   => -1,
+         'showyear'   => true,
+         'display'    => true,
+         'rand'       => mt_rand(),
+         'required'   => false,
+         'on_change'  => '',
+      ];
 
       foreach ($options as $key => $val) {
          if (isset($p[$key])) {
@@ -2792,11 +2991,6 @@ class Html {
          $p['timestep'] = $CFG_GLPI['time_step'];
       }
 
-      $minHour   = 0;
-      $maxHour   = 23;
-      $minMinute = 0;
-      $maxMinute = 59;
-
       $date_value = '';
       $hour_value = '';
       if (!empty($p['value'])) {
@@ -2804,9 +2998,6 @@ class Html {
       }
 
       if (!empty($p['mintime'])) {
-         list($minHour, $minMinute) = explode(':', $p['mintime']);
-         $minMinute = 0;
-
          // Check time in interval
          if (!empty($hour_value) && ($hour_value < $p['mintime'])) {
             $hour_value = $p['mintime'];
@@ -2814,9 +3005,6 @@ class Html {
       }
 
       if (!empty($p['maxtime'])) {
-         list($maxHour, $maxMinute) = explode(':', $p['maxtime']);
-         $maxMinute = 59;
-
          // Check time in interval
          if (!empty($hour_value) && ($hour_value > $p['maxtime'])) {
             $hour_value = $p['maxtime'];
@@ -2828,78 +3016,176 @@ class Html {
          $p['value'] = $date_value.' '.$hour_value;
       }
 
-      $output = "<span class='no-wrap'>";
-      $output .= "<input id='showdate".$p['rand']."' type='text' name='_$name' value='".
-                   trim(self::convDateTime($p['value']))."'";
-      if ($p['required'] == true) {
-         $output .= " required='required'";
+      $required = $p['required'] == true
+         ? " required='required'"
+         : "";
+      $disabled = !$p['canedit']
+         ? " disabled='disabled'"
+         : "";
+      $clear    = $p['maybeempty'] && $p['canedit']
+         ? "<a data-clear  title='".__s('Clear')."'>
+               <i class='fa fa-times-circle pointer'></i>
+            </a>"
+         : "";
+
+      $output = <<<HTML
+         <div class="no-wrap flatpickr" id="showdate{$p['rand']}">
+            <input type="text" name="{$name}" value="{$p['value']}"
+                   {$required} {$disabled} data-input>
+            <a class="input-button" data-toggle>
+               <i class="far fa-calendar-alt fa-lg pointer"></i>
+            </a>
+            $clear
+         </div>
+HTML;
+
+      $date_format = Toolbox::getDateFormat('js')." H:i:S";
+
+      $min_attr = !empty($p['min'])
+         ? "minDate: '{$p['min']}',"
+         : "";
+      $max_attr = !empty($p['max'])
+         ? "maxDate: '{$p['max']}',"
+         : "";
+
+      $locale = Locale::parseLocale($_SESSION['glpilanguage']);
+      $js = <<<JS
+      $(function() {
+         $("#showdate{$p['rand']}").flatpickr({
+            altInput: true, // Show the user a readable date (as per altFormat), but return something totally different to the server.
+            altFormat: "{$date_format}",
+            dateFormat: 'Y-m-d H:i:S',
+            wrap: true, // permits to have controls in addition to input (like clear or open date buttons)
+            enableTime: true,
+            enableSeconds: true,
+            weekNumbers: true,
+            locale: getFlatPickerLocale("{$locale['language']}", "{$locale['region']}"),
+            minuteIncrement: "{$p['timestep']}",
+            {$min_attr}
+            {$max_attr}
+            onChange: function(selectedDates, dateStr, instance) {
+               {$p['on_change']}
+            },
+            allowInput: true,
+            onClose(dates, currentdatestring, picker){
+               picker.setDate(picker.altInput.value, true, picker.config.altFormat)
+            }
+         });
+      });
+JS;
+      $output .= Html::scriptBlock($js);
+
+      if ($p['display']) {
+         echo $output;
+         return $p['rand'];
       }
-      $output .= ">";
-      $output .= Html::hidden($name, ['value' => $p['value'], 'id' => "hiddendate".$p['rand']]);
-      if ($p['maybeempty'] && $p['canedit']) {
-         $output .= "<span class='fa fa-times-circle pointer' title='".__s('Clear').
-                      "' id='resetdate".$p['rand']."'>" .
-                      "<span class='sr-only'>" . __('Clear') . "</span></span>";
-      }
-      $output .= "</span>";
+      return $output;
+   }
 
-      $js = "$(function(){";
-      if ($p['maybeempty'] && $p['canedit']) {
-         $js .= "$('#resetdate".$p['rand']."').click(function(){
-                  $('#showdate".$p['rand']."').val('');
-                  $('#hiddendate".$p['rand']."').val('');
-                  });";
-      }
+   /**
+    * Display TimeField form
+    *
+    * @param string $name
+    * @param array  $options
+    *   - value      : default value to display (default '')
+    *   - timestep   : step for time in minute (-1 use default config) (default -1)
+    *   - maybeempty : may be empty ? (true by default)
+    *   - canedit    : could not modify element (true by default)
+    *   - mintime    : minimum allowed time (default '')
+    *   - maxtime    : maximum allowed time (default '')
+    *   - display    : boolean display or get string (default true)
+    *   - rand       : specific random value (default generated one)
+    *   - required   : required field (will add required attribute)
+    *   - on_change  : function to execute when date selection changed
+    * @return void
+    */
+   public static function showTimeField($name, $options = []) {
+      global $CFG_GLPI;
 
-      $js .= "$( '#showdate".$p['rand']."' ).datetimepicker({
-                  altField: '#hiddendate".$p['rand']."',
-                  altFormat: 'yy-mm-dd',
-                  altTimeFormat: 'HH:mm:ss',
-                  pickerTimeFormat : 'HH:mm',
-                  altFieldTimeOnly: false,
-                  firstDay: 1,
-                  parse: 'loose',
-                  showAnim: '',
-                  stepMinute: ".$p['timestep'].",
-                  showSecond: false,
-                  showOtherMonths: true,
-                  selectOtherMonths: true,
-                  showButtonPanel: true,
-                  changeMonth: true,
-                  changeYear: true,
-                  showOn: 'both',
-                  showWeek: true,
-                  controlType: 'select',
-                  buttonText: '<i class=\'far fa-calendar-alt\'></i>'";
-      if (!$p['canedit']) {
-         $js .= ",disabled: true";
-      }
+      $p = [
+         'value'      => '',
+         'maybeempty' => true,
+         'canedit'    => true,
+         'mintime'    => '',
+         'maxtime'    => '',
+         'timestep'   => -1,
+         'display'    => true,
+         'rand'       => mt_rand(),
+         'required'   => false,
+         'on_change'  => '',
+      ];
 
-      if (!empty($p['min'])) {
-         $js .= ",minDate: '".self::convDate($p['min'])."'";
+      foreach ($options as $key => $val) {
+         if (isset($p[$key])) {
+            $p[$key] = $val;
+         }
       }
 
-      if (!empty($p['max'])) {
-         $js .= ",maxDate: '".self::convDate($p['max'])."'";
+      if ($p['timestep'] < 0) {
+         $p['timestep'] = $CFG_GLPI['time_step'];
       }
 
-      switch ($_SESSION['glpidate_format']) {
-         case 1 :
-            $p['showyear'] ? $format='dd-mm-yy' : $format='dd-mm';
-            break;
-
-         case 2 :
-            $p['showyear'] ? $format='mm-dd-yy' : $format='mm-dd';
-            break;
-
-         default :
-            $p['showyear'] ? $format='yy-mm-dd' : $format='mm-dd';
+      $hour_value = '';
+      if (!empty($p['value'])) {
+         $hour_value = $p['value'];
       }
-      $js .= ",dateFormat: '".$format."'";
-      $js .= ",timeFormat: 'HH:mm'";
 
-      $js .= "}).next('.ui-datepicker-trigger').addClass('pointer');";
-      $js .= "});";
+      if (!empty($p['mintime'])) {
+         // Check time in interval
+         if (!empty($hour_value) && ($hour_value < $p['mintime'])) {
+            $hour_value = $p['mintime'];
+         }
+      }
+      if (!empty($p['maxtime'])) {
+         // Check time in interval
+         if (!empty($hour_value) && ($hour_value > $p['maxtime'])) {
+            $hour_value = $p['maxtime'];
+         }
+      }
+      // reconstruct value to be valid
+      if (!empty($hour_value)) {
+         $p['value'] = $hour_value;
+      }
+
+      $required = $p['required'] == true
+         ? " required='required'"
+         : "";
+      $disabled = !$p['canedit']
+         ? " disabled='disabled'"
+         : "";
+      $clear    = $p['maybeempty'] && $p['canedit']
+         ? "<a data-clear  title='".__s('Clear')."'>
+               <i class='fa fa-times-circle pointer'></i>
+            </a>"
+         : "";
+
+      $output = <<<HTML
+         <div class="no-wrap flatpickr" id="showtime{$p['rand']}">
+            <input type="text" name="{$name}" value="{$p['value']}"
+                   {$required} {$disabled} data-input>
+            <a class="input-button" data-toggle>
+               <i class="far fa-clock fa-lg pointer"></i>
+            </a>
+            $clear
+         </div>
+HTML;
+      $locale = Locale::parseLocale($_SESSION['glpilanguage']);
+      $js = <<<JS
+      $(function() {
+         $("#showtime{$p['rand']}").flatpickr({
+            dateFormat: 'H:i:S',
+            wrap: true, // permits to have controls in addition to input (like clear or open date buttons)
+            enableTime: true,
+            noCalendar: true, // only time picker
+            enableSeconds: true,
+            locale: getFlatPickerLocale("{$locale['language']}", "{$locale['region']}"),
+            minuteIncrement: "{$p['timestep']}",
+            onChange: function(selectedDates, dateStr, instance) {
+               {$p['on_change']}
+            }
+         });
+      });
+JS;
       $output .= Html::scriptBlock($js);
 
       if ($p['display']) {
@@ -2912,14 +3198,16 @@ class Html {
    /**
     * Show generic date search
     *
-    * @param $element         name of the html element
-    * @param $value           default value (default '')
+    * @param string $element  name of the html element
+    * @param string $value    default value
     * @param $options   array of possible options:
     *      - with_time display with time selection ? (default false)
     *      - with_future display with future date selection ? (default false)
     *      - with_days display specific days selection TODAY, BEGINMONTH, LASTMONDAY... ? (default true)
     *
-    * @return rand value of dropdown
+    * @return integer|string
+    *    integer if option display=true (random part of elements id)
+    *    string if option display=false (HTML code)
    **/
    static function showGenericDateTimeSearch($element, $value = '', $options = []) {
       global $CFG_GLPI;
@@ -3000,13 +3288,13 @@ class Html {
     *
     * @since 0.83
     *
-    * @param $options   array of possible options:
+    * @param array $options  array of possible options:
     *      - with_time display with time selection ? (default false)
     *      - with_future display with future date selection ? (default false)
     *      - with_days display specific days selection TODAY, BEGINMONTH, LASTMONDAY... ? (default true)
     *
     * @return array of posible values
-    * @see showGenericDateTimeSearch
+    * @see self::showGenericDateTimeSearch()
    **/
    static function getGenericDateTimeSearchItems($options) {
 
@@ -3112,12 +3400,12 @@ class Html {
     *
     * @since 0.83
     *
-    * @param $val          date / datetime   value passed
-    * @param $force_day    boolean           force computation in days (false by default)
-    * @param $specifictime timestamp         set specific timestamp (default '')
+    * @param string         $val           date / datetime value passed
+    * @param boolean        $force_day     force computation in days
+    * @param integer|string $specifictime  set specific timestamp
     *
-    * @return computed date / datetime value
-    * @see showGenericDateTimeSearch
+    * @return string  computed date / datetime value
+    * @see self::showGenericDateTimeSearch()
    **/
    static function computeGenericDateTimeSearch($val, $force_day = false, $specifictime = '') {
 
@@ -3226,7 +3514,7 @@ class Html {
     *
     * @since 9.2
     *
-    * @param $options   array of possible options:
+    * @param array $options  array of possible options:
     *      - title, do we need to append an H2 title tag
     *      - dates, an array containing a collection of theses keys:
     *         * timestamp
@@ -3237,7 +3525,8 @@ class Html {
     *        (with now class)
     *
     * @return array of posible values
-    * @see showGenericDateTimeSearch
+    *
+    * @see self::showGenericDateTimeSearch()
    **/
    static function showDatesTimelineGraph($options = []) {
       $default_options = [
@@ -3293,9 +3582,9 @@ class Html {
    /**
     * Print the form used to select profile if several are available
     *
-    * @param $target target of the form
+    * @param string $target  target of the form
     *
-    * @return nothing
+    * @return void
    **/
    static function showProfileSelecter($target) {
       global $CFG_GLPI;
@@ -3347,11 +3636,11 @@ class Html {
     *   - display : boolean / display the item : false return the datas
     *   - autoclose : boolean / autoclose the item : default true (false permit to scroll)
     *
-    * @return nothing (print out an HTML div)
+    * @return void|string
+    *    void if option display=true
+    *    string if option display=false (HTML code)
    **/
    static function showToolTip($content, $options = []) {
-      global $CFG_GLPI;
-
       $param['applyto']    = '';
       $param['title']      = '';
       $param['contentid']  = '';
@@ -3454,7 +3743,7 @@ class Html {
     * Show div with auto completion
     *
     * @param CommonDBTM $item    item object used for create dropdown
-    * @param strign     $field   field to search for autocompletion
+    * @param string     $field   field to search for autocompletion
     * @param array      $options array of possible options:
     *    - name    : string / name of the select (default is field parameter)
     *    - value   : integer / preselected value (default value of the item object)
@@ -3499,8 +3788,12 @@ class Html {
       $rand = (isset($params['rand']) ? $params['rand'] : mt_rand());
       $name    = "field_".$params['name'].$rand;
 
+      // Check if field is allowed
+      $field_so = $item->getSearchOptionByField('field', $field, $item->getTable());
+      $can_autocomplete = array_key_exists('autocomplete', $field_so) && $field_so['autocomplete'];
+
       $output = '';
-      if ($CFG_GLPI["use_ajax_autocompletion"]) {
+      if ($can_autocomplete && $CFG_GLPI["use_ajax_autocompletion"]) {
          $output .=  "<input ".$params['option']." id='text$name' type='{$params['type']}' name='".
                        $params['name']."' value=\"".self::cleanInputText($params['value'])."\"
                        class='autocompletion-text-field'";
@@ -3550,12 +3843,14 @@ class Html {
    /**
     * Init the Editor System to a textarea
     *
-    * @param $name               name of the html textarea to use
-    * @param $rand       rand    of the html textarea to use (if empty no image paste system)(default '')
-    * @param $display    boolean display or get js script (true by default)
-    * @param $readonly   boolean editor will be readonly or not
+    * @param string  $name      name of the html textarea to use
+    * @param string  $rand      rand of the html textarea to use (if empty no image paste system)(default '')
+    * @param boolean $display   display or get js script (true by default)
+    * @param boolean $readonly  editor will be readonly or not
     *
-    * @return nothing
+    * @return void|string
+    *    integer if param display=true
+    *    string if param display=false (HTML code)
    **/
    static function initEditorSystem($name, $rand = '', $display = true, $readonly = false) {
       global $CFG_GLPI;
@@ -3587,7 +3882,7 @@ class Html {
          // init editor
          tinyMCE.init({
             language_url: '$language_url',
-            invalid_elements: 'form,iframe,script,@[onclick|ondblclick|'
+            invalid_elements: 'form,object,embed,iframe,script,@[onclick|ondblclick|'
                + 'onmousedown|onmouseup|onmouseover|onmousemove|onmouseout|onkeypress|'
                + 'onkeydown|onkeyup]',
             browser_spellcheck: true,
@@ -3595,13 +3890,14 @@ class Html {
             elements: '$name',
             relative_urls: false,
             remove_script_host: false,
-            content_css: '$darker_css',
             entity_encoding: 'raw',
             paste_data_images: $('.fileupload').length,
             menubar: false,
             statusbar: false,
             skin_url: '".$CFG_GLPI['root_doc']."/css/tiny_mce/skins/light',
+            content_css: '$darker_css,".$CFG_GLPI['root_doc']."/css/tiny_mce_custom.css',
             cache_suffix: '?v=".GLPI_VERSION."',
+            min_height: '150px',
             setup: function(editor) {
                if ($('#$name').attr('required') == 'required') {
                   $('#$name').closest('form').find('input[type=submit]').click(function() {
@@ -3623,9 +3919,20 @@ class Html {
                         $('.mce-edit-area').addClass('required');
                      }
                   });
+                  editor.on('paste', function (e) {
+                     // Remove required on paste event
+                     // This is only needed when pasting with right click (context menu)
+                     // Pasting with Ctrl+V is already handled by keyup event above
+                     $('.mce-edit-area').removeClass('required');
+                  });
                }
                editor.on('SaveContent', function (contentEvent) {
                   contentEvent.content = contentEvent.content.replace(/\\r?\\n/g, '');
+               });
+               editor.on('Change', function (e) {
+                  // Nothing fancy here. Since this is only used for tracking unsaved changes,
+                  // we want to keep the logic in common.js with the other form input events.
+                  onTinyMCEChange(e);
                });
 
                // ctrl + enter submit the parent form
@@ -3700,11 +4007,13 @@ class Html {
    **/
    static function setRichTextContent($name, $content, $rand, $readonly = false) {
 
-      // Init html editor
-      Html::initEditorSystem($name, $rand, true, $readonly);
+      // Init html editor (if name of textarea is provided)
+      if (!empty($name)) {
+         Html::initEditorSystem($name, $rand, true, $readonly);
+      }
 
       // Neutralize non valid HTML tags
-      $content = html::clean($content, false, 1);
+      $content = Html::clean($content, false, 1);
 
       // If content does not contain <br> or <p> html tag, use nl2br
       if (!preg_match("/<br\s?\/?>/", $content) && !preg_match("/<p>/", $content)) {
@@ -3727,8 +4036,6 @@ class Html {
     * @return void|string
    **/
    static function printAjaxPager($title, $start, $numrows, $additional_info = '', $display = true, $additional_params = '') {
-      global $CFG_GLPI;
-
       $list_limit = $_SESSION['glpilist_limit'];
       // Forward is the next step forward
       $forward = $start+$list_limit;
@@ -3813,11 +4120,11 @@ class Html {
     * Clean Printing of and array in a table
     * ONLY FOR DEBUG
     *
-    * @param $tab          the array to display
-    * @param $pad          Pad used (default 0)
-    * @param $jsexpand     Expand using JS ? (default  false)
+    * @param array   $tab       the array to display
+    * @param integer $pad       Pad used
+    * @param boolean $jsexpand  Expand using JS ?
     *
-    * @return nothing
+    * @return void
    **/
    static function printCleanArray($tab, $pad = 0, $jsexpand = false) {
 
@@ -3854,7 +4161,11 @@ class Html {
                   }
                } else {
                   if (is_object($val)) {
-                     print_r($val);
+                     if (method_exists($val, '__toString')) {
+                        echo (string) $val;
+                     } else {
+                        echo "(object) " . get_class($val);
+                     }
                   } else {
                      echo htmlentities($val);
                   }
@@ -3873,16 +4184,15 @@ class Html {
    /**
     * Print pager for search option (first/previous/next/last)
     *
-    * @param $start                       from witch item we start
-    * @param $numrows                     total items
-    * @param $target                      page would be open when click on the option (last,previous etc)
-    * @param $parameters                  parameters would be passed on the URL.
-    * @param $item_type_output            item type display - if >0 display export PDF et Sylk form
-    *                                     (default 0)
-    * @param $item_type_output_param      item type parameter for export (default 0)
-    * @param $additional_info             Additional information to display (default '')
+    * @param integer        $start                   from witch item we start
+    * @param integer        $numrows                 total items
+    * @param string         $target                  page would be open when click on the option (last,previous etc)
+    * @param string         $parameters              parameters would be passed on the URL.
+    * @param integer|string $item_type_output        item type display - if >0 display export PDF et Sylk form
+    * @param integer|string $item_type_output_param  item type parameter for export
+    * @param string         $additional_info         Additional information to display (default '')
     *
-    * @return nothing (print a pager)
+    * @return void
     *
    **/
    static function printPager($start, $numrows, $target, $parameters, $item_type_output = 0,
@@ -4242,6 +4552,7 @@ class Html {
     * @param $id string id of the dom element
     *
     * @since 0.85.
+    * @deprecated 9.5.0
     *
     * @return String
    **/
@@ -4256,6 +4567,7 @@ class Html {
     * @param $id string id of the dom element
     *
     * @since 0.85.
+    * @deprecated 9.5.0
     *
     * @return String
    **/
@@ -4449,8 +4761,12 @@ class Html {
     * @param $url        string   URL to get datas
     * @param $params     array    of parameters
     *            must contains :
-    *                   - 'value'     : default value selected
-    *                   - 'valuename' : default name of selected value
+    *                if single select
+    *                   - 'value'       : default value selected
+    *                   - 'valuename'   : default name of selected value
+    *                if multiple select
+    *                   - 'values'      : default values selected
+    *                   - 'valuesnames' : default names of selected values
     *
     * @since 0.85.
     *
@@ -4459,14 +4775,11 @@ class Html {
    static function jsAjaxDropdown($name, $field_id, $url, $params = []) {
       global $CFG_GLPI;
 
-      if (!isset($params['value'])) {
+      if (!array_key_exists('value', $params)) {
          $value = 0;
-      } else {
-         $value = $params['value'];
-      }
-      if (!isset($params['value'])) {
          $valuename = Dropdown::EMPTY_VALUE;
       } else {
+         $value = $params['value'];
          $valuename = $params['valuename'];
       }
       $on_change = '';
@@ -4479,6 +4792,14 @@ class Html {
          $width = $params["width"];
          unset($params["width"]);
       }
+
+      $placeholder = $params['placeholder'] ?? '';
+      $allowclear =  "false";
+      if (strlen($placeholder) > 0 && !$params['display_emptychoice']) {
+         $allowclear = "true";
+      }
+
+      unset($params['placeholder']);
       unset($params['value']);
       unset($params['valuename']);
 
@@ -4495,7 +4816,21 @@ class Html {
          }
       }
 
-      $values = [$value => $valuename];
+      // manage multiple select (with multiple values)
+      if (isset($params['values']) && count($params['values'])) {
+         $values = array_combine($params['values'], $params['valuesnames']);
+         $options['multiple'] = 'multiple';
+         $options['selected'] = $params['values'];
+      } else {
+         $values = [];
+
+         // simple select (multiple = no)
+         if ($value !== null) {
+            $values = ["$value" => $valuename];
+         }
+      }
+
+      // display select tag
       $output = self::select($name, $values, $options);
 
       $js = "
@@ -4512,6 +4847,8 @@ class Html {
 
          $('#$field_id').select2({
             width: '$width',
+            placeholder: '$placeholder',
+            allowClear: $allowclear,
             minimumInputLength: 0,
             quietMillis: 100,
             dropdownAutoWidth: true,
@@ -4596,8 +4933,8 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $path             Path to the image file
-    * @param $options   Array  of HTML attributes
+    * @param string $path     Path to the image file
+    * @param array  $options  array of HTML attributes
     *        - `url` If provided an image link will be generated and the link will point at
     *               `$options['url']`.
     * @return string completed img tag
@@ -4637,13 +4974,189 @@ class Html {
 
 
    /**
+    * Creates a PhotoSwipe image gallery
+    *
+    *
+    * @since 9.5.0
+    *
+    * @param array $imgs  Array of image info
+    *                      - src The public path of img
+    *                      - w   The width of img
+    *                      - h   The height of img
+    * @param array $options
+    * @return string completed gallery
+   **/
+   static function imageGallery($imgs, $options = []) {
+      $p = [
+         'controls' => [
+            'close'        => true,
+            'share'        => true,
+            'fullscreen'   => true,
+            'zoom'         => true,
+         ],
+         'rand'               => mt_rand(),
+         'gallery_item_class' => ''
+      ];
+
+      if (is_array($options) && count($options)) {
+         foreach ($options as $key => $val) {
+            $p[$key] = $val;
+         }
+      }
+
+      $out = "<div id='psgallery{$p['rand']}' class='pswp' tabindex='-1'
+         role='dialog' aria-hidden='true'>";
+      $out .= "<div class='pswp__bg'></div>";
+      $out .= "<div class='pswp__scroll-wrap'>";
+      $out .= "<div class='pswp__container'>";
+      $out .= "<div class='pswp__item'></div>";
+      $out .= "<div class='pswp__item'></div>";
+      $out .= "<div class='pswp__item'></div>";
+      $out .= "</div>";
+      $out .= "<div class='pswp__ui pswp__ui--hidden'>";
+      $out .= "<div class='pswp__top-bar'>";
+      $out .= "<div class='pswp__counter'></div>";
+
+      if (isset($p['controls']['close']) && $p['controls']['close']) {
+         $out .= "<button class='pswp__button pswp__button--close' title='".__('Close (Esc)')."'></button>";
+      }
+
+      if (isset($p['controls']['share']) && $p['controls']['share']) {
+         $out .= "<button class='pswp__button pswp__button--share' title='".__('Share')."'></button>";
+      }
+
+      if (isset($p['controls']['fullscreen']) && $p['controls']['fullscreen']) {
+         $out .= "<button class='pswp__button pswp__button--fs' title='".__('Toggle fullscreen')."'></button>";
+      }
+
+      if (isset($p['controls']['zoom']) && $p['controls']['zoom']) {
+         $out .= "<button class='pswp__button pswp__button--zoom' title='".__('Zoom in/out')."'></button>";
+      }
+
+      $out .= "<div class='pswp__preloader'>";
+      $out .= "<div class='pswp__preloader__icn'>";
+      $out .= "<div class='pswp__preloader__cut'>";
+      $out .= "<div class='pswp__preloader__donut'></div>";
+      $out .= "</div></div></div></div>";
+      $out .= "<div class='pswp__share-modal pswp__share-modal--hidden pswp__single-tap'>";
+      $out .= "<div class='pswp__share-tooltip'></div>";
+      $out .= "</div>";
+      $out .= "<button class='pswp__button pswp__button--arrow--left' title='".__('Previous (arrow left)')."'>";
+      $out .= "</button>";
+      $out .= "<button class='pswp__button pswp__button--arrow--right' title='".__('Next (arrow right)')."'>";
+      $out .= "</button>";
+      $out .= "<div class='pswp__caption'>";
+      $out .= "<div class='pswp__caption__center'></div>";
+      $out .= "</div></div></div></div>";
+
+      $out .= "<div class='pswp-img{$p['rand']} {$p['gallery_item_class']}' itemscope itemtype='http://schema.org/ImageGallery'>";
+      foreach ($imgs as $img) {
+         if (!isset($img['thumbnail_src'])) {
+            $img['thumbnail_src'] = $img['src'];
+         }
+         $out .= "<figure itemprop='associatedMedia' itemscope itemtype='http://schema.org/ImageObject'>";
+         $out .= "<a href='{$img['src']}' itemprop='contentUrl' data-index='0'>";
+         $out .= "<img src='{$img['thumbnail_src']}' itemprop='thumbnail'>";
+         $out .= "</a>";
+         $out .= "</figure>";
+      }
+      $out .= "</div>";
+
+      // Decode images urls
+      $imgs = array_map(function($img) {
+         $img['src'] = html_entity_decode($img['src']);
+         return $img;
+      }, $imgs);
+
+      $items_json = json_encode($imgs);
+      $dltext = __('Download');
+      $js = <<<JAVASCRIPT
+      (function($) {
+         var pswp = document.getElementById('psgallery{$p['rand']}');
+
+         $('.pswp-img{$p['rand']}').on('click', 'figure', function(event) {
+            event.preventDefault();
+
+            var options = {
+                index: $(this).index(),
+                bgOpacity: 0.7,
+                showHideOpacity: true,
+                shareButtons: [
+                  {id:'download', label:'{$dltext}', url:'{{raw_image_url}}', download:true}
+                ]
+            }
+
+            var lightBox = new PhotoSwipe(pswp, PhotoSwipeUI_Default, {$items_json}, options);
+            $(pswp).closest('.glpi_tabs').css('z-index', 50); // be sure that tabs are displayed above form in vsplit
+            lightBox.init();
+
+            lightBox.listen(
+               'destroy',
+               function() {
+                  $(this.container).closest('.glpi_tabs').css('z-index', ''); // restore z-index from CSS
+               }
+            );
+        });
+      })(jQuery);
+
+JAVASCRIPT;
+
+      $out .= Html::scriptBlock($js);
+
+      return $out;
+   }
+
+   /**
+    * Replace images by gallery component in rich text.
+    *
+    * @since 9.5.0
+    *
+    * @param string  $richtext
+    *
+    * @return string
+    */
+   static function replaceImagesByGallery($richtext) {
+
+      $image_matches = [];
+      preg_match_all(
+         '/<a[^>]*>\s*<img[^>]*src=["\']([^"\']*document\.send\.php\?docid=([0-9]+)(?:&[^"\']+)?)["\'][^>]*>\s*<\/a>/',
+         $richtext,
+         $image_matches,
+         PREG_SET_ORDER
+      );
+      foreach ($image_matches as $image_match) {
+         $img_tag = $image_match[0];
+         $docsrc  = $image_match[1];
+         $docid   = $image_match[2];
+         $document = new Document();
+         if ($document->getFromDB($docid)) {
+            $docpath = GLPI_DOC_DIR . '/' . $document->fields['filepath'];
+            if (Document::isImage($docpath)) {
+               $imgsize = getimagesize($docpath);
+               $gallery = Html::imageGallery([
+                  [
+                     'src' => $docsrc,
+                     'w'   => $imgsize[0],
+                     'h'   => $imgsize[1]
+                  ]
+               ]);
+               $richtext = str_replace($img_tag, $gallery, $richtext);
+            }
+         }
+      }
+
+      return $richtext;
+   }
+
+
+   /**
     * Creates an HTML link.
     *
     * @since 0.85
     *
-    * @param $text               The content to be wrapped by a tags.
-    * @param $url                URL parameter
-    * @param $options   Array    of HTML attributes:
+    * @param string $text     The content to be wrapped by a tags.
+    * @param string $url      URL parameter
+    * @param array  $options  Array of HTML attributes:
     *     - `confirm` JavaScript confirmation message.
     *     - `confirmaction` optional action to do on confirmation
     * @return string an `a` element.
@@ -4682,8 +5195,8 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $fieldName          Name of a field
-    * @param $options    Array   of HTML attributes.
+    * @param string $fieldName  Name of a field
+    * @param array  $options    Array of HTML attributes.
     *
     * @return string A generated hidden input
    **/
@@ -4708,8 +5221,8 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $fieldName          Name of a field
-    * @param $options    Array   of HTML attributes.
+    * @param string $fieldName  Name of a field
+    * @param array  $options    Array of HTML attributes.
     *
     * @return string A generated hidden input
    **/
@@ -4735,7 +5248,7 @@ class Html {
     *
     * @return string
     */
-   static function select($name, array $values, $options = []) {
+   static function select($name, array $values = [], $options = []) {
       $selected = false;
       if (isset($options['selected'])) {
          $selected = $options['selected'];
@@ -4750,8 +5263,11 @@ class Html {
          $select .= sprintf(
             '<option value="%1$s"%2$s>%3$s</option>',
             self::cleanInputText($key),
-            ($selected != false && $key == $selected) ? ' selected="selected"' : '',
-            $value
+            ($selected != false && (
+               $key == $selected
+               || is_array($selected) && in_array($key, $selected))
+            ) ? ' selected="selected"' : '',
+            Html::entities_deep($value)
          );
       }
       $select .= '</select>';
@@ -4765,8 +5281,8 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $caption          caption of the input
-    * @param $options    Array of options.
+    * @param string $caption  caption of the input
+    * @param array  $options  Array of options.
     *     - image : will use a submit image input
     *     - `confirm` JavaScript confirmation message.
     *     - `confirmaction` optional action to do on confirmation
@@ -4785,7 +5301,7 @@ class Html {
 
       // Set default class to submit
       if (!isset($options['class'])) {
-         $options['class'] = 'submit';
+         $options['class'] = 'vsubmit';
       }
       if (isset($options['confirm'])) {
          if (!empty($options['confirm'])) {
@@ -4808,8 +5324,49 @@ class Html {
          return sprintf('<input type="image" src="%s" %s />',
                Html::cleanInputText($image), Html::parseAttributes($options));
       }
-      return sprintf('<input type="submit" value="%s" %s />',
-                     Html::cleanInputText($caption), Html::parseAttributes($options));
+
+      $button = "<button type='submit' value='%s' %s>
+               $caption
+            </button>&nbsp;";
+
+      return sprintf($button, Html::cleanInputText($caption), Html::parseAttributes($options));
+   }
+
+
+   /**
+    * Creates an accessible, stylable progress bar control.
+    * @since 9.5.0
+    * @param int $max    The maximum value of the progress bar.
+    * @param int $value    The current value of the progress bar.
+    * @param array $params  Array of options:
+    *                         - rand: Random int for the progress id. Default is a new random int.
+    *                         - tooltip: Text to show in the tooltip. Default is nothing.
+    *                         - append_percent_tt: If true, the percent will be appended to the tooltip.
+    *                               In this case, it will also be automatically updated. Default is true.
+    *                         - text: Text to show in the progress bar. Default is nothing.
+    *                         - append_percent_text: If true, the percent will be appended to the text.
+    *                               In this case, it will also be automatically updated. Default is false.
+    * @return string     The progress bar HTML
+    */
+   static function progress($max, $value, $params = []) {
+      $p = [
+         'rand'            => mt_rand(),
+         'tooltip'         => '',
+         'append_percent'  => true
+      ];
+      $p = array_replace($p, $params);
+
+      $tooltip = trim($p['tooltip'] . ($p['append_percent'] ? " {$value}%" : ''));
+      // Hide element except when using a screen reader. This uses FontAwesome's sr-only class.
+      $html = "<progress id='progress{$p['rand']}' class='sr-only' max='$max' value='$value'
+            onchange='updateProgress(\"{$p['rand']}\")' title='{$tooltip}'></progress>";
+      // Custom progress control. Should be hidden for screen readers.
+      $html .= "<div aria-hidden='true' data-progressid='{$p['rand']}'
+         data-append-percent='{$p['append_percent']}' class='progress' title='{$tooltip}'>";
+      $calcWidth = ($value / $max) * 100;
+      $html .= "<span aria-hidden='true' class='progress-fg' style='width: $calcWidth%'></span>";
+      $html .= "</div>";
+      return $html;
    }
 
 
@@ -4843,8 +5400,8 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $key       The name of the attribute to create
-    * @param $value     The value of the attribute to create.
+    * @param string $key    The name of the attribute to create
+    * @param string $value  The value of the attribute to create.
     *
     * @return string The composed attribute.
    **/
@@ -4863,7 +5420,7 @@ class Html {
     *
     * @since 0.85
     *
-    * @param $script The script to wrap
+    * @param string $script  The script to wrap
     *
     * @return string
    **/
@@ -4961,8 +5518,8 @@ class Html {
     *
     * @since 9.4
     *
-    * @param sring   $url     File to include (raltive to GLPI_ROOT)
-    * @param array   $options Array of HTML attributes
+    * @param string $url      File to include (raltive to GLPI_ROOT)
+    * @param array  $options  Array of HTML attributes
     *
     * @return string CSS link tag
    **/
@@ -4993,8 +5550,6 @@ class Html {
     * @return string The Html
     */
    static function fileForRichText($options = []) {
-      global $CFG_GLPI;
-
       $p['editor_id']     = '';
       $p['name']          = 'filename';
       $p['filecontainer'] = 'fileupload_info';
@@ -5077,6 +5632,7 @@ class Html {
       $p['values']            = [];
       $p['display']           = true;
       $p['multiple']          = false;
+      $p['uploads']           = [];
 
       if (is_array($options) && count($options)) {
          foreach ($options as $key => $val) {
@@ -5094,8 +5650,12 @@ class Html {
          $display .= "</b>";
       }
 
-      // div who will receive and display file list
-      $display .= "<div id='".$p['filecontainer']."' class='fileupload_info'></div>";
+      $display .= self::uploadedFiles([
+         'filecontainer' => $p['filecontainer'],
+         'name'          => $p['name'],
+         'display'       => false,
+         'uploads'       => $p['uploads'],
+      ]);
 
       if (!empty($p['editor_id'])
           && $p['enable_richtext']) {
@@ -5110,12 +5670,12 @@ class Html {
          $display .= "<input id='fileupload{$p['rand']}' type='file' name='".$p['name']."[]'
                          data-url='".$CFG_GLPI["root_doc"]."/ajax/fileupload.php'
                          data-form-data='{\"name\": \"".$p['name']."\",
-                                          \"showfilesize\": \"".$p['showfilesize']."\"}'".($p['multiple']?" multiple='multiple'":"").">";
+                                          \"showfilesize\": \"".$p['showfilesize']."\"}'"
+                         .($p['multiple']?" multiple='multiple'":"")
+                         .($p['onlyimages']?" accept='.gif,.png,.jpg,.jpeg'":"").">";
          $display .= "<div id='progress{$p['rand']}' style='display:none'>".
                  "<div class='uploadbar' style='width: 0%;'></div></div>";
          $display .= "</div>";
-
-         $display .= "</div>"; // .fileupload
 
          $display .= Html::scriptBlock("
          $(function() {
@@ -5129,7 +5689,7 @@ class Html {
                               ? "$('#{$p['dropZone']}')"
                               : "false").",
                acceptFileTypes: ".($p['onlyimages']
-                                    ? "'/(\.|\/)(gif|jpe?g|png)$/i'"
+                                    ? "/(\.|\/)(gif|jpe?g|png)$/i"
                                     : "undefined").",
                progressall: function(event, data) {
                   var progress = parseInt(data.loaded / data.total * 100, 10);
@@ -5162,7 +5722,7 @@ class Html {
                               displayUploadedFile(file, tag[index], editor, '{$p['name']}');
 
                               $('#progress{$p['rand']} .uploadbar')
-                                 .text('".__s('Upload successful')."')
+                                 .text('".addslashes(__('Upload successful'))."')
                                  .css('width', '100%')
                                  .delay(2000)
                                  .fadeOut('slow');
@@ -5178,6 +5738,7 @@ class Html {
             });
          });");
       }
+      $display .= "</div>"; // .fileupload
 
       if ($p['display']) {
          echo $display;
@@ -5202,6 +5763,8 @@ class Html {
     *  - display (bool):             display or return the generated html
     *  - cols (int):                 textarea cols attribute (witdh)
     *  - rows (int):                 textarea rows attribute (height)
+    *  - required (bool):            textarea is mandatory
+    *  - uploads (array):            uploads to recover from a prevous submit
     *
     * @return mixed          the html if display paremeter is false or true
     */
@@ -5218,13 +5781,16 @@ class Html {
       $p['cols']              = 100;
       $p['rows']              = 15;
       $p['multiple']          = true;
+      $p['required']          = false;
+      $p['uploads']           = [];
 
       //merge default options with options parameter
       $p = array_merge($p, $options);
 
+      $required = $p['required'] ? 'required="required"' : '';
       $display = '';
       $display .= "<textarea name='".$p['name']."' id='".$p['editor_id']."'
-                             rows='".$p['rows']."' cols='".$p['cols']."'>".
+                             rows='".$p['rows']."' cols='".$p['cols']."' $required>".
                   $p['value']."</textarea>";
 
       if ($p['enable_richtext']) {
@@ -5232,9 +5798,18 @@ class Html {
       } else {
          $display .= Html::scriptBlock("
                         $(document).ready(function() {
-                           $('".$p['editor_id']."').autogrow();
+                           $('#".$p['editor_id']."').autogrow();
                         });
                      ");
+      }
+      if (!$p['enable_fileupload'] && $p['enable_richtext']) {
+         $display .= self::uploadedFiles([
+            'filecontainer' => $p['filecontainer'],
+            'name'          => $p['name'],
+            'display'       => false,
+            'uploads'       => $p['uploads'],
+            'editor_id'     => $p['editor_id'],
+         ]);
       }
 
       if ($p['enable_fileupload']) {
@@ -5243,6 +5818,98 @@ class Html {
          $p_rt['display'] = false;
          $display .= Html::file($p_rt);
       }
+
+      if ($p['display']) {
+         echo $display;
+         return true;
+      } else {
+         return $display;
+      }
+   }
+
+
+   /**
+    * Display uploaded files area
+    * @see displayUploadedFile() in fileupload.js
+    *
+    * @param $options       array of options
+    *    - name                string   field name (default filename)
+    *    - filecontainer       string   DOM ID of the container showing file uploaded:
+    *    - editor_id           string   id attribute for the textarea
+    *    - display             bool     display or return the generated html
+    *    - uploads             array    uploads to display (done in a previous form submit)
+    * @return void|string   the html if display parameter is false
+    */
+   private static function uploadedFiles($options = []) {
+      global $CFG_GLPI;
+
+      //default options
+      $p['filecontainer']     = 'fileupload_info';
+      $p['name']              = 'filename';
+      $p['editor_id']         = '';
+      $p['display']           = true;
+      $p['uploads']           = [];
+
+      //merge default options with options parameter
+      $p = array_merge($p, $options);
+
+      // div who will receive and display file list
+      $display = "<div id='".$p['filecontainer']."' class='fileupload_info'>";
+      if (isset($p['uploads']['_' . $p['name']])) {
+         foreach ($p['uploads']['_' . $p['name']] as $uploadId => $upload) {
+            $prefix  = substr($upload, 0, 23);
+            $displayName = substr($upload, 23);
+
+            // get the extension icon
+            $extension = pathinfo(GLPI_TMP_DIR . '/' . $upload, PATHINFO_EXTENSION);
+            $extensionIcon = '/pics/icones/' . $extension . '-dist.png';
+            if (!is_readable(GLPI_ROOT . $extensionIcon)) {
+               $extensionIcon = '/pics/icones/defaut-dist.png';
+            }
+            $extensionIcon = $CFG_GLPI['root_doc'] . $extensionIcon;
+
+            // Rebuild the minimal data to show the already uploaded files
+            $upload = [
+               'name'    => $upload,
+               'id'      => 'doc' . $p['name'] . mt_rand(),
+               'display' => $displayName,
+               'size'    => filesize(GLPI_TMP_DIR . '/' . $upload),
+               'prefix'  => $prefix,
+            ];
+            $tag = $p['uploads']['_tag_' . $p['name']][$uploadId];
+            $tag = [
+               'name' => $tag,
+               'tag'  => "#$tag#",
+            ];
+
+            // Show the name and size of the upload
+            $display .= "<p id='" . $upload['id'] . "'>&nbsp;";
+            $display .= "<img src='$extensionIcon' title='$extension'>&nbsp;";
+            $display .= "<b>" . $upload['display'] . "</b>&nbsp;(" . Toolbox::getSize($upload['size']) . ")";
+
+            $name = '_' . $p['name'] . '[' . $uploadId . ']';
+            $display .= Html::hidden($name, ['value' => $upload['name']]);
+
+            $name = '_prefix_' . $p['name'] . '[' . $uploadId . ']';
+            $display .= Html::hidden($name, ['value' => $upload['prefix']]);
+
+            $name = '_tag_' . $p['name'] . '[' . $uploadId . ']';
+            $display .= Html::hidden($name, ['value' => $tag['name']]);
+
+            // show button to delete the upload
+            $getEditor = 'null';
+            if ($p['editor_id'] != '') {
+               $getEditor = "tinymce.get('" . $p['editor_id'] . "')";
+            }
+            $textTag = $tag['tag'];
+            $domItems = "{0:'" . $upload['id'] . "', 1:'" . $upload['id'] . "'+'2'}";
+            $deleteUpload = "deleteImagePasted($domItems, '$textTag', $getEditor)";
+            $display .= '<span class="fa fa-times-circle pointer" onclick="' . $deleteUpload . '"></span>';
+
+            $display .= "</p>";
+         }
+      }
+      $display .= "</div>";
 
       if ($p['display']) {
          echo $display;
@@ -5281,7 +5948,7 @@ class Html {
     *       'col_check_all' set to true to display a checkbox to check all elements of the col
     *       'rand'          random number to use for ids
     *
-    * @return random value used to generate the ids
+    * @return integer random value used to generate the ids
    **/
    static function showCheckboxMatrix(array $columns, array $rows, array $options = []) {
 
@@ -5444,9 +6111,7 @@ class Html {
                                              > ($nb_cb_per_row['total'] / 2));
             echo "\t\t<td class='center'>".Html::getCheckbox($cb_options)."</td>\n";
          }
-         if ($nb_cb_per_row['total'] == 1) {
-            echo "\t\t<td class='center'></td>\n";
-         }
+
          echo "\t</tr>\n";
       }
 
@@ -5489,13 +6154,20 @@ class Html {
    /**
     * This function provides a mecanism to send html form by ajax
     *
+    * @param string $selector selector of a HTML form
+    * @param string $success  jacascript code of the success callback
+    * @param string $error    jacascript code of the error callback
+    * @param string $complete jacascript code of the complete callback
+    *
+    * @see https://api.jquery.com/jQuery.ajax/
+    *
     * @since 9.1
    **/
-   static function ajaxForm($selector, $success = "console.log(html);") {
+   static function ajaxForm($selector, $success = "console.log(html);", $error = "console.error(html)", $complete = '') {
       echo Html::scriptBlock("
       $(function() {
          var lastClicked = null;
-         $('input[type=submit]').click(function(e) {
+         $('input[type=submit], button[type=submit]').click(function(e) {
             e = e || event;
             lastClicked = e.target || e.srcElement;
          });
@@ -5516,6 +6188,12 @@ class Html {
                data: formData,
                success: function(html) {
                   $success
+               },
+               error: function(html) {
+                  $error
+               },
+               complete: function(html) {
+                  $complete
                }
             });
          });
@@ -5538,8 +6216,8 @@ class Html {
          if(typeof message == 'string') {
             message = message.replace('\\n', '<br>');
          }
-         caption = caption || '".__s("Information")."';
-         $('<div/>').html(message).dialog({
+         caption = caption || '"._sn('Information', 'Information', 1)."';
+         $('<div></div>').html(message).dialog({
             title: caption,
             buttons: {
                ".__s('OK').": function() {
@@ -5549,6 +6227,7 @@ class Html {
             dialogClass: 'glpi_modal',
             open: function(event, ui) {
                $(this).parent().prev('.ui-widget-overlay').addClass('glpi_modal');
+               $(this).next('div').find('button').focus();
             },
             close: function(){
                $(this).remove();
@@ -5628,7 +6307,7 @@ class Html {
          message = message.replace('\\n', '<br>');
          caption = caption || '';
 
-         $('<div/>').html(message).dialog({
+         $('<div></div>').html(message).dialog({
             title: caption,
             dialogClass: 'fixed glpi_modal',
             buttons: {
@@ -5694,7 +6373,7 @@ class Html {
    static function jsAlertCallback($msg, $title, $okCallback = null) {
       return "
          // Dialog and its properties.
-         $('<div/>').dialog({
+         $('<div></div>').dialog({
             open: function(event, ui) { $('.ui-dialog-titlebar-close').hide(); },
             close: function(event, ui) { $(this).remove(); },
             resizable: false,
@@ -5708,71 +6387,6 @@ class Html {
             }
          }).text('".Toolbox::addslashes_deep($msg)."');
          ";
-   }
-
-
-   /**
-    * Convert tag to image
-    *
-    * @param string|array $tag       the tag identifier of the document
-    * @param int          $width     witdh of the final image
-    * @param int          $height    height of the final image
-    * @param bool         $addLink   boolean, do we need to add an anchor link
-    * @param string       $more_link append to the link (ex &test=true)
-    *
-    * @return string
-    *
-    * @since 9.2
-    * @deprecated 9.4.3
-   **/
-   public static function convertTagFromRichTextToImageTag($tag, $width, $height, $addLink = true, $more_link = "") {
-
-      Toolbox::deprecated('Use getImageHtmlTagForDocument');
-
-      global $CFG_GLPI;
-
-      $doc = new Document();
-      $doc_data = $doc->find(['tag' => $tag]);
-      $out = "";
-
-      if (count($doc_data)) {
-         $base_path = $CFG_GLPI['root_doc'];
-         if (isCommandLine()) {
-            $base_path = parse_url($CFG_GLPI['url_base'], PHP_URL_PATH);
-         }
-
-         foreach ($doc_data as $id => $image) {
-            // Add only image files : try to detect mime type
-            $ok       = false;
-            $mime     = '';
-            if (isset($image['filepath'])) {
-               $fullpath = GLPI_DOC_DIR."/".$image['filepath'];
-               $mime = Toolbox::getMime($fullpath);
-               $ok   = Toolbox::getMime($fullpath, 'image');
-            }
-            if (isset($image['tag'])) {
-               if ($ok || empty($mime)) {
-                  // Replace tags by image in textarea
-                  if ($addLink) {
-                     $out .= '<a '
-                             . 'href="' . $base_path . '/front/document.send.php?docid=' . $id . $more_link . '" '
-                             . 'target="_blank" '
-                             . '>';
-                  }
-                  $out .= '<img '
-                          . 'alt="' . $image['tag'] . '" '
-                          . 'width="' . $width . '" '
-                          . 'src="' . $base_path . '/front/document.send.php?docid=' . $id.$more_link . '" '
-                          . '/>';
-                  if ($addLink) {
-                     $out .= '</a>';
-                  }
-               }
-            }
-         }
-         return $out;
-      }
-      return '#'.$tag.'#';
    }
 
 
@@ -5875,6 +6489,20 @@ class Html {
          case 'tinymce':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/tinymce.js';
             break;
+         case 'planning':
+            $_SESSION['glpi_js_toload'][$name][] = 'js/planning.js';
+            break;
+         case 'flatpickr':
+            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/flatpickr.js';
+            if (isset($_SESSION['glpilanguage'])) {
+               $filename = "public/lib/flatpickr/l10n/".
+                  strtolower($CFG_GLPI["languages"][$_SESSION['glpilanguage']][3]).".js";
+               if (file_exists(GLPI_ROOT . '/' . $filename)) {
+                  $_SESSION['glpi_js_toload'][$name][] = $filename;
+                  break;
+               }
+            }
+            break;
          case 'fullcalendar':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/fullcalendar.js';
             if (isset($_SESSION['glpilanguage'])) {
@@ -5887,7 +6515,6 @@ class Html {
                   }
                }
             }
-            $_SESSION['glpi_js_toload'][$name][] = 'js/planning.js';
             break;
          case 'jstree':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/jstree.js';
@@ -5895,15 +6522,16 @@ class Html {
          case 'gantt':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/jquery-gantt.js';
             break;
+         case 'kanban':
+            $_SESSION['glpi_js_toload'][$name][] = 'js/kanban.js';
+            $_SESSION['glpi_js_toload'][$name][] = 'lib/jqueryplugins/jquery.ui.touch-punch.js';
+            break;
          case 'rateit':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/jquery.rateit.js';
             break;
-         case 'colorpicker':
-            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/spectrum-colorpicker.js';
-            break;
          case 'fileupload':
-            $_SESSION['glpi_js_toload'][$name][] = 'lib/jqueryplugins/jquery-file-upload/js/jquery.fileupload.js';
-            $_SESSION['glpi_js_toload'][$name][] = 'lib/jqueryplugins/jquery-file-upload/js/jquery.iframe-transport.js';
+            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/file-type.js';
+            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/jquery-file-upload.js';
             $_SESSION['glpi_js_toload'][$name][] = 'js/fileupload.js';
             break;
          case 'charts':
@@ -5916,9 +6544,21 @@ class Html {
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/fuzzy.js';
             $_SESSION['glpi_js_toload'][$name][] = 'js/fuzzysearch.js';
             break;
+         case 'dashboard':
+            $_SESSION['glpi_js_toload'][$name][] = 'js/dashboard.js';
+            break;
+         case 'marketplace':
+            $_SESSION['glpi_js_toload'][$name][] = 'js/marketplace.js';
+            break;
          case 'gridstack':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/gridstack.js';
+            break;
+         case 'sortable':
+            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/sortable.js';
+            break;
+         case 'rack':
             $_SESSION['glpi_js_toload'][$name][] = 'js/rack.js';
+            $_SESSION['glpi_js_toload'][$name][] = 'lib/jqueryplugins/jquery.ui.touch-punch.js';
             break;
          case 'leaflet':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/leaflet.js';
@@ -5928,6 +6568,9 @@ class Html {
             break;
          case 'codemirror':
             $_SESSION['glpi_js_toload'][$name][] = 'public/lib/codemirror.js';
+            break;
+         case 'photoswipe':
+            $_SESSION['glpi_js_toload'][$name][] = 'public/lib/photoswipe.js';
             break;
          default:
             $found = false;
@@ -5972,15 +6615,6 @@ class Html {
 
       //locales for js libraries
       if (isset($_SESSION['glpilanguage'])) {
-         // jquery ui
-         echo Html::script("public/lib/jquery-ui/i18n/datepicker-".
-                     $CFG_GLPI["languages"][$_SESSION['glpilanguage']][2].".js");
-         $filename = "public/lib/jquery-ui-timepicker-addon/i18n/jquery-ui-timepicker-".
-                     $CFG_GLPI["languages"][$_SESSION['glpilanguage']][2].".js";
-         if (file_exists(GLPI_ROOT.'/'.$filename)) {
-            echo Html::script($filename);
-         }
-
          // select2
          $filename = "public/lib/select2/js/i18n/".
                      $CFG_GLPI["languages"][$_SESSION['glpilanguage']][2].".js";
@@ -5989,20 +6623,15 @@ class Html {
          }
       }
 
-      // transfer some var of php to javascript
-      // (warning, don't expose all keys of $CFG_GLPI, some shouldn't be available client side)
-      $debug = (isset($_SESSION['glpi_use_mode'])
-         && $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ? true : false);
-      echo self::scriptBlock("
-         var CFG_GLPI  = ".json_encode(Config::getSafeConfig(true), $debug ? JSON_PRETTY_PRINT : 0).";
-      ");
+      // transfer core variables to javascript side
+      echo self::getCoreVariablesForJavascript(true);
 
       // Some Javascript-Functions which we may need later
       echo Html::script('js/common.js');
       self::redefineAlert();
       self::redefineConfirm();
 
-      if (isset($CFG_GLPI['notifications_ajax']) && $CFG_GLPI['notifications_ajax']) {
+      if (isset($CFG_GLPI['notifications_ajax']) && $CFG_GLPI['notifications_ajax'] && !Session::isImpersonateActive()) {
          $options = [
             'interval'  => ($CFG_GLPI['notifications_ajax_check_interval'] ? $CFG_GLPI['notifications_ajax_check_interval'] : 5) * 1000,
             'sound'     => $CFG_GLPI['notifications_ajax_sound'] ? $CFG_GLPI['notifications_ajax_sound'] : false,
@@ -6021,9 +6650,10 @@ class Html {
 
       // Add specific javascript for plugins
       if (isset($PLUGIN_HOOKS['add_javascript']) && count($PLUGIN_HOOKS['add_javascript'])) {
-
          foreach ($PLUGIN_HOOKS["add_javascript"] as $plugin => $files) {
-            if (!Plugin::isPluginLoaded($plugin)) {
+            $plugin_root_dir = Plugin::getPhpDir($plugin, true);
+            $plugin_web_dir  = Plugin::getWebDir($plugin, false);
+            if (!Plugin::isPluginActive($plugin)) {
                continue;
             }
             $version = Plugin::getInfo($plugin, 'version');
@@ -6031,8 +6661,8 @@ class Html {
                $files = [$files];
             }
             foreach ($files as $file) {
-               if (file_exists(GLPI_ROOT."/plugins/$plugin/$file")) {
-                  echo Html::script("plugins/$plugin/$file", ['version' => $version]);
+               if (file_exists($plugin_root_dir."/$file")) {
+                  echo Html::script("$plugin_web_dir/$file", ['version' => $version]);
                } else {
                   Toolbox::logWarning("$file file not found from plugin $plugin!");
                }
@@ -6043,6 +6673,42 @@ class Html {
       if (file_exists(GLPI_ROOT."/js/analytics.js")) {
          echo Html::script("js/analytics.js");
       }
+   }
+
+
+   /**
+    * transfer some var of php to javascript
+    * (warning, don't expose all keys of $CFG_GLPI, some shouldn't be available client side)
+    *
+    * @param bool $full if false, don't expose all variables from CFG_GLPI (only url_base & root_doc)
+    *
+    * @since 9.5
+    * @return string
+    */
+   static function getCoreVariablesForJavascript(bool $full = false) {
+      global $CFG_GLPI;
+
+      $cfg_glpi = "var CFG_GLPI  = {
+         'url_base': '".(isset($CFG_GLPI['url_base']) ? $CFG_GLPI["url_base"] : '')."',
+         'root_doc': '".$CFG_GLPI["root_doc"]."',
+      };";
+
+      if ($full) {
+         $debug = (isset($_SESSION['glpi_use_mode'])
+                   && $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ? true : false);
+         $cfg_glpi = "var CFG_GLPI  = ".json_encode(Config::getSafeConfig(true), $debug ? JSON_PRETTY_PRINT : 0).";";
+      }
+
+      $plugins_path = [];
+      foreach (Plugin::getPlugins() as $key) {
+         $plugins_path[$key] = Plugin::getWebDir($key, false);
+      }
+      $plugins_path = 'var GLPI_PLUGINS_PATH = '.json_encode($plugins_path).';';
+
+      return self::scriptBlock("
+         $cfg_glpi
+         $plugins_path
+      ");
    }
 
    /**
@@ -6096,7 +6762,7 @@ class Html {
     */
    static public function manageRefreshPage($timer = false, $callback = null) {
       if (!$timer) {
-         $timer = isset($_SESSION['glpirefresh_ticket_list']) ? $_SESSION['glpirefresh_ticket_list'] : 0;
+         $timer = $_SESSION['glpirefresh_views'] ?? 0;
       }
 
       if ($callback === null) {
@@ -6124,11 +6790,9 @@ class Html {
     *
     * @param string $action action to switch (should be actually 'getHtml' or 'getList')
     *
-    * @return nothing (display)
+    * @return string
     */
    static function fuzzySearch($action = '') {
-      global $CFG_GLPI;
-
       switch ($action) {
          case 'getHtml':
             return "<div id='fuzzysearch'>
@@ -6345,7 +7009,8 @@ class Html {
          //  Tickets
          if (Session::haveRight("ticket", CREATE)
             || Session::haveRight("ticket", Ticket::READMY)
-            || Session::haveRight("followup", ITILFollowup::SEEPUBLIC)) {
+            || Session::haveRight("followup", ITILFollowup::SEEPUBLIC)
+         ) {
             $menu['tickets'] = [
                'default'   => '/front/ticket.php',
                'title'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
@@ -6371,6 +7036,8 @@ class Html {
             ];
          }
       }
+
+      $menu = Plugin::doHookFunction("redefine_menus", $menu);
 
       $already_used_shortcut = ['1'];
 
@@ -6422,17 +7089,29 @@ class Html {
                   }
                   if (isset($val['page'])
                      && isset($val['title'])) {
-                     echo "<li class='$menu_class'><a href='".$CFG_GLPI["root_doc"].$val['page']."'";
+                     $shortcut_attr = "";
+                     $title = $val['title'];
 
                      if (isset($val['shortcut']) && !empty($val['shortcut'])) {
                         if (!isset($already_used_shortcut[$val['shortcut']])) {
-                           echo " accesskey='".$val['shortcut']."'";
+                           $shortcut_attr = " accesskey='".$val['shortcut']."'";
                            $already_used_shortcut[$val['shortcut']] = $val['shortcut'];
                         }
-                        echo ">".Toolbox::shortcut($val['title'], $val['shortcut'])."</a></li>\n";
-                     } else {
-                        echo ">".$val['title']."</a></li>\n";
+                        $title = Toolbox::shortcut($val['title'], $val['shortcut']);
                      }
+
+                     $icon_cls = "";
+                     if (isset($val['icon'])) {
+                        $icon_cls = $val['icon'];
+                     }
+                     $icon = "<i class='fa-fw $icon_cls'></i>";
+
+                     echo "<li class='$menu_class'>
+                        <a href='".$CFG_GLPI["root_doc"].$val['page']."' $shortcut_attr>
+                           $icon
+                           $title
+                        </a>
+                     </li>";
                   }
                }
                echo "</ul>";
@@ -6454,7 +7133,7 @@ class Html {
             && count($PLUGIN_HOOKS["helpdesk_menu_entry"])) {
 
             foreach ($PLUGIN_HOOKS["helpdesk_menu_entry"] as $plugin => $active) {
-               if (!Plugin::isPluginLoaded($plugin)) {
+               if (!Plugin::isPluginActive($plugin)) {
                   continue;
                }
                if ($active) {
@@ -6481,7 +7160,7 @@ class Html {
 
             // list menu item
             foreach ($menu['plugins']['content'] as $key => $val) {
-               echo "<li><a href='".$CFG_GLPI["root_doc"]."/plugins/".$key.$val['page']."'>".
+               echo "<li><a href='".Plugin::getWebDir($key).$val['page']."'>".
                         $val["title"]."</a></li>";
             }
             echo "</ul></li>";
@@ -6534,7 +7213,9 @@ class Html {
                   "<a href='".$CFG_GLPI["root_doc"].$menu[$sector]['content'][$item]['page']."' ".
                         ($with_option?"":"class='here'")." title=\"".
                         $menu[$sector]['content'][$item]['title']."\" >".
-                        $menu[$sector]['content'][$item]['title']."</a>".
+                        "<i class='".($menu[$sector]['content'][$item]['icon'] ?? "")."'></i>&nbsp;".
+                        $menu[$sector]['content'][$item]['title'].
+                  "</a>".
                   "</li>";
             }
 
@@ -6544,6 +7225,8 @@ class Html {
                         $menu[$sector]['content'][$item]['options'][$option]['page'].
                         "' class='here' title=\"".
                         $menu[$sector]['content'][$item]['options'][$option]['title']."\" >";
+
+               echo "<i class='".($menu[$sector]['content'][$item]['options'][$option]['icon'] ?? "")."'></i>&nbsp;";
                echo self::resume_name($menu[$sector]['content'][$item]['options'][$option]['title'],
                                     17);
                echo "</a></li>";
@@ -6617,9 +7300,19 @@ class Html {
 
                      case "summary" :
                         echo "<span>";
-                        echo Html::image($CFG_GLPI["root_doc"] . "/pics/menu_show.png",
-                                       ['alt' => __('Summary'),
-                                             'url' => $CFG_GLPI["root_doc"].$val]);
+                        echo Html::link('<i class="pointer fas fa-stream"></i>',
+                                        $CFG_GLPI["root_doc"].$val, [
+                                          'title' => __('Summary')
+                                        ]);
+                        echo "</span>";
+                        break;
+
+                     case "summary_kanban" :
+                        echo "<span>";
+                        echo Html::link('<i class="pointer fas fa-columns"></i>',
+                           $CFG_GLPI["root_doc"].$val, [
+                              'title' => __('Global Kanban')
+                           ]);
                         echo "</span>";
                         break;
 
@@ -6749,7 +7442,8 @@ class Html {
    public static function compileScss($args) {
       global $CFG_GLPI, $GLPI_CACHE;
 
-      $ckey = isset($args['v']) ? $args['v'] : GLPI_SCHEMA_VERSION;
+      $ckey = 'css_';
+      $ckey .= isset($args['v']) ? $args['v'] : GLPI_SCHEMA_VERSION;
 
       $scss = new Compiler();
       $scss->setFormatter('ScssPhp\ScssPhp\Formatter\Crunched');
@@ -6767,7 +7461,6 @@ class Html {
       $file = isset($args['file']) ? $args['file'] : 'css/styles';
 
       $ckey .= '_' . $file;
-      $ckey = 'css_' . md5($ckey);
 
       if (!Toolbox::endsWith($file, '.scss')) {
          // Prevent include of file if ext is not .scss
@@ -6798,22 +7491,22 @@ class Html {
       }
 
       $import = '@import "' . $file . '";';
-      $fckey = md5($file);
-      $md5file = md5(file_get_contents($path));
+      $fckey = 'css_raw_file_' . $file;
+      $file_hash = self::getScssFileHash($path);
 
       //check if files has changed
       if ($GLPI_CACHE->has($fckey)) {
-         $md5 = $GLPI_CACHE->get($fckey);
+         $cached_file_hash = $GLPI_CACHE->get($fckey);
 
-         if ($md5file != $md5) {
+         if ($file_hash != $cached_file_hash) {
             //file has changed
             Toolbox::logDebug("$file has changed, reloading");
             $args['reload'] = true;
-            $GLPI_CACHE->set($fckey, $md5file);
+            $GLPI_CACHE->set($fckey, $file_hash);
          }
       } else {
          Toolbox::logDebug("$file is new, loading");
-         $GLPI_CACHE->set($fckey, $md5file);
+         $GLPI_CACHE->set($fckey, $file_hash);
       }
 
       $scss->addImportPath(GLPI_ROOT);
@@ -6828,6 +7521,45 @@ class Html {
       }
 
       return $css;
+   }
+
+   /**
+    * Returns SCSS file hash.
+    * This function evaluates recursivly imports to compute a hash that represent the whole
+    * contents of the final SCSS.
+    *
+    * @param string $filepath
+    *
+    * @return null|string
+    */
+   public static function getScssFileHash(string $filepath) {
+
+      if (!is_file($filepath) || !is_readable($filepath)) {
+         return null;
+      }
+
+      $contents = file_get_contents($filepath);
+      $hash = md5($contents);
+
+      $matches = [];
+      preg_match_all('/@import\s+[\'"]([^\'"]*)[\'"];/', $contents, $matches);
+
+      if (empty($matches)) {
+         return $hash;
+      }
+
+      $basedir = dirname($filepath);
+      foreach ($matches[1] as $import_url) {
+         $has_extension = preg_match('/\.s?css$/', $import_url);
+         $imported_filepath = $basedir . '/' . $import_url;
+         if (!$has_extension && is_file($imported_filepath . '.scss')) {
+            $imported_filepath = $imported_filepath . '.scss';
+         }
+
+         $hash .= self::getScssFileHash($imported_filepath);
+      }
+
+      return $hash;
    }
 
    /**

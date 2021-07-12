@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -36,7 +36,7 @@ include ('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$item = new Calendar_holiday();
+$item = new Calendar_Holiday();
 
 if (isset($_POST["add"])) {
    $item->check(-1, CREATE, $_POST);

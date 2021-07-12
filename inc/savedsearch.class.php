@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -39,7 +39,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 9.2
 **/
-class SavedSearch extends CommonDBTM {
+class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria {
 
    static $rightname               = 'bookmark_public';
 
@@ -110,8 +110,6 @@ class SavedSearch extends CommonDBTM {
 
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
-      global $DB;
-
       $input = $ma->getInput();
       switch ($ma->getAction()) {
          case 'unset_default' :
@@ -179,8 +177,6 @@ class SavedSearch extends CommonDBTM {
 
 
    function rawSearchOptions() {
-      global $CFG_GLPI;
-
       $tab = [];
 
       $tab[] = ['id'                 => 'common',
@@ -192,7 +188,8 @@ class SavedSearch extends CommonDBTM {
                 'field'              => 'name',
                 'name'               => __('Name'),
                 'datatype'           => 'itemlink',
-                'massiveaction'      => false // implicit key==1
+                'massiveaction'      => false, // implicit key==1
+                'autocomplete'       => true,
                ];
 
       $tab[] = ['id'                 => '2',
@@ -206,9 +203,18 @@ class SavedSearch extends CommonDBTM {
       $tab[] = ['id'                 => 3,
                 'table'              => User::getTable(),
                 'field'              => 'name',
-                'name'               => __('User'),
+                'name'               => User::getTypeName(1),
                 'datatype'           => 'dropdown'
                ];
+
+      $tab[] = [
+         'id'  => 4,
+         'table'           => $this->getTable(),
+         'field'           => 'is_private',
+         'name'            => __('Is private'),
+         'datatype'        => 'bool',
+         'massiveaction'   => false,
+      ];
 
       $tab[] = ['id'                 => '8',
                 'table'              => $this->getTable(),
@@ -275,7 +281,12 @@ class SavedSearch extends CommonDBTM {
 
       $taburl = parse_url(rawurldecode($input['url']));
 
-      $index  = strpos($taburl["path"], "plugins");
+      $key = "plugins";
+      if (preg_match('/marketplace/i', $taburl["path"])) {
+         $key = "marketplace";
+      }
+
+      $index  = strpos($taburl["path"], $key);
       if (!$index) {
          $index = strpos($taburl["path"], "front");
       }
@@ -405,7 +416,7 @@ class SavedSearch extends CommonDBTM {
             ]
          );
          echo "</td></tr>";
-         echo "<tr class='tab_bg_2'><td>".__('Entity')."</td>";
+         echo "<tr class='tab_bg_2'><td>".Entity::getTypeName(1)."</td>";
          echo "</td><td>";
          Entity::dropdown(['value' => $this->fields["entities_id"]]);
          echo "</td><td>". __('Child entities')."</td><td>";
@@ -420,6 +431,9 @@ class SavedSearch extends CommonDBTM {
       }
       if ($ID <= 0) { // add
          echo Html::hidden('users_id', ['value' => $this->fields['users_id']]);
+         if (!self::canCreate()) {
+            echo Html::hidden('is_private', ['value' => 1]);
+         }
       } else {
          echo Html::hidden('id', ['value' => $ID]);
       }
@@ -493,7 +507,7 @@ class SavedSearch extends CommonDBTM {
       switch ($type) {
          case self::SEARCH:
          case self::ALERT:
-            // Check if all datas are valid
+            // Check if all data are valid
             $opt            = Search::getCleanedOptions($this->fields['itemtype']);
             $query_tab_save = $query_tab;
             $partial_load   = false;
@@ -551,7 +565,7 @@ class SavedSearch extends CommonDBTM {
     *
     * @param integer $ID ID of the saved search
     *
-    * @return nothing
+    * @return void
    **/
    function load($ID) {
       global $CFG_GLPI;
@@ -728,7 +742,7 @@ class SavedSearch extends CommonDBTM {
       $private_criteria['WHERE'] = [
          "$table.is_private"  => 1,
          "$table.users_id"    => Session::getLoginUserID()
-      ];
+      ] + getEntitiesRestrictCriteria($table, '', '', true);
       $private_iterator = $DB->request($private_criteria);
 
       // get saved searches
@@ -1044,8 +1058,6 @@ class SavedSearch extends CommonDBTM {
     * @return boolean
     */
    function saveOrder(array $items) {
-      global $DB;
-
       if (count($items)) {
          $user               = new User();
          $personalorderfield = $this->getPersonalOrderField();
@@ -1292,7 +1304,7 @@ class SavedSearch extends CommonDBTM {
    /**
     * Update all bookmarks execution time
     *
-    * @param Crontask $task Crontask instance
+    * @param CronTask $task CronTask instance
     *
     * @return void
    **/
@@ -1302,7 +1314,7 @@ class SavedSearch extends CommonDBTM {
       $cron_status = 0;
 
       if ($CFG_GLPI['show_count_on_tabs'] != -1) {
-         $lastdate = new \Datetime($task->getField('lastrun'));
+         $lastdate = new \DateTime($task->getField('lastrun'));
          $lastdate->sub(new \DateInterval('P7D'));
 
          $iterator = $DB->request(['FROM'   => self::getTable(),
@@ -1422,12 +1434,12 @@ class SavedSearch extends CommonDBTM {
 
       if ($notif->isNewItem()) {
          $notif->check(-1, CREATE);
-         $notif->add(['name'            => __('Saved search') . ' ' . $this->getName(),
+         $notif->add(['name'            => SavedSearch::getTypeName(1) . ' ' . addslashes($this->getName()),
                       'entities_id'     => $_SESSION["glpidefault_entity"],
                       'itemtype'        => SavedSearch_Alert::getType(),
                       'event'           => 'alert_' . $this->getID(),
                       'is_active'       => 0,
-                      'datate_creation' => date('Y-m-d H:i:s')
+                      'date_creation' => date('Y-m-d H:i:s')
                      ]);
 
          Session::addMessageAfterRedirect(__('Notification has been created!'), INFO);
@@ -1468,7 +1480,7 @@ class SavedSearch extends CommonDBTM {
     *
     * @return array
     */
-   static public function getVisibilityCriteria($forceall = false) {
+   static public function getVisibilityCriteria(bool $forceall = false): array {
       $criteria = ['WHERE' => []];
       if (Session::haveRight('config', UPDATE)) {
          return $criteria;
@@ -1490,5 +1502,10 @@ class SavedSearch extends CommonDBTM {
 
       $criteria['WHERE'] = $restrict;
       return $criteria;
+   }
+
+
+   static function getIcon() {
+      return "far fa-bookmark";
    }
 }

@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -33,6 +33,7 @@
 namespace tests\units;
 
 use \DbTestCase;
+use Profile_User;
 
 /* Test for inc/entity.class.php */
 
@@ -57,7 +58,7 @@ class Entity extends DbTestCase {
       $this->array(array_keys(getAncestorsOf('glpi_entities', $ent0->getID())))
          ->isIdenticalTo([0]);
       $this->array(array_values(getAncestorsOf('glpi_entities', $ent0->getID())))
-         ->isIdenticalTo(['0']);
+         ->isIdenticalTo([0]);
       $this->array(array_keys(getSonsOf('glpi_entities', $ent0->getID())))
          ->isEqualTo([$ent0->getID(), $ent1->getID(), $ent2->getID()]);
       $this->array(array_values(getSonsOf('glpi_entities', $ent0->getID())))
@@ -83,6 +84,7 @@ class Entity extends DbTestCase {
    }
 
    public function testPrepareInputForAdd() {
+      $this->login();
       $entity = new \Entity();
 
       $this->boolean(
@@ -90,12 +92,14 @@ class Entity extends DbTestCase {
             'name' => ''
          ])
       )->isFalse();
+      $this->hasSessionMessages(ERROR, ["You can't add an entity without name"]);
 
       $this->boolean(
          $entity->prepareInputForAdd([
             'anykey' => 'anyvalue'
          ])
       )->isFalse();
+      $this->hasSessionMessages(ERROR, ["You can't add an entity without name"]);
 
       $this->array(
          $entity->prepareInputForAdd([
@@ -117,14 +121,15 @@ class Entity extends DbTestCase {
     * @return void
     */
    public function runChangeEntityParent($cache = false, $hit = false) {
+      global $GLPI_CACHE;
+
+      $this->login();
       $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
       $ent1 = getItemByTypeName('Entity', '_test_child_1', true);
       $ent2 = getItemByTypeName('Entity', '_test_child_2', true);
 
-      $ackey_prefix = $this->nscache . ':ancestors_cache_';
-      $sckey_prefix = $this->nscache . ':sons_cache_';
-      $sckey_ent1   = $sckey_prefix . md5('glpi_entities' . $ent1);
-      $sckey_ent2   = $sckey_prefix . md5('glpi_entities' . $ent2);
+      $sckey_ent1 = 'sons_cache_glpi_entities_' . $ent1;
+      $sckey_ent2 = 'sons_cache_glpi_entities_' . $ent2;
 
       $entity = new \Entity();
       $new_id = (int)$entity->add([
@@ -132,27 +137,27 @@ class Entity extends DbTestCase {
          'entities_id'  => $ent1
       ]);
       $this->integer($new_id)->isGreaterThan(0);
-      $ackey_new_id = $ackey_prefix . md5('glpi_entities' . $new_id);
+      $ackey_new_id = 'ancestors_cache_glpi_entities_' . $new_id;
 
-      $expected = [0 => '0', $ent0 => "$ent0", $ent1 => "$ent1"];
+      $expected = [0 => 0, $ent0 => $ent0, $ent1 => $ent1];
       if ($cache === true) {
-         $this->array(apcu_fetch($ackey_new_id))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
       }
 
       $ancestors = getAncestorsOf('glpi_entities', $new_id);
       $this->array($ancestors)->isIdenticalTo($expected);
 
       if ($cache === true && $hit === false) {
-         $this->array(apcu_fetch($ackey_new_id))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
       }
 
-      $expected = [$ent1 => $ent1, $new_id => "$new_id"];
+      $expected = [$ent1 => $ent1, $new_id => $new_id];
 
       $sons = getSonsOf('glpi_entities', $ent1);
       $this->array($sons)->isIdenticalTo($expected);
 
       if ($cache === true && $hit === false) {
-         $this->array(apcu_fetch($sckey_ent1))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
       }
 
       //change parent entity
@@ -163,16 +168,16 @@ class Entity extends DbTestCase {
          ])
       )->isTrue();
 
-      $expected = [0 => '0', $ent0 => "$ent0", $ent2 => "$ent2"];
+      $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
       if ($cache === true) {
-         $this->array(apcu_fetch($ackey_new_id))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
       }
 
       $ancestors = getAncestorsOf('glpi_entities', $new_id);
       $this->array($ancestors)->isIdenticalTo($expected);
 
       if ($cache === true && $hit === false) {
-         $this->array(apcu_fetch($ackey_new_id))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
       }
 
       $expected = [$ent1 => $ent1];
@@ -180,15 +185,15 @@ class Entity extends DbTestCase {
       $this->array($sons)->isIdenticalTo($expected);
 
       if ($cache === true && $hit === false) {
-         $this->array(apcu_fetch($sckey_ent1))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
       }
 
-      $expected = [$ent2 => $ent2, $new_id => "$new_id"];
+      $expected = [$ent2 => $ent2, $new_id => $new_id];
       $sons = getSonsOf('glpi_entities', $ent2);
       $this->array($sons)->isIdenticalTo($expected);
 
       if ($cache === true && $hit === false) {
-         $this->array(apcu_fetch($sckey_ent2))->isIdenticalTo($expected);
+         $this->array($GLPI_CACHE->get($sckey_ent2))->isIdenticalTo($expected);
       }
 
       //clean new entity
@@ -202,18 +207,18 @@ class Entity extends DbTestCase {
       $ent1 = getItemByTypeName('Entity', '_test_child_1', true);
       $ent2 = getItemByTypeName('Entity', '_test_child_2', true);
 
-      $expected = [0 => '0', 1 => "$ent0"];
+      $expected = [0 => 0, 1 => $ent0];
       $ancestors = getAncestorsOf('glpi_entities', $ent1);
       $this->array($ancestors)->isIdenticalTo($expected);
 
       $ancestors = getAncestorsOf('glpi_entities', $ent2);
       $this->array($ancestors)->isIdenticalTo($expected);
 
-      $expected = [$ent1 => "$ent1"];
+      $expected = [$ent1 => $ent1];
       $sons = getSonsOf('glpi_entities', $ent1);
       $this->array($sons)->isIdenticalTo($expected);
 
-      $expected = [$ent2 => "$ent2"];
+      $expected = [$ent2 => $ent2];
       $sons = getSonsOf('glpi_entities', $ent2);
       $this->array($sons)->isIdenticalTo($expected);
    }
@@ -247,4 +252,235 @@ class Entity extends DbTestCase {
       $this->runChangeEntityParent(true);
    }
 
+   public function testDeleteEntity() {
+      $this->login();
+      $root_id = getItemByTypeName('Entity', '_test_root_entity', true);
+
+      $entity = new \Entity();
+      $entity_id = (int)$entity->add(
+         [
+            'name'         => 'Test entity',
+            'entities_id'  => $root_id,
+         ]
+      );
+      $this->integer($entity_id)->isGreaterThan(0);
+
+      $user_id = getItemByTypeName('User', 'normal', true);
+      $profile_id = getItemByTypeName('Profile', 'Admin', true);
+
+      $profile_user = new Profile_User();
+      $profile_user_id = (int)$profile_user->add(
+         [
+            'entities_id' => $entity_id,
+            'profiles_id' => $profile_id,
+            'users_id'    => $user_id,
+         ]
+      );
+      $this->integer($profile_user_id)->isGreaterThan(0);
+
+      // Profile_User exists
+      $this->boolean($profile_user->getFromDB($profile_user_id))->isTrue();
+
+      $this->boolean($entity->delete(['id' => $entity_id]))->isTrue();
+
+      // Profile_User has been deleted when entity has been deleted
+      $this->boolean($profile_user->getFromDB($profile_user_id))->isFalse();
+   }
+
+   protected function inheritanceProvider() {
+      return [
+         ['admin_email', "username+admin@domain.tld"],
+         ['admin_email_name', "Username admin"],
+         ['admin_reply', "username+admin+reply@domain.tld"],
+         ['admin_reply_name', "Username admin reply"],
+      ];
+   }
+
+   /**
+    * @dataProvider inheritanceProvider
+    */
+   public function testGetUsedConfig(string $field, $value) {
+      $this->login();
+
+      $root    = getItemByTypeName('Entity', 'Root entity', true);
+      $parent  = getItemByTypeName('Entity', '_test_root_entity', true);
+      $child_1 = getItemByTypeName('Entity', '_test_child_1', true);
+      $child_2 = getItemByTypeName('Entity', '_test_child_2', true);
+
+      $entity = new \Entity;
+      $this->boolean($entity->update([
+         'id'   => $root,
+         $field => $value."_root",
+      ]));
+
+      $this->string(\Entity::getUsedConfig($field, $parent))->isEqualTo($value."_root");
+      $this->string(\Entity::getUsedConfig($field, $child_1))->isEqualTo($value."_root");
+      $this->string(\Entity::getUsedConfig($field, $child_2))->isEqualTo($value."_root");
+
+      $this->boolean($entity->update([
+         'id'   => $parent,
+         $field => $value."_parent",
+      ]));
+
+      $this->string(\Entity::getUsedConfig($field, $parent))->isEqualTo($value."_parent");
+      $this->string(\Entity::getUsedConfig($field, $child_1))->isEqualTo($value."_parent");
+      $this->string(\Entity::getUsedConfig($field, $child_2))->isEqualTo($value."_parent");
+
+      $this->boolean($entity->update([
+         'id'   => $child_1,
+         $field => $value."_child_1",
+      ]));
+
+      $this->string(\Entity::getUsedConfig($field, $parent))->isEqualTo($value."_parent");
+      $this->string(\Entity::getUsedConfig($field, $child_1))->isEqualTo($value."_child_1");
+      $this->string(\Entity::getUsedConfig($field, $child_2))->isEqualTo($value."_parent");
+
+      $this->boolean($entity->update([
+         'id'   => $child_2,
+         $field => $value."_child_2",
+      ]));
+
+      $this->string(\Entity::getUsedConfig($field, $parent))->isEqualTo($value."_parent");
+      $this->string(\Entity::getUsedConfig($field, $child_1))->isEqualTo($value."_child_1");
+      $this->string(\Entity::getUsedConfig($field, $child_2))->isEqualTo($value."_child_2");
+
+   }
+
+
+   protected function customCssProvider() {
+
+      $root_id  = getItemByTypeName('Entity', 'Root entity', true);
+      $child_id = getItemByTypeName('Entity', '_test_child_1', true);
+
+      return [
+         [
+            // Do not output custom CSS if not enabled
+            'entity_id'               => $root_id,
+            'root_enable_custom_css'  => 0,
+            'root_custom_css_code'    => 'body { color:blue; }',
+            'child_enable_custom_css' => 0,
+            'child_custom_css_code'   => '',
+            'expected'                => '',
+         ],
+         [
+            // Output custom CSS if enabled
+            'entity_id'               => $root_id,
+            'root_enable_custom_css'  => 1,
+            'root_custom_css_code'    => 'body { color:blue; }',
+            'child_enable_custom_css' => 0,
+            'child_custom_css_code'   => '',
+            'expected'                => '<style>body { color:blue; }</style>',
+         ],
+         [
+            // Do not output custom CSS if empty
+            'entity_id'               => $root_id,
+            'root_enable_custom_css'  => 1,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => 0,
+            'child_custom_css_code'   => '',
+            'expected'                => '',
+         ],
+         [
+            // Do not output custom CSS from parent if disabled in parent
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 0,
+            'root_custom_css_code'    => 'body { color:blue; }',
+            'child_enable_custom_css' => \Entity::CONFIG_PARENT,
+            'child_custom_css_code'   => '',
+            'expected'                => '',
+         ],
+         [
+            // Do not output custom CSS from parent if empty
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 1,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => \Entity::CONFIG_PARENT,
+            'child_custom_css_code'   => '',
+            'expected'                => '',
+         ],
+         [
+            // Output custom CSS from parent
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 1,
+            'root_custom_css_code'    => '.link::before { content: "test"; }',
+            'child_enable_custom_css' => \Entity::CONFIG_PARENT,
+            'child_custom_css_code'   => '',
+            'expected'                => '<style>.link::before { content: "test"; }</style>',
+         ],
+         [
+            // Do not output custom CSS from entity itself if disabled
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 0,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => 0,
+            'child_custom_css_code'   => 'body { color:blue; }',
+            'expected'                => '',
+         ],
+         [
+            // Do not output custom CSS from entity itself if empty
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 1,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => 1,
+            'child_custom_css_code'   => '',
+            'expected'                => '',
+         ],
+         [
+            // Output custom CSS from entity itself
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 0,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => 1,
+            'child_custom_css_code'   => 'body > a { color:blue; }',
+            'expected'                => '<style>body > a { color:blue; }</style>',
+         ],
+         [
+            // Output cleaned custom CSS
+            'entity_id'               => $child_id,
+            'root_enable_custom_css'  => 0,
+            'root_custom_css_code'    => '',
+            'child_enable_custom_css' => 1,
+            'child_custom_css_code'   => '</style><script>alert(1);</script>',
+            'expected'                => '<style>alert(1);</style>',
+         ],
+      ];
+   }
+
+   /**
+    * @dataProvider customCssProvider
+    */
+   public function testGetCustomCssTag(
+      int $entity_id,
+      int $root_enable_custom_css,
+      string $root_custom_css_code,
+      int $child_enable_custom_css,
+      string $child_custom_css_code,
+      string $expected
+   ): void {
+      $this->login();
+
+      $entity = new \Entity();
+
+      // Define configuration values
+      $update = $entity->update(
+         [
+            'id'                => getItemByTypeName('Entity', 'Root entity', true),
+            'enable_custom_css' => $root_enable_custom_css,
+            'custom_css_code'   => $root_custom_css_code
+         ]
+      );
+      $this->boolean($update)->isTrue();
+      $update = $entity->update(
+         [
+            'id'                => getItemByTypeName('Entity', '_test_child_1', true),
+            'enable_custom_css' => $child_enable_custom_css,
+            'custom_css_code'   => $child_custom_css_code
+         ]
+      );
+      $this->boolean($update)->isTrue();
+
+      // Validate method result
+      $this->boolean($entity->getFromDB($entity_id))->isTrue();
+      $this->string($entity->getCustomCssTag())->isEqualTo($expected);
+   }
 }

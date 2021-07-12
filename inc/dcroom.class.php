@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -38,7 +38,7 @@ if (!defined('GLPI_ROOT')) {
  * DCRoom Class
 **/
 class DCRoom extends CommonDBTM {
-   use DCBreadcrumb;
+   use Glpi\Features\DCBreadcrumb;
 
    // From CommonDBTM
    public $dohistory                   = true;
@@ -55,14 +55,15 @@ class DCRoom extends CommonDBTM {
       $this
          ->addStandardTab('Rack', $ong, $options)
          ->addDefaultFormTab($ong)
+         ->addImpactTab($ong, $options)
          ->addStandardTab('Infocom', $ong, $options)
          ->addStandardTab('Contract_Item', $ong, $options)
          ->addStandardTab('Document_Item', $ong, $options)
+         ->addStandardTab('Link', $ong, $options)
          ->addStandardTab('Ticket', $ong, $options)
          ->addStandardTab('Item_Problem', $ong, $options)
          ->addStandardTab('Change_Item', $ong, $options)
          ->addStandardTab('Log', $ong, $options);
-      ;
       return $ong;
    }
 
@@ -79,7 +80,7 @@ class DCRoom extends CommonDBTM {
       Html::autocompletionTextField($this, "name", ['rand' => $rand]);
       echo "</td>";
 
-      echo "<td><label for='dropdown_locations_id$rand'>".__('Location')."</label></td>";
+      echo "<td><label for='dropdown_locations_id$rand'>".Location::getTypeName(1)."</label></td>";
       echo "<td>";
       Location::dropdown([
          'value'  => $this->fields["locations_id"],
@@ -90,7 +91,7 @@ class DCRoom extends CommonDBTM {
       echo "</tr>";
 
       echo "<tr class='tab_bg_1'>";
-      echo "<td><label for='dropdown_datacenters_id$rand'>".__('Data center')."</label></td>";
+      echo "<td><label for='dropdown_datacenters_id$rand'>".Datacenter::getTypeName(1)."</label></td>";
 
       echo "<td>";
       $datacenters = $DB->request([
@@ -221,8 +222,6 @@ class DCRoom extends CommonDBTM {
    }
 
    function rawSearchOptions() {
-      global $CFG_GLPI;
-
       $tab = [];
 
       $tab[] = [
@@ -236,7 +235,8 @@ class DCRoom extends CommonDBTM {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false // implicit key==1
+         'massiveaction'      => false, // implicit key==1
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -254,7 +254,7 @@ class DCRoom extends CommonDBTM {
          'id'                 => '4',
          'table'              => Datacenter::getTable(),
          'field'              => 'name',
-         'name'               => __('Data center'),
+         'name'               => Datacenter::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -296,7 +296,7 @@ class DCRoom extends CommonDBTM {
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -337,10 +337,10 @@ class DCRoom extends CommonDBTM {
     *
     * @param Datacenter $datacenter Datacenter object
     *
-    * @return void
+    * @return void|boolean (display) Returns false if there is a rights error.
    **/
    static function showForDatacenter(Datacenter $datacenter) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID = $datacenter->getID();
       $rand = mt_rand();

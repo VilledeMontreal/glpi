@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -34,13 +34,20 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
 
+use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
+use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use Sabre\VObject\Component\VCalendar;
+use Sabre\VObject\Property\FlatText;
+use Sabre\VObject\Property\IntegerValue;
 
 /**
  * ProjectTask Class
  *
  * @since 0.85
 **/
-class ProjectTask extends CommonDBChild {
+class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface {
+   use Glpi\Features\PlanningEvent;
+   use VobjectConverterTrait;
 
    // From CommonDBTM
    public $dohistory = true;
@@ -83,8 +90,7 @@ class ProjectTask extends CommonDBChild {
     * @return boolean
    **/
    function canViewItem() {
-
-      if (!Session::haveAccessToEntity($this->getEntityID())) {
+      if (!Session::haveAccessToEntity($this->getEntityID(), $this->isRecursive())) {
          return false;
       }
       $project = new Project();
@@ -142,15 +148,18 @@ class ProjectTask extends CommonDBChild {
          [
             ProjectTask_Ticket::class,
             ProjectTaskTeam::class,
+            VObject::class,
          ]
       );
 
       parent::cleanDBonPurge();
    }
 
+
    /**
     * Duplicate all tasks from a project template to his clone
     *
+    * @deprecated 9.5
     * @since 9.2
     *
     * @param integer $oldid        ID of the item to clone
@@ -159,11 +168,13 @@ class ProjectTask extends CommonDBChild {
    static function cloneProjectTask ($oldid, $newid) {
       global $DB;
 
-      foreach ($DB->request('glpi_projecttasks',
-                            ['WHERE' => "`projects_id` = '$oldid'"]) as $data) {
+      Toolbox::deprecated('Use clone');
+      $iterator = $DB->request(['FROM' => 'glpi_projecttasks', 'WHERE' => ['projects_id' => $oldid]]);
+      while ($data = $iterator->next()) {
          $cd                  = new self();
          unset($data['id']);
          $data['projects_id'] = $newid;
+         $data = self::checkTemplateEntity($data, $data['projects_id'], Project::class);
          $data                = Toolbox::addslashes_deep($data);
          $cd->add($data);
       }
@@ -210,7 +221,73 @@ class ProjectTask extends CommonDBChild {
 
 
    function post_updateItem($history = 1) {
-      global $CFG_GLPI;
+      global $DB, $CFG_GLPI;
+
+      if (in_array('plan_start_date', $this->updates) || in_array('plan_end_date', $this->updates)) {
+         //dates has changed, check for planning conflicts on attached team
+         $team = ProjectTaskTeam::getTeamFor($this->fields['id']);
+         $users = [];
+         foreach ($team as $type => $actors) {
+            switch ($type) {
+               case User::getType():
+                  foreach ($actors as $actor) {
+                     $users[$actor['items_id']] = $actor['items_id'];
+                  }
+                  break;
+               case Group::getType():
+                  foreach ($actors as $actor) {
+                     $group_iterator = $DB->request([
+                        'SELECT' => 'users_id',
+                        'FROM'   => Group_User::getTable(),
+                        'WHERE'  => ['groups_id' => $actor['items_id']]
+                     ]);
+                     while ($row = $group_iterator->next()) {
+                        $users[$row['users_id']] = $row['users_id'];
+                     }
+                  }
+                  break;
+               case Supplier::getType():
+               case Contact::getType():
+                  //only Users can be checked for planning conflicts
+                  break;
+               default:
+                  if (count($actors)) {
+                     throw new \RuntimeException($type . " is not (yet?) handled.");
+                  }
+            }
+         }
+
+         foreach ($users as $user) {
+            Planning::checkAlreadyPlanned(
+               $user,
+               $this->fields['plan_start_date'],
+               $this->fields['plan_end_date']
+            );
+         }
+
+      }
+
+      if (in_array('auto_percent_done', $this->updates) && $this->input['auto_percent_done'] == 1) {
+         // Auto-calculate was toggled. Force recalculation of this and parents
+         self::recalculatePercentDone($this->getID());
+      } else {
+         // Update parent percent_done
+         if ($this->fields['projecttasks_id'] > 0) {
+            self::recalculatePercentDone($this->fields['projecttasks_id']);
+         }
+         if ($this->fields['projects_id'] > 0) {
+            Project::recalculatePercentDone($this->fields['projects_id']);
+         }
+      }
+
+      if (isset($this->input['_old_projects_id'])) {
+         // Recalculate previous parent project percent done
+         Project::recalculatePercentDone($this->input['_old_projects_id']);
+      }
+      if (isset($this->input['_old_projecttasks_id'])) {
+         // Recalculate previous parent task percent done
+         self::recalculatePercentDone($this->input['_old_projecttasks_id']);
+      }
 
       if (!isset($this->input['_disablenotif']) && $CFG_GLPI["use_notifications"]) {
          // Read again project to be sure that all data are up to date
@@ -221,13 +298,14 @@ class ProjectTask extends CommonDBChild {
 
 
    function post_addItem() {
-      global $DB, $CFG_GLPI;
+      global $CFG_GLPI;
 
       // ADD Documents
-      Document_Item::cloneItem('ProjectTaskTemplate',
-                               $this->input["projecttasktemplates_id"],
-                               $this->fields['id'],
-                               $this->getType());
+      $document_items = Document_Item::getItemsAssociatedTo($this->getType(), $this->fields['id']);
+      $override_input['items_id'] = $this->getID();
+      foreach ($document_items as $document_item) {
+         $document_item->clone($override_input);
+      }
 
       if (!isset($this->input['_disablenotif']) && $CFG_GLPI["use_notifications"]) {
          // Clean reload of the project
@@ -296,22 +374,58 @@ class ProjectTask extends CommonDBChild {
 
    function prepareInputForUpdate($input) {
 
+      if (isset($input['auto_percent_done']) && $input['auto_percent_done']) {
+         unset($input['percent_done']);
+      }
       if (isset($input["plan"])) {
          $input["plan_start_date"] = $input['plan']["begin"];
          $input["plan_end_date"]   = $input['plan']["end"];
       }
 
-      if (isset($input['is_milestone'])
-            && $input['is_milestone']) {
-         $input['plan_end_date'] = $input['plan_start_date'];
-         $input['real_end_date'] = $input['real_start_date'];
+      if (isset($input['is_milestone']) && $input['is_milestone']) {
+         // Milestone are a precise moment, start date and end dates should have same values.
+         if (array_key_exists('plan_start_date', $input)) {
+            $input['plan_end_date'] = $input['plan_start_date'];
+         }
+         if (array_key_exists('real_start_date', $input)) {
+            $input['real_end_date'] = $input['real_start_date'];
+         }
       }
+
+      if (isset($input['projecttasks_id']) && $input['projecttasks_id'] > 0) {
+         if (self::checkCircularRelation($input['id'], $input['projecttasks_id'])) {
+            Session::addMessageAfterRedirect(__('Circular relation found. Parent not updated.'), false,
+                                          ERROR);
+            unset($input['projecttasks_id']);
+         }
+      }
+      if ($this->fields['projects_id'] > 0 && isset($input['projects_id'])
+         && ($input['projects_id'] != $this->fields['projects_id'])) {
+         $input['_old_projects_id'] = $this->fields['projects_id'];
+      }
+      if ($this->fields['projecttasks_id'] > 0 && isset($input['projecttasks_id'])
+         && ($input['projecttasks_id'] != $this->fields['projecttasks_id'])) {
+         $input['_old_projecttasks_id'] = $this->fields['projecttasks_id'];
+      }
+
       return Project::checkPlanAndRealDates($input);
    }
 
 
    function prepareInputForAdd($input) {
 
+      if (!isset($input['projects_id'])) {
+         Session::addMessageAfterRedirect(
+            __('A linked project is mandatory'),
+            false,
+            ERROR
+         );
+         return false;
+      }
+
+      if (!isset($input['uuid'])) {
+         $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+      }
       if (!isset($input['users_id'])) {
          $input['users_id'] = Session::getLoginUserID();
       }
@@ -319,17 +433,26 @@ class ProjectTask extends CommonDBChild {
          $input['date'] = $_SESSION['glpi_currenttime'];
       }
 
-      if (isset($input['is_milestone'])
-            && $input['is_milestone']) {
-         $input['plan_end_date'] = $input['plan_start_date'];
-         $input['real_end_date'] = $input['real_start_date'];
+      if (isset($input["plan"])) {
+         $input["plan_start_date"] = $input['plan']["begin"];
+         $input["plan_end_date"]   = $input['plan']["end"];
+      }
+
+      if (isset($input['is_milestone']) && $input['is_milestone']) {
+         // Milestone are a precise moment, start date and end dates should have same values.
+         if (array_key_exists('plan_start_date', $input)) {
+            $input['plan_end_date'] = $input['plan_start_date'];
+         }
+         if (array_key_exists('real_start_date', $input)) {
+            $input['real_end_date'] = $input['real_start_date'];
+         }
       }
 
       return Project::checkPlanAndRealDates($input);
    }
 
 
-    /**
+   /**
     * Get all tasks for a project
     *
     * @param $ID        integer  Id of the project
@@ -340,10 +463,41 @@ class ProjectTask extends CommonDBChild {
       global $DB;
 
       $tasks = [];
-      foreach ($DB->request('glpi_projecttasks',
-                            ["projects_id" => $ID,
-                                  'ORDER'       => ['plan_start_date',
-                                                         'real_start_date']]) as $data) {
+      $iterator = $DB->request([
+         'FROM'   => 'glpi_projecttasks',
+         'WHERE'  => [
+            'projects_id'  => $ID
+         ],
+         'ORDERBY'   => ['plan_start_date', 'real_start_date']
+      ]);
+
+      while ($data = $iterator->next()) {
+         $tasks[] = $data;
+      }
+      return $tasks;
+   }
+
+
+   /**
+    * Get all sub-tasks for a project task
+    * @since 9.5.0
+    * @param $ID        integer  Id of the project task
+    *
+    * @return array of tasks ordered by dates
+   **/
+   static function getAllForProjectTask($ID) {
+      global $DB;
+
+      $tasks = [];
+      $iterator = $DB->request([
+         'FROM'   => 'glpi_projecttasks',
+         'WHERE'  => [
+            'projecttasks_id'  => $ID
+         ],
+         'ORDERBY'   => ['plan_start_date', 'real_start_date']
+      ]);
+
+      while ($data = $iterator->next()) {
          $tasks[] = $data;
       }
       return $tasks;
@@ -449,7 +603,9 @@ class ProjectTask extends CommonDBChild {
                $("#textfield_name'.$rand_name.'").val(data.name);
 
                // set textarea description
-               $("#description'.$rand_description.'").val(data.description);
+               if (tasktinymce = tinymce.get("description'.$rand_description.'")) {
+                  tasktinymce.setContent(data.description);
+               }
                 // set textarea comment
                $("#comment'.$rand_comment.'").val(data.comments);
 
@@ -532,7 +688,7 @@ class ProjectTask extends CommonDBChild {
       ProjectState::dropdown(['value' => $this->fields["projectstates_id"],
                               'rand'  => $rand_state]);
       echo "</td>";
-      echo "<td>".__('Type')."</td>";
+      echo "<td>"._n('Type', 'Types', 1)."</td>";
       echo "<td>";
       ProjectTaskType::dropdown(['value' => $this->fields["projecttasktypes_id"],
                                  'rand'  => $rand_type]);
@@ -541,12 +697,31 @@ class ProjectTask extends CommonDBChild {
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Percent done')."</td>";
       echo "<td>";
-      Dropdown::showNumber("percent_done", ['value' => $this->fields['percent_done'],
-                                            'rand'  => $rand_percent,
-                                            'min'   => 0,
-                                            'max'   => 100,
-                                            'step'  => 5,
-                                            'unit'  => '%']);
+      $percent_done_params = [
+         'value' => $this->fields['percent_done'],
+         'rand'  => $rand_percent,
+         'min'   => 0,
+         'max'   => 100,
+         'step'  => 5,
+         'unit'  => '%'
+      ];
+      if ($this->fields['auto_percent_done']) {
+         $percent_done_params['specific_tags'] = ['disabled' => 'disabled'];
+      }
+      Dropdown::showNumber("percent_done", $percent_done_params);
+      $auto_percent_done_params = [
+         'type'      => 'checkbox',
+         'name'      => 'auto_percent_done',
+         'title'     => __('Automatically calculate'),
+         'onclick'   => "$(\"select[name='percent_done']\").prop('disabled', !$(\"input[name='auto_percent_done']\").prop('checked'));"
+      ];
+      if ($this->fields['auto_percent_done']) {
+         $auto_percent_done_params['checked'] = 'checked';
+      }
+      Html::showCheckbox($auto_percent_done_params);
+      echo "<span class='very_small_space'>";
+      Html::showToolTip(__('When automatic computation is active, percentage is computed based on the average of all child task percent done.'));
+      echo "</span></td>";
 
       echo "</td>";
       echo "<td>";
@@ -632,9 +807,14 @@ class ProjectTask extends CommonDBChild {
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Description')."</td>";
       echo "<td colspan='3'>";
-      echo "<textarea id='description$rand_description' name='content' cols='90' rows='6'>".$this->fields["content"].
-           "</textarea>";
-      echo "</td></tr>\n";
+      Html::textarea([
+         'name'            => 'content',
+         'enable_richtext' => true,
+         'editor_id'       => "description$rand_description",
+         'value'           => $this->fields["content"],
+
+      ]);
+      echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Comments')."</td>";
@@ -753,14 +933,15 @@ class ProjectTask extends CommonDBChild {
          'field'              => 'name',
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
-         'massiveaction'      => false
+         'massiveaction'      => false,
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
          'id'                 => '2',
          'table'              => 'glpi_projects',
          'field'              => 'name',
-         'name'               => __('Project'),
+         'name'               => Project::getTypeName(1),
          'massiveaction'      => false,
          'datatype'           => 'dropdown'
       ];
@@ -799,7 +980,7 @@ class ProjectTask extends CommonDBChild {
          'id'                 => '14',
          'table'              => 'glpi_projecttasktypes',
          'field'              => 'name',
-         'name'               => __('Type'),
+         'name'               => _n('Type', 'Types', 1),
          'datatype'           => 'dropdown'
       ];
 
@@ -917,10 +1098,22 @@ class ProjectTask extends CommonDBChild {
       ];
 
       $tab[] = [
+         'id'                 => '50',
+         'table'              => $this->getTable(),
+         'field'              => 'template_name',
+         'name'               => __('Template name'),
+         'datatype'           => 'text',
+         'massiveaction'      => false,
+         'nosearch'           => true,
+         'nodisplay'          => true,
+         'autocomplete'       => true,
+      ];
+
+      $tab[] = [
          'id'                 => '80',
          'table'              => 'glpi_entities',
          'field'              => 'completename',
-         'name'               => __('Entity'),
+         'name'               => Entity::getTypeName(1),
          'datatype'           => 'dropdown'
       ];
 
@@ -943,10 +1136,10 @@ class ProjectTask extends CommonDBChild {
     *
     * @param $item Project or ProjectTask object
     *
-    * @return nothing
+    * @return void
    **/
    static function showFor($item) {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID = $item->getField('id');
 
@@ -956,7 +1149,7 @@ class ProjectTask extends CommonDBChild {
 
       $columns = [
          'name'             => self::getTypeName(Session::getPluralNumber()),
-         'tname'            => __('Type'),
+         'tname'            => _n('Type', 'Types', 1),
          'sname'            => __('Status'),
          'percent_done'     => __('Percent done'),
          'plan_start_date'  => __('Planned start date'),
@@ -964,6 +1157,40 @@ class ProjectTask extends CommonDBChild {
          'planned_duration' => __('Planned duration'),
          '_effect_duration' => __('Effective duration'),
          'fname'            => __('Father')
+      ];
+
+      $criteria = [
+         'SELECT' => [
+            'glpi_projecttasks.*',
+            'glpi_projecttasktypes.name AS tname',
+            'glpi_projectstates.name AS sname',
+            'glpi_projectstates.color',
+            'father.name AS fname',
+            'father.id AS fID'
+         ],
+         'FROM'   => 'glpi_projecttasks',
+         'LEFT JOIN' => [
+           'glpi_projecttasktypes'        => [
+               'ON'  => [
+                  'glpi_projecttasktypes' => 'id',
+                  'glpi_projecttasks'     => 'projecttasktypes_id'
+               ]
+            ],
+            'glpi_projectstates'          => [
+               'ON'  => [
+                  'glpi_projectstates' => 'id',
+                  'glpi_projecttasks'  => 'projectstates_id'
+               ]
+            ],
+            'glpi_projecttasks AS father' => [
+               'ON'  => [
+                  'father' => 'id',
+                  'glpi_projecttasks'  => 'projecttasks_id'
+               ]
+            ]
+         ],
+         'WHERE'  => [], //$where
+         'ORDERBY'   => [] // $sort $order";
       ];
 
       if (isset($_GET["order"]) && ($_GET["order"] == "DESC")) {
@@ -977,10 +1204,13 @@ class ProjectTask extends CommonDBChild {
       }
 
       if (isset($_GET["sort"]) && !empty($_GET["sort"]) && isset($columns[$_GET["sort"]])) {
-         $sort = "`".$_GET["sort"]."`";
+         $sort = [$_GET["sort"] . " $order"];
+         $ui_sort = $_GET['sort'];
       } else {
-         $sort = "`plan_start_date` $order, `name`";
+         $sort = ["plan_start_date $order", "name"];
+         $ui_sort = 'plan_start_date';
       }
+      $criteria['ORDERBY'] = $sort;
 
       $canedit = false;
       if ($item->getType() =='Project') {
@@ -989,11 +1219,11 @@ class ProjectTask extends CommonDBChild {
 
       switch ($item->getType()) {
          case 'Project' :
-            $where = "WHERE `glpi_projecttasks`.`projects_id` = '$ID'";
+            $criteria['WHERE']['glpi_projecttasks.projects_id'] = $ID;
             break;
 
          case 'ProjectTask' :
-            $where = "WHERE `glpi_projecttasks`.`projecttasks_id` = '$ID'";
+            $criteria['WHERE']['glpi_projecttasks.projecttasks_id'] = $ID;
             break;
 
          default : // Not available type
@@ -1023,43 +1253,37 @@ class ProjectTask extends CommonDBChild {
          echo "</div>";
       }
 
-      $addselect = '';
-      $addjoin = '';
       if (Session::haveTranslations('ProjectTaskType', 'name')) {
-         $addselect .= ", `namet2`.`value` AS transname2";
-         $addjoin   .= " LEFT JOIN `glpi_dropdowntranslations` AS namet2
-                           ON (`namet2`.`itemtype` = 'ProjectTaskType'
-                               AND `namet2`.`items_id` = `glpi_projecttasks`.`projecttasktypes_id`
-                               AND `namet2`.`language` = '".$_SESSION['glpilanguage']."'
-                               AND `namet2`.`field` = 'name')";
+         $criteria['SELECT'][] = 'namet2.value AS transname2';
+         $criteria['LEFT JOIN']['glpi_dropdowntranslations AS namet2'] = [
+            'ON'  => [
+               'namet2'             => 'items_id',
+               'glpi_projecttasks'  => 'projecttasktypes_id', [
+                  'AND' => [
+                     'namet2.itemtype' => 'ProjectTaskType',
+                     'namet2.language' => $_SESSION['glpilanguage'],
+                     'namet2.field'    => 'name'
+                  ]
+               ]
+            ]
+         ];
       }
 
       if (Session::haveTranslations('ProjectState', 'name')) {
-         $addselect .= ", `namet3`.`value` AS transname3";
-         $addjoin   .= "LEFT JOIN `glpi_dropdowntranslations` AS namet3
-                           ON (`namet3`.`itemtype` = 'ProjectState'
-                               AND `namet3`.`language` = '".$_SESSION['glpilanguage']."'
-                               AND `namet3`.`field` = 'name')";
-         $where     .= " AND `namet3`.`items_id` = `glpi_projectstates`.`id` ";
+         $criteria['SELECT'][] = 'namet3.value AS transname3';
+         $criteria['LEFT JOIN']['glpi_dropdowntranslations AS namet3'] = [
+            'ON'  => [
+               'namet3'             => 'items_id',
+               'glpi_projectstates' => 'id', [
+                  'AND' => [
+                     'namet3.itemtype' => 'ProjectState',
+                     'namet3.language' => $_SESSION['glpilanguage'],
+                     'namet3.field'    => 'name'
+                  ]
+               ]
+            ]
+         ];
       }
-
-      $query = "SELECT `glpi_projecttasks`.*,
-                       `glpi_projecttasktypes`.`name` AS tname,
-                       `glpi_projectstates`.`name` AS sname,
-                       `glpi_projectstates`.`color`,
-                       `father`.`name` AS fname,
-                       `father`.`id` AS fID
-                       $addselect
-                FROM `glpi_projecttasks`
-                $addjoin
-                LEFT JOIN `glpi_projecttasktypes`
-                   ON (`glpi_projecttasktypes`.`id` = `glpi_projecttasks`.`projecttasktypes_id`)
-                LEFT JOIN `glpi_projectstates`
-                   ON (`glpi_projectstates`.`id` = `glpi_projecttasks`.`projectstates_id`)
-                LEFT JOIN `glpi_projecttasks` as father
-                   ON (`father`.`id` = `glpi_projecttasks`.`projecttasks_id`)
-                $where
-                ORDER BY $sort $order";
 
       Session::initNavigateListItems('ProjectTask',
             //TRANS : %1$s is the itemtype name,
@@ -1067,70 +1291,69 @@ class ProjectTask extends CommonDBChild {
                                      sprintf(__('%1$s = %2$s'), $item::getTypeName(1),
                                              $item->getName()));
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result)) {
-            echo "<table class='tab_cadre_fixehov'>";
+      $iterator = $DB->request($criteria);
+      if (count($criteria)) {
+         echo "<table class='tab_cadre_fixehov'>";
 
-            $header = '<tr>';
-            foreach ($columns as $key => $val) {
-               // Non order column
-               if ($key[0] == '_') {
-                  $header .= "<th>$val</th>";
-               } else {
-                  $header .= "<th".($sort == "`$key`" ? " class='order_$order'" : '').">".
-                        "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
-                           (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
-               }
+         $header = '<tr>';
+         foreach ($columns as $key => $val) {
+            // Non order column
+            if ($key[0] == '_') {
+               $header .= "<th>$val</th>";
+            } else {
+               $header .= "<th".($ui_sort == $key ? " class='order_$order'" : '').">".
+                     "<a href='javascript:reloadTab(\"sort=$key&amp;order=".
+                        (($order == "ASC") ?"DESC":"ASC")."&amp;start=0\");'>$val</a></th>";
             }
-            $header .= "</tr>\n";
-            echo $header;
-
-            while ($data=$DB->fetchAssoc($result)) {
-               Session::addToNavigateListItems('ProjectTask', $data['id']);
-               $rand = mt_rand();
-               echo "<tr class='tab_bg_2'>";
-               echo "<td>";
-               $link = "<a id='ProjectTask".$data["id"].$rand."' href='".
-                         ProjectTask::getFormURLWithID($data['id'])."'>".$data['name'].
-                         (empty($data['name'])?"(".$data['id'].")":"")."</a>";
-               echo sprintf(__('%1$s %2$s'), $link,
-                             Html::showToolTip($data['content'],
-                                               ['display' => false,
-                                                     'applyto' => "ProjectTask".$data["id"].$rand]));
-               echo "</td>";
-               $name = !empty($data['transname2'])?$data['transname2']:$data['tname'];
-               echo "<td>".$name."</td>";
-               echo "<td";
-               $statename = !empty($data['transname3'])?$data['transname3']:$data['sname'];
-               echo " style=\"background-color:".$data['color']."\"";
-               echo ">".$statename."</td>";
-               echo "<td>";
-               echo Dropdown::getValueWithUnit($data["percent_done"], "%");
-               echo "</td>";
-               echo "<td>".Html::convDateTime($data['plan_start_date'])."</td>";
-               echo "<td>".Html::convDateTime($data['plan_end_date'])."</td>";
-               echo "<td>".Html::timestampToString($data['planned_duration'], false)."</td>";
-               echo "<td>".Html::timestampToString(self::getTotalEffectiveDuration($data['id']),
-                                                   false)."</td>";
-               echo "<td>";
-               if ($data['projecttasks_id']>0) {
-                  $father = Dropdown::getDropdownName('glpi_projecttasks', $data['projecttasks_id']);
-                  echo "<a id='ProjectTask".$data["projecttasks_id"].$rand."' href='".
-                           ProjectTask::getFormURLWithID($data['projecttasks_id'])."'>".$father.
-                           (empty($father)?"(".$data['projecttasks_id'].")":"")."</a>";
-               }
-               echo "</td></tr>";
-            }
-            echo $header;
-            echo "</table>\n";
-
-         } else {
-            echo "<table class='tab_cadre_fixe'>";
-            echo "<tr><th>".__('No item found')."</th></tr>";
-            echo "</table>\n";
          }
+         $header .= "</tr>\n";
+         echo $header;
 
+         while ($data = $iterator->next()) {
+            Session::addToNavigateListItems('ProjectTask', $data['id']);
+            $rand = mt_rand();
+            echo "<tr class='tab_bg_2'>";
+            echo "<td>";
+            $link = "<a id='ProjectTask".$data["id"].$rand."' href='".
+                        ProjectTask::getFormURLWithID($data['id'])."'>".$data['name'].
+                        (empty($data['name'])?"(".$data['id'].")":"")."</a>";
+            echo sprintf(__('%1$s %2$s'), $link,
+                           Html::showToolTip(Html::entity_decode_deep($data['content']),
+                                             ['display' => false,
+                                                   'applyto' => "ProjectTask".$data["id"].$rand]));
+            echo "</td>";
+            $name = !empty($data['transname2'])?$data['transname2']:$data['tname'];
+            echo "<td>".$name."</td>";
+            echo "<td";
+            $statename = !empty($data['transname3'])?$data['transname3']:$data['sname'];
+            echo " style=\"background-color:".$data['color']."\"";
+            echo ">".$statename."</td>";
+            echo "<td>";
+            echo Dropdown::getValueWithUnit($data["percent_done"], "%");
+            echo "</td>";
+            echo "<td>".Html::convDateTime($data['plan_start_date'])."</td>";
+            echo "<td>".Html::convDateTime($data['plan_end_date'])."</td>";
+            echo "<td>".Html::timestampToString($data['planned_duration'], false)."</td>";
+            echo "<td>".Html::timestampToString(self::getTotalEffectiveDuration($data['id']),
+                                                false)."</td>";
+            echo "<td>";
+            if ($data['projecttasks_id']>0) {
+               $father = Dropdown::getDropdownName('glpi_projecttasks', $data['projecttasks_id']);
+               echo "<a id='ProjectTask".$data["projecttasks_id"].$rand."' href='".
+                        ProjectTask::getFormURLWithID($data['projecttasks_id'])."'>".$father.
+                        (empty($father)?"(".$data['projecttasks_id'].")":"")."</a>";
+            }
+            echo "</td></tr>";
+         }
+         echo $header;
+         echo "</table>\n";
+
+      } else {
+         echo "<table class='tab_cadre_fixe'>";
+         echo "<tr><th>".__('No item found')."</th></tr>";
+         echo "</table>\n";
       }
+
       echo "</div>";
    }
 
@@ -1180,8 +1403,6 @@ class ProjectTask extends CommonDBChild {
     * @return boolean
    **/
    function showTeam(ProjectTask $task) {
-      global $DB, $CFG_GLPI;
-
       /// TODO : permit to simple add member of project team ?
 
       $ID      = $task->fields['id'];
@@ -1235,7 +1456,7 @@ class ProjectTask extends CommonDBChild {
          $header_bottom .= "<th width='10'>".Html::getCheckAllAsCheckbox('mass'.__CLASS__.$rand);
          $header_bottom .= "</th>";
       }
-      $header_end .= "<th>".__('Type')."</th>";
+      $header_end .= "<th>"._n('Type', 'Types', 1)."</th>";
       $header_end .= "<th>"._n('Member', 'Members', Session::getPluralNumber())."</th>";
       $header_end .= "</tr>";
       echo $header_begin.$header_top.$header_end;
@@ -1403,20 +1624,19 @@ class ProjectTask extends CommonDBChild {
    /**
     * Populate the planning with planned project tasks
     *
-    * @since 0.85
+    * @since 9.1
     *
-    * @param $options   array of possible options:
-    *    - who ID of the user (0 = undefined)
-    *    - who_group ID of the group of users (0 = undefined)
-    *    - begin Date
-    *    - end Date
+    * @param $options  array of possible options:
+    *    - who         ID of the user (0 = undefined)
+    *    - whogroup    ID of the group of users (0 = undefined)
+    *    - begin       Date
+    *    - end         Date
     *    - color
     *    - event_type_color
     *
     * @return array of planning item
    **/
-   static function populatePlanning($options = []) {
-
+   static function populatePlanning($options = []) :array {
       global $DB, $CFG_GLPI;
 
       $interv = [];
@@ -1435,86 +1655,123 @@ class ProjectTask extends CommonDBChild {
       $options = array_merge($default_options, $options);
 
       $who       = $options['who'];
-      $who_group = $options['who_group'];
+      $whogroup  = $options['whogroup'];
       $begin     = $options['begin'];
       $end       = $options['end'];
 
       // Get items to print
-      $ASSIGN = "";
+      $ADDWHERE = [];
 
-      if ($who_group === "mine") {
-         if (!$options['genical']
-             && count($_SESSION["glpigroups"])) {
-            $groups = implode("','", $_SESSION['glpigroups']);
-            $ASSIGN = "`glpi_projecttaskteams`.`itemtype` = 'Group'
-                       AND `glpi_projecttaskteams`.`items_id`
-                           IN (SELECT DISTINCT `groups_id`
-                               FROM `glpi_groups`
-                               WHERE `groups_id` IN ('$groups')
-                                     AND `glpi_groups`.`is_assign`)
-                                     AND ";
-         } else { // Only personal ones
-            $ASSIGN = "`glpi_projecttaskteams`.`itemtype` = 'User'
-                       AND `glpi_projecttaskteams`.`items_id` = '$who'
-                       AND ";
-         }
-
-      } else {
-         if ($who > 0) {
-            $ASSIGN = "`glpi_projecttaskteams`.`itemtype` = 'User'
-                       AND `glpi_projecttaskteams`.`items_id` = '$who'
-                       AND ";
-         }
-
-         if ($who_group > 0) {
-            $ASSIGN = "`glpi_projecttaskteams`.`itemtype` = 'Group'
-                       AND `glpi_projecttaskteams`.`items_id`
-                           IN ('$who_group')
-                       AND ";
+      if ($whogroup === "mine") {
+         if (isset($_SESSION['glpigroups'])) {
+            $whogroup = $_SESSION['glpigroups'];
+         } else if ($who > 0) {
+            $whogroup = array_column(Group_User::getUserGroups($who), 'id');
          }
       }
-      if (empty($ASSIGN)) {
-         $ASSIGN = "`glpi_projecttaskteams`.`itemtype` = 'User'
-                       AND `glpi_projecttaskteams`.`items_id`
-                        IN (SELECT DISTINCT `glpi_profiles_users`.`users_id`
-                            FROM `glpi_profiles`
-                            LEFT JOIN `glpi_profiles_users`
-                                 ON (`glpi_profiles`.`id` = `glpi_profiles_users`.`profiles_id`)
-                            WHERE `glpi_profiles`.`interface` = 'central' ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $_SESSION["glpiactive_entity"], 1).")
-                     AND ";
+
+      if ($who > 0) {
+         $ADDWHERE['glpi_projecttaskteams.itemtype'] = 'User';
+         $ADDWHERE['glpi_projecttaskteams.items_id'] = $who;
       }
 
-      $DONE_EVENTS = '';
+      if ($whogroup > 0) {
+         $ADDWHERE['glpi_projecttaskteams.itemtype'] = 'Group';
+         $ADDWHERE['glpi_projecttaskteams.items_id'] = $whogroup;
+      }
+
+      if (!count($ADDWHERE)) {
+         $ADDWHERE = [
+            'glpi_projecttaskteams.itemtype' => 'User',
+            'glpi_projecttaskteams.items_id' => new \QuerySubQuery([
+               'SELECT'          => 'glpi_profiles_users.users_id',
+               'DISTINCT'        => true,
+               'FROM'            => 'glpi_profiles',
+               'LEFT JOIN'       => [
+                  'glpi_profiles_users'   => [
+                     'ON' => [
+                        'glpi_profiles_users'   => 'profiles_id',
+                        'glpi_profiles'         => 'id'
+                     ]
+                  ]
+               ],
+               'WHERE'           => [
+                  'glpi_profiles.interface'  => 'central'
+               ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], 1)
+            ])
+         ];
+      }
+
       if (!isset($options['display_done_events']) || !$options['display_done_events']) {
-         $DONE_EVENTS = "`glpi_projecttasks`.`percent_done` < 100
-                         AND (glpi_projectstates.is_finished = 0
-                              OR glpi_projectstates.is_finished IS NULL)
-                         AND ";
+         $ADDWHERE['glpi_projecttasks.percent_done'] = ['<', 100];
+         $ADDWHERE[] = ['OR' => [
+            ['glpi_projectstates.is_finished'  => 0],
+            ['glpi_projectstates.is_finished'  => null]
+         ]];
       }
 
-      $query = "SELECT `glpi_projecttasks`.*
-                FROM `glpi_projecttaskteams`
-                INNER JOIN `glpi_projecttasks`
-                  ON (`glpi_projecttasks`.`id` = `glpi_projecttaskteams`.`projecttasks_id`)
-                LEFT JOIN `glpi_projectstates`
-                  ON (`glpi_projecttasks`.`projectstates_id` = `glpi_projectstates`.`id`)
-                WHERE $ASSIGN
-                      $DONE_EVENTS
-                      '$begin' < `glpi_projecttasks`.`plan_end_date`
-                      AND '$end' > `glpi_projecttasks`.`plan_start_date`
-                ORDER BY `glpi_projecttasks`.`plan_start_date`";
+      $SELECT = [$ttask->getTable() . '.*'];
+      $WHERE = $ADDWHERE;
+      if (isset($options['not_planned'])) {
+         //not planned case
+         $bdate = "DATE_SUB(".$DB->quoteName($ttask->getTable() . '.date') .
+            ", INTERVAL ".$DB->quoteName($ttask->getTable() . '.planned_duration')." SECOND)";
+         $SELECT[] = new QueryExpression($bdate . ' AS ' . $DB->quoteName('notp_date'));
+         $edate = "DATE_ADD(".$DB->quoteName($ttask->getTable() . '.date') .
+            ", INTERVAL ".$DB->quoteName($ttask->getTable() . '.planned_duration')." SECOND)";
+         $SELECT[] = new QueryExpression($edate . ' AS ' . $DB->quoteName('notp_edate'));
 
-      $result = $DB->query($query);
+         $WHERE = [
+            $ttask->getTable() . '.plan_start_date'   => null,
+            $ttask->getTable() . '.plan_end_date'     => null,
+            $ttask->getTable() . '.planned_duration'  => ['>', 0],
+            //begin is replaced with creation tim minus duration
+            new QueryExpression($edate . " >= '" . $begin . "'"),
+            new QueryExpression($bdate . " <= '" . $end . "'")
+         ];
+      } else {
+         //std case: get tasks for current view dates
+         $WHERE[$ttask->getTable() . '.plan_end_date'] = ['>=', $begin];
+         $WHERE[$ttask->getTable() . '.plan_start_date'] = ['<=', $end];
+      }
+
+      $iterator = $DB->request([
+         'SELECT'       => $SELECT,
+         'FROM'         => 'glpi_projecttaskteams',
+         'INNER JOIN'   => [
+            $ttask->getTable() => [
+               'ON' => [
+                  'glpi_projecttaskteams' => 'projecttasks_id',
+                  $ttask->getTable()      => 'id'
+               ]
+            ]
+         ],
+         'LEFT JOIN'    => [
+            'glpi_projectstates' => [
+               'ON' => [
+                  $ttask->getTable()   => 'projectstates_id',
+                  'glpi_projectstates' => 'id'
+               ]
+            ]
+         ],
+         'WHERE'        => $WHERE,
+         'ORDERBY'      => $ttask->getTable() . '.plan_start_date'
+      ]);
 
       $interv = [];
       $task   = new self();
 
-      if ($DB->numrows($result) > 0) {
-         for ($i=0; $data=$DB->fetchAssoc($result); $i++) {
+      if (count($iterator)) {
+         while ($data = $iterator->next()) {
             if ($task->getFromDB($data["id"])) {
-               $key = $data["plan_start_date"]."$$$"."ProjectTask"."$$$".$data["id"];
+               if (isset($data['notp_date'])) {
+                  $data['plan_start_date'] = $data['notp_date'];
+                  $data['plan_end_date'] = $data['notp_edate'];
+               }
+               $key = $data["plan_start_date"].
+                      "$$$"."ProjectTask".
+                      "$$$".$data["id"].
+                      "$$$".$who."$$$".$whogroup;
                $interv[$key]['color']            = $options['color'];
                $interv[$key]['event_type_color'] = $options['event_type_color'];
                $interv[$key]['itemtype']         = 'ProjectTask';
@@ -1560,6 +1817,28 @@ class ProjectTask extends CommonDBChild {
       return $interv;
    }
 
+
+   /**
+    * Populate the planning with not planned project tasks
+    *
+    * @since 9.1
+    *
+    * @param $options  array of possible options:
+    *    - who         ID of the user (0 = undefined)
+    *    - whogroup    ID of the group of users (0 = undefined)
+    *    - begin       Date
+    *    - end         Date
+    *    - color
+    *    - event_type_color
+    *
+    * @return array of planning item
+   **/
+   static function populateNotPlanned($options = []) :array {
+      $options['not_planned'] = true;
+      return self::populatePlanning($options);
+   }
+
+
    /**
     * Display a Planning Item
     *
@@ -1571,7 +1850,7 @@ class ProjectTask extends CommonDBChild {
     *                         (default '')
     * @param $complete        complete display (more details) (default 0)
     *
-    * @return Nothing (display function)
+    * @return string
     **/
    static function displayPlanningItem(array $val, $who, $type = "", $complete = 0) {
       global $CFG_GLPI;
@@ -1622,5 +1901,173 @@ class ProjectTask extends CommonDBChild {
       $html.= "</div>";
       $html.= "<div class='event-description rich_text_container'>".html_entity_decode($val["content"])."</div>";
       return $html;
+   }
+
+   /**
+    * Update the specified project task's percent_done based on the percent_done of sub-tasks.
+    * This function indirectly updates the percent done for all parent tasks if they are set to automatically update.
+    * The parent project's percent_done is not updated here to avoid duplicate updates.
+    * @since 9.5.0
+    * @return boolean False if the specified project task is not set to automatically update the percent done.
+    */
+   public static function recalculatePercentDone($ID) {
+      global $DB;
+
+      $projecttask = new self();
+      $projecttask->getFromDB($ID);
+      if (!$projecttask->fields['auto_percent_done']) {
+         return false;
+      }
+
+      $iterator = $DB->request([
+         'SELECT' => [
+            new QueryExpression('CAST(AVG('.$DB->quoteName('percent_done').') AS UNSIGNED) AS percent_done')
+         ],
+         'FROM'   => ProjectTask::getTable(),
+         'WHERE'  => [
+            'projecttasks_id' => $ID
+         ]
+      ]);
+      if ($iterator->count()) {
+         $percent_done = $iterator->next()['percent_done'];
+      } else {
+         $percent_done = 0;
+      }
+      $projecttask->update([
+         'id'                 => $ID,
+         'percent_done'       => $percent_done,
+      ]);
+      return true;
+   }
+
+   public static function getGroupItemsAsVCalendars($groups_id) {
+
+      return self::getItemsAsVCalendars(
+         [
+            ProjectTaskTeam::getTableField('itemtype') => Group::class,
+            ProjectTaskTeam::getTableField('items_id') => $groups_id,
+         ]
+      );
+   }
+
+   public static function getUserItemsAsVCalendars($users_id) {
+
+      return self::getItemsAsVCalendars(
+         [
+            ProjectTaskTeam::getTableField('itemtype') => User::class,
+            ProjectTaskTeam::getTableField('items_id') => $users_id,
+         ]
+      );
+   }
+
+   /**
+    * Returns items as VCalendar objects.
+    *
+    * @param array $criteria
+    *
+    * @return \Sabre\VObject\Component\VCalendar[]
+    */
+   private static function getItemsAsVCalendars(array $criteria) {
+
+      global $DB;
+
+      $query = [
+         'FROM'       => self::getTable(),
+         'INNER JOIN' => [
+            ProjectTaskTeam::getTable() => [
+               'ON' => [
+                  ProjectTaskTeam::getTable() => 'projecttasks_id',
+                  self::getTable()            => 'id',
+               ],
+            ],
+         ],
+         'WHERE'      => $criteria,
+      ];
+
+      $tasks_iterator = $DB->request($query);
+
+      $vcalendars = [];
+      foreach ($tasks_iterator as $task) {
+         $item = new self();
+         $item->getFromResultSet($task);
+         $vcalendar = $item->getAsVCalendar();
+         if (null !== $vcalendar) {
+            $vcalendars[] = $vcalendar;
+         }
+      }
+
+      return $vcalendars;
+   }
+
+   public function getAsVCalendar() {
+
+      global $CFG_GLPI;
+
+      if (!$this->canViewItem()) {
+         return null;
+      }
+
+      $is_task = true;
+      $is_planned = !empty($this->fields['plan_start_date']) && !empty($this->fields['plan_end_date']);
+      $target_component = $this->getTargetCaldavComponent($is_planned, $is_task);
+      if (null === $target_component) {
+         return null;
+      }
+
+      $vcalendar = $this->getVCalendarForItem($this, $target_component);
+
+      $fields = Html::entity_decode_deep($this->fields);
+      $utc_tz = new \DateTimeZone('UTC');
+
+      $vcomp = $vcalendar->getBaseComponent();
+
+      if ('VTODO' === $target_component) {
+         if ($is_planned) {
+            $vcomp->DTSTART = (new \DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
+            $vcomp->DUE = (new \DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
+         }
+         $vcomp->STATUS = 100 == $fields['percent_done'] ? 'COMPLETED' : 'NEEDS-ACTION';
+         $vcomp->{'PERCENT-COMPLETE'} = $fields['percent_done'];
+      } else if ('VEVENT' === $target_component) {
+         if ($is_planned) {
+            $vcomp->DTSTART = (new \DateTime($fields['plan_start_date']))->setTimeZone($utc_tz);
+            $vcomp->DTEND   = (new \DateTime($fields['plan_end_date']))->setTimeZone($utc_tz);
+         }
+      }
+
+      $vcomp->URL = $CFG_GLPI['url_base'] . Project::getFormURLWithID($fields['projects_id'], false);
+
+      return $vcalendar;
+   }
+
+   public function getInputFromVCalendar(VCalendar $vcalendar) {
+
+      $vtodo = $vcalendar->getBaseComponent();
+
+      if (null !== $vtodo->RRULE) {
+         throw new UnexpectedValueException('RRULE not yet implemented for Project tasks');
+      }
+
+      $input = $this->getCommonInputFromVcomponent($vtodo, $this->isNewItem());
+
+      if ($vtodo->DESCRIPTION instanceof FlatText) {
+         // Description is not in HTML format
+         $input['content'] = $vtodo->DESCRIPTION->getValue();
+      }
+
+      if ($vtodo->{'PERCENT-COMPLETE'} instanceof IntegerValue) {
+         $input['percent_done'] = $vtodo->{'PERCENT-COMPLETE'}->getValue();
+      } else if (array_key_exists('state', $input) && $input['state'] == \Planning::DONE) {
+         // Consider task as done if status is DONE
+         $input['percent_done'] = 100;
+      }
+
+      return $input;
+   }
+
+
+   public function prepareInputForClone($input) {
+      $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+      return parent::prepareInputForClone($input);
    }
 }

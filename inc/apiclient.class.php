@@ -2,7 +2,7 @@
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
- * Copyright (C) 2015-2018 Teclib' and contributors.
+ * Copyright (C) 2015-2021 Teclib' and contributors.
  *
  * http://glpi-project.org
  *
@@ -45,6 +45,10 @@ class APIClient extends CommonDBTM {
    // From CommonDBTM
    public $dohistory                   = true;
 
+   static $undisclosedFields = [
+      'app_token'
+   ];
+
    static function canCreate() {
       return Session::haveRight(static::$rightname, UPDATE);
    }
@@ -79,7 +83,8 @@ class APIClient extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'name',
          'name'               => __('Name'),
-         'datatype'           => 'itemlink'
+         'datatype'           => 'itemlink',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -133,7 +138,8 @@ class APIClient extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'ipv6',
          'name'               => __('IPv6 address'),
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       $tab[] = [
@@ -142,7 +148,8 @@ class APIClient extends CommonDBTM {
          'field'              => 'app_token',
          'name'               => __('Application token'),
          'massiveaction'      => false,
-         'datatype'           => 'text'
+         'datatype'           => 'text',
+         'autocomplete'       => true,
       ];
 
       return $tab;
